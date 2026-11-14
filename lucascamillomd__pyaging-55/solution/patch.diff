@@ -1,0 +1,782 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index b370d5d..19cb16c 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -46,7 +46,7 @@ Inside this repository, use `uv sync` and run commands through `uv run`. Histone
+ - Keep non-feature columns out of `adata.X` by passing them through `metadata_cols`.
+ - For EPIC v2 data, aggregate duplicated probe suffixes before conversion with `pya.pp.epicv2_probe_aggregation`.
+ - `df_to_adata` accepts `mean`, `median`, `constant`, or `knn` imputation. Choose deliberately; `knn` is the default and may be expensive for large matrices.
+-- `predict_age` fills missing clock features with model reference values when available and otherwise with zero. Missing-feature details are stored in `adata.uns`.
++- `predict_age` fills absent features using the model's reference vector first. For eligible human DNAm beta clocks without a vector, it uses the packaged Hannum and BoA CpG medians where available and zero otherwise. Missing-feature details are stored in `adata.uns`.
+ - The package selects CUDA when available and otherwise runs on CPU. Adjust `batch_size` when memory is constrained.
+ 
+ ## Quick example: AltumAge
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 0cd367a..2f11886 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.6.0
++
++- Fill absent CpGs for eligible human DNA methylation clocks with beta
++  references from Hannum 450K (GSE40279) and BoA EPIC v2 (GSE246337).
++  Shared CpGs use the mean of the two cohort medians. A clock's own reference
++  vector takes precedence, and uncovered features fall back to zero.
++
+ ## 0.5.5
+ 
+ - Add Kuo et al.'s PAC from original-author code and coefficients, with 128
+diff --git a/clocks/build_dnam_feature_medians.py b/clocks/build_dnam_feature_medians.py
+new file mode 100644
+index 0000000..75c4507
+--- /dev/null
++++ b/clocks/build_dnam_feature_medians.py
+@@ -0,0 +1,117 @@
++"""Build the offline human CpG beta reference from the original GEO matrices."""
++
++import argparse
++import gzip
++import hashlib
++import json
++from pathlib import Path
++
++import pandas as pd
++
++from pyaging.preprocess import epicv2_probe_aggregation
++
++HANNUM_URL = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE40nnn/GSE40279/matrix/GSE40279_series_matrix.txt.gz"
++BOA_URL = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE246nnn/GSE246337/suppl/GSE246337_betas.csv.gz"
++
++
++def compute_cohort_medians(beta: pd.DataFrame, *, epicv2: bool) -> pd.Series:
++    """Reduce a samples-by-probes beta block to one median per CpG."""
++    valid = beta.where(beta.ge(0) & beta.le(1))
++    if epicv2:
++        valid = epicv2_probe_aggregation(valid, verbose=False)
++    return valid.median().dropna()
++
++
++def combine_cohort_medians(hannum: pd.Series, boa: pd.Series) -> pd.Series:
++    """Average shared medians and keep medians available in a single cohort."""
++    return pd.concat([hannum, boa], axis=1).mean(axis=1).dropna().sort_index()
++
++
++def read_cohort(path: Path, *, epicv2: bool) -> tuple[pd.Series, dict]:
++    """Read probe rows in blocks, carrying any split EPIC v2 group forward."""
++    seen = set()
++    results = []
++    pending = pd.DataFrame()
++    raw_probes = 0
++
++    def summarize(block, sites):
++        if seen.intersection(sites):
++            raise ValueError("CpG groups must be contiguous in the source matrix")
++        seen.update(sites)
++        results.append(compute_cohort_medians(block.T, epicv2=epicv2))
++
++    with gzip.open(path, "rt", encoding="utf-8-sig") as stream:
++        if not epicv2:
++            for line in stream:
++                if line.strip() == "!series_matrix_table_begin":
++                    break
++            else:
++                raise ValueError("Hannum series matrix has no beta table")
++        with pd.read_csv(
++            stream,
++            sep="," if epicv2 else "\t",
++            index_col=0,
++            comment=None if epicv2 else "!",
++            chunksize=4096,
++            float_precision="round_trip",
++            na_values=["null"],
++        ) as chunks:
++            for chunk in chunks:
++                sample_count = len(chunk.columns)
++                raw_probes += len(chunk)
++                block = pd.concat([pending, chunk]) if not pending.empty else chunk
++                block = block.loc[block.index.str.fullmatch(r"cg[0-9]{8}(?:_[^_]+)?")]
++                if block.empty:
++                    continue
++                sites = block.index.str.split("_", n=1).str[0] if epicv2 else block.index
++                carry = sites == sites[-1] if epicv2 else sites.isna()
++                summarize(block.loc[~carry], sites[~carry])
++                pending = block.loc[carry]
++            if not pending.empty:
++                summarize(pending, pending.index.str.split("_", n=1).str[0])
++    if not results:
++        raise ValueError(f"No CpG beta rows found in {path.name}")
++    medians = pd.concat(results)
++    with path.open("rb") as source:
++        digest = hashlib.file_digest(source, "sha256").hexdigest()
++    return medians, {
++        "url": BOA_URL if epicv2 else HANNUM_URL,
++        "file": path.name,
++        "sha256": digest,
++        "samples": sample_count,
++        "source_rows": raw_probes,
++        "cpgs_after_aggregation": len(seen),
++        "cpgs_with_medians": len(medians),
++    }
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("hannum", type=Path)
++    parser.add_argument("boa", type=Path)
++    parser.add_argument("output", type=Path)
++    args = parser.parse_args()
++    hannum, hannum_source = read_cohort(args.hannum, epicv2=False)
++    boa, boa_source = read_cohort(args.boa, epicv2=True)
++    combined = combine_cohort_medians(hannum, boa)
++    shared = len(hannum.index.intersection(boa.index))
++    provenance = {
++        "hannum": hannum_source,
++        "boa": boa_source,
++        "shared": shared,
++        "hannum_only": len(hannum) - shared,
++        "boa_only": len(boa) - shared,
++        "method": "Within-sample EPIC v2 replicate mean, then cohort medians of finite betas in [0, 1], "
++        "then the equal-weight mean of available cohort medians.",
++    }
++    payload = {"schema_version": 1, "provenance": provenance, "features": combined.to_dict()}
++    with (
++        args.output.open("wb") as output,
++        gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed,
++    ):
++        compressed.write(json.dumps(payload, allow_nan=False, separators=(",", ":")).encode("utf-8"))
++    print(json.dumps(provenance, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/clocks/validate_dnam_feature_medians.py b/clocks/validate_dnam_feature_medians.py
+new file mode 100644
+index 0000000..9c0d194
+--- /dev/null
++++ b/clocks/validate_dnam_feature_medians.py
+@@ -0,0 +1,123 @@
++"""Compare package and zero fill on complete clock inputs with masked probes."""
++
++import argparse
++import csv
++import gzip
++import json
++from pathlib import Path
++from unittest.mock import patch
++
++import anndata
++import numpy as np
++import pandas as pd
++import torch
++
++import pyaging as pya
++from pyaging.predict._pred_utils import _load_dnam_feature_medians
++
++
++def read_validation_betas(path, features, *, blood):
++    ages = None
++    parts = []
++    with gzip.open(path, "rt") as stream:
++        if blood:
++            for line in stream:
++                if line.startswith("!Sample_characteristics") and '"age: ' in line:
++                    values = next(csv.reader([line], delimiter="\t"))[1:]
++                    ages = [float(value.removeprefix("age: ")) for value in values]
++                if line.startswith("!series_matrix_table_begin"):
++                    break
++        with pd.read_csv(
++            stream,
++            sep="\t" if blood else ",",
++            index_col=0,
++            comment="!" if blood else None,
++            usecols=None if blood else lambda name: not name.endswith(" Detection Pval"),
++            chunksize=4096,
++        ) as chunks:
++            for chunk in chunks:
++                parts.append(chunk.loc[chunk.index.isin(features)])
++    beta = pd.concat(parts).T
++    if ages is not None:
++        ages = pd.Series(ages, index=beta.index)
++    return beta, ages
++
++
++def compare(beta, ages, model, panel=None):
++    clock = model.metadata["clock_name"]
++    if model.reference_values is not None:
++        raise ValueError(f"{clock} has model references and cannot exercise the fallback")
++    if not set(model.features).issubset(beta.columns):
++        return {"clock": clock, "missing_baseline_features": len(set(model.features).difference(beta.columns))}
++    beta = beta[model.features]
++    beta = beta.loc[(beta.ge(0) & beta.le(1)).all(axis=1)]
++    if beta.empty:
++        return {"clock": clock, "samples": 0}
++
++    def predict(frame, *, use_medians):
++        model.use_dnam_median_fallback = use_medians
++        adata = anndata.AnnData(
++            frame.to_numpy(), obs=pd.DataFrame(index=frame.index), var=pd.DataFrame(index=frame.columns)
++        )
++        # Use the public prediction path with a local, separately pinned weight file.
++        with patch("pyaging.predict._pred.load_clock", return_value=model):
++            pya.pred.predict_age(adata, clock, verbose=False)
++        return adata.obs[clock].to_numpy()
++
++    baseline = predict(beta, use_medians=False)
++    np.testing.assert_array_equal(predict(beta, use_medians=True), baseline)
++    medians = _load_dnam_feature_medians()
++    rng = np.random.default_rng(600)
++    masks = {
++        f"random_{fraction:.0%}": rng.choice(beta.columns, size=round(fraction * beta.shape[1]), replace=False)
++        for fraction in (0.05, 0.10, 0.25)
++    }
++    if panel is not None:
++        masks["observed_panel"] = beta.columns.difference(panel)
++
++    results = []
++    for mask, masked in masks.items():
++        if not 0 < len(masked) < beta.shape[1]:
++            continue
++        incomplete = beta.drop(columns=masked)
++        for use_medians in (False, True):
++            predicted = predict(incomplete, use_medians=use_medians)
++            delta = np.abs(predicted - baseline)
++            results.append(
++                {
++                    "clock": clock,
++                    "samples": len(beta),
++                    "mask": mask,
++                    "masked_probes": len(masked),
++                    "covered_probes": sum(feature in medians for feature in masked),
++                    "fill": "median" if use_medians else "zero",
++                    "median_abs_change_years": float(np.median(delta)),
++                    "p95_abs_change_years": float(np.quantile(delta, 0.95)),
++                    "chronological_mae_years": (
++                        float(np.mean(np.abs(predicted - ages.loc[beta.index])))
++                        if ages is not None and clock == "hannum"
++                        else None
++                    ),
++                }
++            )
++    return results
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("beta_matrix", type=Path)
++    parser.add_argument("weights", type=Path, nargs="+")
++    parser.add_argument("--blood", action="store_true", help="Read the GSE41169 GEO series matrix")
++    parser.add_argument("--panel", type=Path, help="Use CpGs in the GSE224218 processed matrix as another mask")
++    args = parser.parse_args()
++    models = [
++        torch.load(path, weights_only=False, map_location="cpu").to(torch.float64).eval() for path in args.weights
++    ]
++    features = set().union(*(model.features for model in models))
++    beta, ages = read_validation_betas(args.beta_matrix, features, blood=args.blood)
++    panel = set(pd.read_csv(args.panel, sep="\t", usecols=["ID_REF"])["ID_REF"]) if args.panel else None
++    print(json.dumps([compare(beta, ages, model, panel) for model in models], indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/development/dnam-median-fallback-validation.md b/docs/development/dnam-median-fallback-validation.md
+new file mode 100644
+index 0000000..22658ec
+--- /dev/null
++++ b/docs/development/dnam-median-fallback-validation.md
+@@ -0,0 +1,92 @@
++# DNAm median fallback validation for pyaging 0.6.0
++
++## Reference generation
++
++The shipped lookup contains 984,158 canonical CpGs. Hannum contributed medians
++for 470,043 CpGs across 656 whole-blood samples. BoA contributed medians for
++894,006 CpGs across 500 samples. The two cohorts share 379,891 CpGs. The
++remaining 90,152 Hannum and 514,115 BoA CpGs use their single cohort median.
++The packaged resource records source URLs, checksums, counts, and the
++aggregation rule. [Hannum GEO record](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE40279) ·
++[BoA GEO record](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE246337)
++
++Two full builds produced identical compressed bytes. The resource SHA-256 is
++`880afc302e9f5b4af266f05958e3b1af17f5217ec106a4c39011c5cbe3b290d9`.
++
++Independent checks read the source rows and recomputed these medians:
++
++| CpG | Hannum median | BoA median | Packaged beta |
++| --- | ---: | ---: | ---: |
++| cg00000029 | 0.47498965 | 0.51372326 | 0.49435645 |
++| cg00000108 | 0.94484165 | | 0.94484165 |
++| cg00000221 | | 0.92236831 | 0.92236831 |
++
++```sh
++uv run python clocks/build_dnam_feature_medians.py \
++  GSE40279_series_matrix.txt.gz GSE246337_betas.csv.gz \
++  src/pyaging/data/dnam_feature_medians.json.gz
++```
++
++## Held-out predictions
++
++The benchmark uses deposited beta values from the Dutch whole-blood cohort
++GSE41169 and the IDH-mutant low-grade glioma cohort GSE279950, independent of
++the two reference cohorts. The baseline for each clock includes only samples
++with finite beta values in [0, 1] for all its inputs. The benchmark checks exact
++prediction equality on these complete inputs with the fallback enabled and
++disabled. Hannum lacked six baseline CpGs in the glioma matrix, so the
++glioma comparison uses DNAmPhenoAge. [GSE41169](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE41169) ·
++[GSE279950](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE279950)
++
++For each clock and cohort, remove the same columns for both fill methods.
++Random masks use NumPy seed 600 and one draw per fraction. The observed panel
++mask removes CpGs absent from the deposited GSE224218 processed matrix.
++That mask reflects the study's processing and array coverage together.
++[Observed panel source](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE224218)
++
++Each pair in the results table is zero fill / median fill. Changes are absolute
++differences from complete-input predictions in years. Chronological MAE is
++reported for Hannum in blood.
++
++| Tissue | Clock | Samples | Mask | Covered / masked | Median change | P95 change | Age MAE |
++| --- | --- | ---: | --- | ---: | ---: | ---: | ---: |
++| Whole blood | hannum | 91 | Random 5% | 4/4 | 4.21 / 0.97 | 4.81 / 1.57 | 5.07 / 3.09 |
++| Whole blood | hannum | 91 | Random 10% | 7/7 | 1.78 / 4.81 | 4.69 / 6.15 | 3.53 / 5.26 |
++| Whole blood | hannum | 91 | Random 25% | 17/18 | 15.40 / 9.26 | 22.87 / 12.19 | 15.77 / 9.00 |
++| Whole blood | hannum | 91 | Observed panel | 8/8 | 8.45 / 3.21 | 11.75 / 4.84 | 8.49 / 4.02 |
++| Whole blood | dnamphenoage | 75 | Random 5% | 26/26 | 17.83 / 1.13 | 18.97 / 2.19 |  |
++| Whole blood | dnamphenoage | 75 | Random 10% | 51/51 | 24.41 / 1.17 | 27.29 / 3.43 |  |
++| Whole blood | dnamphenoage | 75 | Random 25% | 128/128 | 29.02 / 5.93 | 35.79 / 9.85 |  |
++| Whole blood | dnamphenoage | 75 | Observed panel | 3/3 | 0.80 / 0.15 | 1.17 / 0.38 |  |
++| Glioma | dnamphenoage | 109 | Random 5% | 26/26 | 11.52 / 5.38 | 18.55 / 10.98 |  |
++| Glioma | dnamphenoage | 109 | Random 10% | 51/51 | 38.75 / 14.53 | 49.36 / 25.14 |  |
++| Glioma | dnamphenoage | 109 | Random 25% | 128/128 | 26.31 / 61.26 | 42.25 / 77.19 |  |
++| Glioma | dnamphenoage | 109 | Observed panel | 3/3 | 1.66 / 0.83 | 2.83 / 2.01 |  |
++
++Median fill reduced both change statistics in 10 of the 12 comparisons.
++The Hannum 10% blood mask increased median prediction change from 1.78 to
++4.81 years and age MAE from 3.53 to 5.26 years. The 25% glioma mask increased
++DNAmPhenoAge's median change from 26.31 to 61.26 years. The blood-derived
++reference can produce substantial shifts with extensive missingness in
++tumor tissue. These comparisons measure sensitivity to selected masks and
++do not establish clock validity for glioma.
++
++```sh
++uv run python clocks/validate_dnam_feature_medians.py \
++  GSE41169_series_matrix.txt.gz hannum.pt dnamphenoage.pt \
++  --blood --panel GSE224218_processed_data.txt.gz
++uv run python clocks/validate_dnam_feature_medians.py \
++  GSE279950_MPT_tabProcessed_PBADY.csv.gz dnamphenoage.pt \
++  --panel GSE224218_processed_data.txt.gz
++```
++
++| Validation input | SHA-256 |
++| --- | --- |
++| GSE41169_series_matrix.txt.gz | `2f215e8b72d3c97c7793114f72cd2251f1ef2b225924c88a7bc1c414043663a0` |
++| GSE279950_MPT_tabProcessed_PBADY.csv.gz | `6576be2b1e9e0da03b35ee3d5f3246bf39b712bdc31e0ffdcf7c30f844c87324` |
++| GSE224218_processed_data.txt.gz | `ad862b172364303ba7da02649c56b806985e8bf741bbc41059bf2d69cb7c7103` |
++| hannum.pt | `ef675563e3df7184afade17a81094a242fb1899c022621fcba58d2e4b10b21d8` |
++| dnamphenoage.pt | `a0e384e57d1d69f523f7e76cefc78d2467caa2a6c38f190dff25f1498516a47b` |
++
++The weights came from the [Hannum](https://huggingface.co/pyaging/hannum)
++and [DNAmPhenoAge](https://huggingface.co/pyaging/dnamphenoage) repositories.
+diff --git a/docs/superpowers/plans/2026-11-03-pyaging-0.6.0-dnam-median-fallback.md b/docs/superpowers/plans/2026-11-03-pyaging-0.6.0-dnam-median-fallback.md
+new file mode 100644
+index 0000000..91edbc7
+--- /dev/null
++++ b/docs/superpowers/plans/2026-11-03-pyaging-0.6.0-dnam-median-fallback.md
+@@ -0,0 +1,60 @@
++# Pyaging 0.6.0 DNAm median fallback implementation plan
++
++> For agentic workers, use superpowers:executing-plans or, if the user chooses delegation, superpowers:subagent-driven-development. Track work with the checkboxes below.
++
++**Goal.** Give human CpG beta clocks a reproducible fallback for absent columns and prepare pyaging 0.6.0.
++
++**Architecture.** Generate a compressed, package-local CpG lookup from the two GEO cohorts. Load it lazily in the shared alignment path for eligible clocks that lack their own reference vector.
++
++**Tools.** Python, pandas, NumPy, pytest, uv, and Hatch.
++
++**Spec.** [Approved design](../specs/2026-11-03-dnam-median-fallback-design.md).
++
++## Global constraints
++
++- Use Hannum 450K [GSE40279](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE40279) and BoA EPIC v2 [GSE246337](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE246337). Record exactly which files, samples, and preprocessing produced the reference.
++- Use finite beta values in [0, 1]. Aggregate EPIC v2 replicate probes within each sample before taking the median across samples. Average the two medians with equal cohort weight when both exist.
++- Preserve model references, supplied values, missing-feature reporting, and rejection of entirely missing inputs. Keep feature ranges and the fallback separate.
++- Prediction must work offline after the clock weights are available. Use existing dependencies and keep source matrices out of the package.
++
++## Review focus
++
++- EPIC v2 replicates with different missingness patterns still contribute one beta per sample and CpG.
++- A CpG with no usable values in either cohort has no entry. A measured median of zero is a valid entry.
++- An existing reference vector may contain intentional zero or NaN values. Use the vector as provided.
++- Some clocks have DNA methylation metadata but consume derived proxies or transformed features. Scope the lookup to eligible CpG beta inputs.
++- A checkout can hide missing package data. Verify loading the table from an installed wheel outside the repository.
++
++## 1. Generate and audit the reference table
++
++Create `clocks/build_dnam_feature_medians.py`, `tests/test_dnam_feature_medians.py`, and the generated `src/pyaging/data/dnam_feature_medians.json.gz`. The resource contains schema version 1, a `features` object mapping canonical CpG IDs to beta values, and provenance for both cohorts.
++
++- [ ] Resolve the exact processed beta files from the GEO records. Verify the platform, units, sample IDs, tissue, and whether BoA probe IDs are already collapsed. Record source URLs and SHA-256 hashes. If a usable processed file is unavailable, document the source gap and resolve it before producing the release table.
++- [ ] Add failing tests for `compute_cohort_medians(beta: pd.DataFrame, *, epicv2: bool) -> pd.Series` and `combine_cohort_medians(hannum: pd.Series, boa: pd.Series) -> pd.Series`. For an EPIC v2 CpG with sample pairs (0.2, 0.8), (0.3, missing), and (0.7, 0.9), assert a median of 0.5. Assert that cohort medians 0.2 and 0.8 yield 0.5 even with unequal cohort sizes, single-cohort medians pass through, zero is retained, and all-invalid columns disappear.
++- [ ] Run `uv run pytest -q tests/test_dnam_feature_medians.py` and confirm the new tests fail because the generator is absent.
++- [ ] Implement those functions and a CLI accepting local Hannum and BoA input paths plus an output path. Parse the verified source layouts into sample-by-probe beta blocks, masking invalid values before aggregation. Use `pya.pp.epicv2_probe_aggregation(..., verbose=False)` and keep every suffix group in a single block. Compute each median using all valid samples in that cohort. Sort the final CpG keys and write deterministic gzip output with a fixed timestamp.
++- [ ] Run the tests again. Generate the full resource and regenerate it to check that the hashes agree. Record sample counts, counts before and after filtering and aggregation, Hannum-only, BoA-only, and shared CpG counts, and independently spot-check one median in each coverage category against the input files.
++
++## 2. Integrate the fallback into prediction
++
++Modify `src/pyaging/predict/_pred_utils.py`, `tests/predict/test_input_and_batching.py`, and the missing-feature paragraph in `AGENTS.md`. Add a private cached `_load_dnam_feature_medians() -> dict[str, float]` that opens the Task 1 resource with `importlib.resources` and gzip.
++
++- [ ] Inspect registered human DNAm artifacts without model references. Compare model metadata, actual input identifiers, and preprocessing contracts. Use those findings to define eligibility. Raw human CpG beta inputs qualify. Derived inputs, nonhuman models, and clocks that consume transformed CpGs do not. Use an explicit clock declaration or exception only if the existing fields cannot distinguish a real case.
++- [ ] Add a failing alignment test with a supplied value of 0.2, an absent covered CpG with table value 0.6, and an absent uncovered CpG. Assert the aligned row equals [0.2, 0.6, 0.0]. Assert the same missing names, mask, and percentage as before. With a model vector containing zero and NaN for those absent probes, assert it wins for both. Add cases for an ineligible input contract, a complete input that never loads the table, and the existing error on entirely absent input. Use a small test table to isolate these cases from cohort revisions.
++- [ ] Run `uv run pytest -q tests/predict/test_input_and_batching.py` and confirm the covered-probe case fails because it still gets zero.
++- [ ] In `_align_features_into_obsm`, apply the model vector first. In its absence, use the packaged table for eligible missing CpGs, with zero for all other absent features. Read the table only when an eligible CpG is absent and inference can proceed. Keep fill values local to alignment. Log median and zero counts when the table supplies values.
++- [ ] Run `uv run pytest -q tests/predict/test_input_and_batching.py tests/predict/test_cohort_transform.py tests/predict/test_feature_range_check.py`. Verify a representative eligible clock with complete input and compare predictions to the pre-change baseline.
++
++## 3. Measure prediction effects
++
++- [ ] Select independent beta matrices with enough observed model features to form complete-input baselines. Confirm sample independence from the two reference cohorts. Start with blood and include a nonblood dataset where a suitable matrix and clock overlap are available.
++- [ ] Run paired predictions on identical masks with median fill and zero fill. Use fixed seeds for random masks at 5%, 10%, and 25% of model CpGs, and use a real array coverage mask where possible. Report clock, tissue, sample count, mask, fraction of absent probes covered by the table, and median and 95th percentile absolute prediction change from the complete-input baseline, in the clock's output units. For chronological-age clocks with age labels, report MAE against age separately. State any gaps in the held-out data.
++- [ ] Save the input provenance, seeds, reproducible commands, and results in `docs/development/dnam-median-fallback-validation.md`. Review material worsening and its scope before marking the change ready for release.
++
++## 4. Prepare 0.6.0 and verify the distribution
++
++Modify `src/pyaging/__init__.py` and `CHANGELOG.md`. Update `uv.lock` only if uv reports a version-related lock change.
++
++- [ ] Set `__version__ = "0.6.0"` with `make version VERSION=v0.6.0`. Hatch reads that field for distribution metadata. Document the three fallback levels, cohort sources, and applicability in the changelog.
++- [ ] Run `uv lock --check`, `uv run pytest`, and `uv build`. Check the wheel and sdist for the compressed resource and confirm distribution metadata reports 0.6.0. Install the built wheel in a clean environment and, from outside the checkout, check the imported version and load the shipped table. Confirm a known covered CpG has the generated beta value.
++- [ ] Review the final diff and verification results. Leave tagging and publishing for a separate release action.
+diff --git a/docs/superpowers/specs/2026-11-03-dnam-median-fallback-design.md b/docs/superpowers/specs/2026-11-03-dnam-median-fallback-design.md
+new file mode 100644
+index 0000000..ac5502b
+--- /dev/null
++++ b/docs/superpowers/specs/2026-11-03-dnam-median-fallback-design.md
+@@ -0,0 +1,41 @@
++# DNAm median fallback for pyaging 0.6.0
++
++Use a cohort-derived beta value for absent CpG columns when a human DNA
++methylation clock has no model-supplied reference vector.
++
++## Reference table
++
++Compute per-CpG medians separately for the Hannum 450K cohort
++([GSE40279](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE40279))
++and the Biomarkers of Aging EPIC v2 cohort
++([GSE246337](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE246337)).
++Collapse EPIC v2 probe suffixes within each sample using pyaging's existing
++aggregation before computing medians across samples. Use finite beta values
++within [0, 1].
++
++For a CpG with two cohort medians, take their arithmetic mean with equal
++weight per cohort. If only one cohort has a median, use that median.
++Hannum-first would discard the BoA estimate for shared probes. An array-specific
++lookup would require knowing the input array. The agreed mean uses both
++estimates and works without array metadata.
++
++Store the resulting lookup separately from feature ranges. Record the input
++files, checksums, sample and probe counts, aggregation, and coverage by cohort
++so the lookup can be regenerated and reviewed.
++
++## Prediction and verification
++
++For an absent column, use the clock's existing reference vector if it has
++one. Otherwise, look up the CpG in the shared table for human clocks that
++accept methylation beta values, then use zero for uncovered features. Keep
++model references separate from the fallback because models may use their
++own references during preprocessing. Preserve the existing reporting of
++absent features and the existing rejection of entirely missing input.
++
++Verify the overlap and single-cohort rules, reference precedence, zero
++fallback, and unchanged predictions for complete inputs. Compare median
++fill with zero fill on held-out samples with masked probes and report
++coverage and prediction changes. The reference is blood-derived, so
++report results by tissue where held-out data permit.
++
++Bump the pyaging package version to 0.6.0 as part of the implementation.
+diff --git a/src/pyaging/__init__.py b/src/pyaging/__init__.py
+index 64e8497..45d9cb0 100644
+--- a/src/pyaging/__init__.py
++++ b/src/pyaging/__init__.py
+@@ -4,4 +4,4 @@
+ from . import predict as pred
+ from . import preprocess as pp
+ 
+-__version__ = "0.5.7"
++__version__ = "0.6.0"
+diff --git a/src/pyaging/data/dnam_feature_medians.json.gz b/src/pyaging/data/dnam_feature_medians.json.gz
+new file mode 100644
+index 0000000..6ba42d3
+Binary files /dev/null and b/src/pyaging/data/dnam_feature_medians.json.gz differ
+diff --git a/src/pyaging/models/_author_extensions.py b/src/pyaging/models/_author_extensions.py
+index 81ef828..89682ed 100644
+--- a/src/pyaging/models/_author_extensions.py
++++ b/src/pyaging/models/_author_extensions.py
+@@ -17,6 +17,8 @@ class DNAmPhenoAgePRC(pyagingModel):
+     missing CpGs and supplied NA beta values make zero contribution.
+     """
+ 
++    use_dnam_median_fallback = False
++
+     def preprocess(self, x):
+         return torch.where(torch.isnan(x), torch.zeros_like(x), x)
+ 
+diff --git a/src/pyaging/models/_models.py b/src/pyaging/models/_models.py
+index 401f65a..c519ecf 100644
+--- a/src/pyaging/models/_models.py
++++ b/src/pyaging/models/_models.py
+@@ -1577,6 +1577,9 @@ def __init__(self):
+ 
+ 
+ class DepressionBarbu(pyagingModel):
++    # This clock consumes dasen-normalized M-values.
++    use_dnam_median_fallback = False
++
+     def __init__(self):
+         super().__init__()
+ 
+diff --git a/src/pyaging/predict/_pred_utils.py b/src/pyaging/predict/_pred_utils.py
+index f8ce37f..d19674c 100644
+--- a/src/pyaging/predict/_pred_utils.py
++++ b/src/pyaging/predict/_pred_utils.py
+@@ -1,5 +1,10 @@
++import gzip
++import json
+ import os
++import re
+ from copy import deepcopy
++from functools import lru_cache
++from importlib import resources
+ from numbers import Integral
+ 
+ import anndata
+@@ -277,12 +282,18 @@ def build_cohort_feature_matrix(
+     _align_features_into_obsm(adata, model, frame.to_numpy(), frame.columns, logger, indent_level)
+ 
+ 
++@lru_cache(maxsize=1)
++def _load_dnam_feature_medians() -> dict[str, float]:
++    source = resources.files("pyaging.data").joinpath("dnam_feature_medians.json.gz")
++    with source.open("rb") as compressed, gzip.GzipFile(fileobj=compressed) as table:
++        return json.load(table)["features"]
++
++
+ def _align_features_into_obsm(adata, model, source_values, source_features, logger, indent_level: int) -> None:
+     """Fill ``obsm["X_{clock}"]`` from ``source_values``, one column per model feature.
+ 
+-    Features the source does not carry take the model's reference value (or 0
+-    when it has none), and the substitutions are recorded so downstream checks
+-    can tell the input's own values apart from the pipeline's.
++    Absent columns use model references, then packaged human CpG beta medians
++    for eligible clocks, then zero.
+     """
+ 
+     if source_features.has_duplicates:
+@@ -311,9 +322,21 @@ def _align_features_into_obsm(adata, model, source_values, source_features, logg
+         supplied_values = cp.asnumpy(supplied_values)
+     matrix[:, existing_features_mask] = supplied_values
+ 
+-    matrix[:, missing_features_mask] = (
+-        np.array(model.reference_values)[missing_features_mask] if model.reference_values is not None else 0
+-    )
++    median_count = 0
++    fill_values = 0
++    if missing_features and model.reference_values is not None:
++        fill_values = np.asarray(model.reference_values)[missing_features_mask]
++    elif (
++        0 < len(missing_features) < len(model.features)
++        and model.metadata.get("species") == "Homo sapiens"
++        and model.metadata.get("data_type") == "DNA methylation"
++        and getattr(model, "use_dnam_median_fallback", True) is not False
++        and any(re.fullmatch(r"cg[0-9]{8}", feature) for feature in missing_features)
++    ):
++        medians = _load_dnam_feature_medians()
++        fill_values = [medians.get(feature, 0.0) for feature in missing_features]
++        median_count = sum(feature in medians for feature in missing_features)
++    matrix[:, missing_features_mask] = fill_values
+     adata.obsm[f"X_{model.metadata['clock_name']}"] = matrix
+ 
+     num_missing_features = len(missing_features)
+@@ -345,6 +368,12 @@ def _align_features_into_obsm(adata, model, source_values, source_features, logg
+                 f"Using reference feature values for {model.metadata['clock_name']}",
+                 indent_level=indent_level + 1,
+             )
++        elif median_count:
++            logger.info(
++                f"Using packaged CpG medians for {median_count} missing features "
++                f"and zero for {num_missing_features - median_count}",
++                indent_level=indent_level + 1,
++            )
+         else:
+             logger.info(
+                 "Filling missing features entirely with 0",
+diff --git a/tests/models/test_author_extensions.py b/tests/models/test_author_extensions.py
+index 3939251..d7868ef 100644
+--- a/tests/models/test_author_extensions.py
++++ b/tests/models/test_author_extensions.py
+@@ -1,13 +1,16 @@
+ """Independent author-source checks for the 0.5.4 linear-clock additions."""
+ 
+ from pathlib import Path
++from unittest.mock import Mock
+ 
++import anndata
+ import numpy as np
+ import pandas as pd
+ import torch
+ 
+ from pyaging.models._author_extensions import DNAmPhenoAgeNonPRC, DNAmPhenoAgePRC, IntrinClock370
+ from pyaging.models._base_models import LinearModel
++from pyaging.predict._pred_utils import check_features_in_adata
+ 
+ DATA = Path(__file__).resolve().parents[1] / "data/author_extensions"
+ 
+@@ -34,11 +37,13 @@ def test_phenoage_partitions_match_original_r_functions():
+         selected = coefficients.loc[mask]
+         assert len(selected) == count
+         model = _configured(cls, selected.CpG, selected.Weight)
++        model.metadata.update(clock_name=key, species="Homo sapiens", data_type="DNA methylation")
+         result = model(torch.tensor(frame[model.features].to_numpy(), dtype=torch.float64))
+         np.testing.assert_allclose(result.detach().numpy().ravel(), expected[key], atol=1e-10, rtol=1e-12)
+         missing = frame.drop(columns=coefficients.CpG.iloc[[0, 15, 17]])
+-        aligned = missing.reindex(columns=model.features, fill_value=0)
+-        result = model(torch.tensor(aligned.to_numpy(), dtype=torch.float64))
++        adata = anndata.AnnData(missing.to_numpy(), var=pd.DataFrame(index=missing.columns))
++        check_features_in_adata(adata, model, Mock())
++        result = model(torch.tensor(adata.obsm[f"X_{key}"], dtype=torch.float64))
+         np.testing.assert_allclose(result.detach().numpy().ravel(), missing_expected[key], atol=1e-10, rtol=1e-12)
+ 
+ 
+diff --git a/tests/predict/test_input_and_batching.py b/tests/predict/test_input_and_batching.py
+index 90d62f1..8e90bcc 100644
+--- a/tests/predict/test_input_and_batching.py
++++ b/tests/predict/test_input_and_batching.py
+@@ -37,6 +37,72 @@ def test_feature_alignment_accepts_sparse_without_changing_input(matrix_type):
+     assert adata.uns["test_percent_na"] == pytest.approx(100 / 3)
+ 
+ 
++@pytest.mark.parametrize(
++    "species, use_medians, references, expected",
++    [
++        ("Homo sapiens", True, None, [0.2, 0.6, 0.0]),
++        ("Homo sapiens", True, [0.0, 0.0, np.nan], [0.2, 0.0, np.nan]),
++        ("Mus musculus", True, None, [0.2, 0.0, 0.0]),
++        ("Homo sapiens", False, None, [0.2, 0.0, 0.0]),
++    ],
++)
++def test_absent_cpg_beta_columns_use_compatible_medians(monkeypatch, species, use_medians, references, expected):
++    from pyaging.predict import _pred_utils
++
++    load_medians = Mock(return_value={"cg00000001": 0.6})
++    monkeypatch.setattr(_pred_utils, "_load_dnam_feature_medians", load_medians, raising=False)
++    model = _clock()
++    model.features = ["cg00000000", "cg00000001", "cg00000002"]
++    model.metadata.update(species=species, data_type="DNA methylation")
++    model.use_dnam_median_fallback = use_medians
++    model.reference_values = references
++    adata = anndata.AnnData(np.array([[0.2]]), var=pd.DataFrame(index=["cg00000000"]))
++
++    check_features_in_adata(adata, model, Mock())
++
++    np.testing.assert_array_equal(adata.obsm["X_test"], [expected])
++    np.testing.assert_array_equal(adata.uns["test_supplied_features_mask"], [True, False, False])
++    assert adata.uns["test_missing_features"] == ["cg00000001", "cg00000002"]
++    assert adata.uns["test_percent_na"] == pytest.approx(200 / 3)
++    assert load_medians.call_count == int(expected[1] == 0.6)
++
++
++@pytest.mark.parametrize("supplied", [["cg00000001"], ["unrelated"]])
++def test_cpg_medians_are_unused_for_complete_or_entirely_absent_inputs(monkeypatch, supplied):
++    from pyaging.predict import _pred_utils
++
++    load_medians = Mock(side_effect=AssertionError("unnecessary median table load"))
++    monkeypatch.setattr(_pred_utils, "_load_dnam_feature_medians", load_medians, raising=False)
++    model = _clock()
++    model.features = ["cg00000001"]
++    model.metadata.update(species="Homo sapiens", data_type="DNA methylation")
++    model.reference_values = None
++    adata = anndata.AnnData(np.array([[0.2]]), var=pd.DataFrame(index=supplied))
++
++    if supplied == model.features:
++        check_features_in_adata(adata, model, Mock())
++        np.testing.assert_array_equal(adata.obsm["X_test"], [[0.2]])
++    else:
++        with pytest.raises(NameError, match="Every single feature"):
++            check_features_in_adata(adata, model, Mock())
++    load_medians.assert_not_called()
++
++
++def test_depressionbarbu_does_not_fill_missing_m_values_with_beta_medians(monkeypatch):
++    from pyaging.models._models import DepressionBarbu
++    from pyaging.predict import _pred_utils
++
++    model = DepressionBarbu()
++    model.features = ["cg00000108", "cg00000029"]
++    model.metadata.update(clock_name="depressionbarbu", species="Homo sapiens", data_type="DNA methylation")
++    adata = anndata.AnnData(np.array([[-2.0]]), var=pd.DataFrame(index=["cg00000108"]))
++    monkeypatch.setattr(_pred_utils, "_load_dnam_feature_medians", lambda: {"cg00000029": 0.6})
++
++    check_features_in_adata(adata, model, Mock())
++
++    np.testing.assert_array_equal(adata.obsm["X_depressionbarbu"], [[-2.0, 0.0]])
++
++
+ def test_duplicate_feature_names_do_not_silently_choose_a_measurement():
+     adata = anndata.AnnData(np.array([[1.0, 9.0]]))
+     adata.var_names = ["a", "a"]
+diff --git a/tests/test_dnam_feature_medians.py b/tests/test_dnam_feature_medians.py
+new file mode 100644
+index 0000000..c12c55d
+--- /dev/null
++++ b/tests/test_dnam_feature_medians.py
+@@ -0,0 +1,53 @@
++"""Regression tests for cohort beta references."""
++
++import gzip
++import importlib.util
++from pathlib import Path
++
++import pandas as pd
++import pytest
++
++_path = Path(__file__).resolve().parents[1] / "clocks" / "build_dnam_feature_medians.py"
++_spec = importlib.util.spec_from_file_location("build_dnam_feature_medians", _path)
++builder = importlib.util.module_from_spec(_spec)
++_spec.loader.exec_module(builder)
++
++
++def test_epicv2_collapses_replicates_before_taking_the_sample_median():
++    beta = pd.DataFrame(
++        {
++            "cg00000001_TC21": [0.2, 0.3, 0.7],
++            "cg00000001_BC21": [0.8, None, 0.9],
++            "cg00000002_TC21": [-1.0, 2.0, float("inf")],
++            "cg00000003_TC21": [0.0, 0.0, None],
++        }
++    )
++
++    assert builder.compute_cohort_medians(beta, epicv2=True).to_dict() == pytest.approx(
++        {"cg00000001": 0.5, "cg00000003": 0.0}
++    )
++
++
++def test_combining_medians_weights_cohorts_equally_and_keeps_unique_probes():
++    hannum = pd.Series({"cg00000001": 0.2, "cg00000002": 0.0})
++    boa = pd.Series({"cg00000001": 0.8, "cg00000003": 0.4})
++
++    assert builder.combine_cohort_medians(hannum, boa).to_dict() == pytest.approx(
++        {"cg00000001": 0.5, "cg00000002": 0.0, "cg00000003": 0.4}
++    )
++
++
++def test_epicv2_replicate_group_crossing_a_read_block(tmp_path):
++    path = tmp_path / "boa.csv.gz"
++    with gzip.open(path, "wt") as stream:
++        stream.write("probe,s1,s2,s3\n")
++        for index in range(4095):
++            stream.write(f"cg{index:08d}_TC21,0.1,0.2,0.3\n")
++        stream.write("cg00004095_TC21,0.2,0.3,0.7\n")
++        stream.write("cg00004095_BC21,0.8,,0.9\n")
++
++    medians, provenance = builder.read_cohort(path, epicv2=True)
++
++    assert medians["cg00004095"] == pytest.approx(0.5)
++    assert provenance["source_rows"] == 4097
++    assert provenance["cpgs_with_medians"] == 4096

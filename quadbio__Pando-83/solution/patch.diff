@@ -1,0 +1,552 @@
+diff --git a/.omc/sessions/021c5471-285e-4ab1-ac12-cd3a101b600b.json b/.omc/sessions/021c5471-285e-4ab1-ac12-cd3a101b600b.json
+new file mode 100644
+index 00000000..f4e1b76a
+--- /dev/null
++++ b/.omc/sessions/021c5471-285e-4ab1-ac12-cd3a101b600b.json
+@@ -0,0 +1,8 @@
++{
++  "session_id": "021c5471-285e-4ab1-ac12-cd3a101b600b",
++  "ended_at": "2026-10-11T15:00:03.420Z",
++  "reason": "other",
++  "agents_spawned": 0,
++  "agents_completed": 0,
++  "modes_used": []
++}
+\ No newline at end of file
+diff --git a/.omc/state/agent-replay-6b862b0a-ab13-4a4e-bdfd-7e9f34711496.jsonl b/.omc/state/agent-replay-6b862b0a-ab13-4a4e-bdfd-7e9f34711496.jsonl
+new file mode 100644
+index 00000000..3fd8cf02
+--- /dev/null
++++ b/.omc/state/agent-replay-6b862b0a-ab13-4a4e-bdfd-7e9f34711496.jsonl
+@@ -0,0 +1,2 @@
++{"t":0,"agent":"a1d227b","agent_type":"code-reviewer","event":"agent_start","parent_mode":"none"}
++{"t":0,"agent":"a1d227b","agent_type":"code-reviewer","event":"agent_stop","success":true,"duration_ms":336676}
+diff --git a/.omc/state/last-tool-error.json b/.omc/state/last-tool-error.json
+new file mode 100644
+index 00000000..e24dbc64
+--- /dev/null
++++ b/.omc/state/last-tool-error.json
+@@ -0,0 +1,7 @@
++{
++  "tool_name": "Bash",
++  "tool_input_preview": "{\"command\":\"cd /cluster/home/jrohland/projects/pypando/R; sed -i 's/^    Matrix (>= 1.5-0),$/    Matrix (>= 1.5-0),\\\\n    methods,/' DESCRIPTION; grep -n \\\"methods\\\" DESCRIPTION; ls -d /cluster/projec...",
++  "error": "Exit code 2\n31:    methods,",
++  "timestamp": "2026-10-13T14:37:26.315Z",
++  "retry_count": 1
++}
+\ No newline at end of file
+diff --git a/.omc/state/mission-state.json b/.omc/state/mission-state.json
+new file mode 100644
+index 00000000..7e5b5528
+--- /dev/null
++++ b/.omc/state/mission-state.json
+@@ -0,0 +1,53 @@
++{
++  "updatedAt": "2026-10-12T09:31:28.858Z",
++  "missions": [
++    {
++      "id": "session:6b862b0a-ab13-4a4e-bdfd-7e9f34711496:none",
++      "source": "session",
++      "name": "none",
++      "objective": "Session mission",
++      "createdAt": "2026-10-12T09:25:52.182Z",
++      "updatedAt": "2026-10-12T09:31:28.858Z",
++      "status": "done",
++      "workerCount": 1,
++      "taskCounts": {
++        "total": 1,
++        "pending": 0,
++        "blocked": 0,
++        "inProgress": 0,
++        "completed": 1,
++        "failed": 0
++      },
++      "agents": [
++        {
++          "name": "code-reviewer:a1d227b",
++          "role": "code-reviewer",
++          "ownership": "a1d227b4aa55a42be",
++          "status": "done",
++          "currentStep": null,
++          "latestUpdate": "completed",
++          "completedSummary": null,
++          "updatedAt": "2026-10-12T09:31:28.858Z"
++        }
++      ],
++      "timeline": [
++        {
++          "id": "session-start:a1d227b4aa55a42be:2026-10-12T09:25:52.182Z",
++          "at": "2026-10-12T09:25:52.182Z",
++          "kind": "update",
++          "agent": "code-reviewer:a1d227b",
++          "detail": "started code-reviewer:a1d227b",
++          "sourceKey": "session-start:a1d227b4aa55a42be"
++        },
++        {
++          "id": "session-stop:a1d227b4aa55a42be:2026-10-12T09:31:28.858Z",
++          "at": "2026-10-12T09:31:28.858Z",
++          "kind": "completion",
++          "agent": "code-reviewer:a1d227b",
++          "detail": "completed",
++          "sourceKey": "session-stop:a1d227b4aa55a42be"
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/.omc/state/subagent-tracking.json b/.omc/state/subagent-tracking.json
+new file mode 100644
+index 00000000..c4a2f44f
+--- /dev/null
++++ b/.omc/state/subagent-tracking.json
+@@ -0,0 +1,17 @@
++{
++  "agents": [
++    {
++      "agent_id": "a1d227b4aa55a42be",
++      "agent_type": "oh-my-claudecode:code-reviewer",
++      "started_at": "2026-10-12T09:25:52.182Z",
++      "parent_mode": "none",
++      "status": "completed",
++      "completed_at": "2026-10-12T09:31:28.858Z",
++      "duration_ms": 336676
++    }
++  ],
++  "total_spawned": 1,
++  "total_completed": 1,
++  "total_failed": 0,
++  "last_updated": "2026-10-12T09:31:28.960Z"
++}
+\ No newline at end of file
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 928e8525..7c02fc29 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -19,14 +19,21 @@ biocViews:
+ Depends:
+     R (>= 4.0.0)
+ Imports: 
+-    tidyverse (>= 2.0.0),
++    dplyr,
++    purrr,
++    stringr,
++    tibble,
++    tidyr,
+     Seurat (>= 5.0.0),
++    SeuratObject (>= 5.0.0),
+     Signac (>= 1.12.0),
+     Matrix (>= 1.5-0),
++    methods,
+     MatrixGenerics (>= 1.10.0),
+     ggplot2,
+     IRanges (>= 2.32.0),
+     GenomicRanges,
++    S4Vectors,
+     motifmatchr,
+     Biostrings,
+     BSgenome,
+@@ -35,20 +42,23 @@ Imports:
+     bayestestR,
+     ggpointdensity,
+     ggraph,
++    igraph,
+     tidygraph,
+     pals,
+     patchwork,
++    scales,
++    pbapply,
+     TFBSTools,
+     foreach,
+     sparseMatrixStats (>= 1.10.0),
+     irlba,
+-    uwot,
+-    grr
++    uwot
+ Suggests: 
++    knitr,
+     rmarkdown,
+     testthat,
+     reticulate,
+     xgboost,
+-    brms
+-Remotes: 
+-    github::immunogenomics/presto
++    brms,
++    glmnet,
++    presto
+diff --git a/R/motifmatchr_patched.R b/R/motifmatchr_patched.R
+new file mode 100644
+index 00000000..2a47c3dd
+--- /dev/null
++++ b/R/motifmatchr_patched.R
+@@ -0,0 +1,264 @@
++#' Motif scanning with a corrected background conversion
++#'
++#' This file vendors the parts of motifmatchr (1.32.0, GPL-3, Alicia Schep)
++#' and Signac (1.17.1, MIT, Tim Stuart) that Pando uses to scan candidate
++#' regions for motifs (`Signac::AddMotifs()` -> `Signac::CreateMotifMatrix()`
++#' -> `motifmatchr::matchMotifs()`), with one bug fixed.
++#'
++#' The bug: `motifmatchr:::convert_pwm()` should re-express a PWM stored as
++#' log2(p / B) (B = `TFBSTools::bg()` of the PWM, 0.25 for Pando's motifs) as
++#' log2(p / bg), where bg is the nucleotide composition used for scanning
++#' ("subject" by default). It subtracts log2(B) - log2(bg) instead of adding
++#' it, so MOODS scans log2(p * bg / B^2) = log2(p * bg / 0.0625). Bases that
++#' are common in the background are rewarded instead of penalised. The same
++#' sign error affects the natural-log branch, and frequency PWMs are passed
++#' through unconverted because `pwmType()` returns 'frequency' while
++#' `convert_pwm()` tests for 'prob'.
++#'
++#' One further deliberate difference from Signac: ranges on contigs missing from
++#' the genome get an all-FALSE row. Signac's CreateMotifMatrix() builds that
++#' filler with sparseMatrix(i = n_missing, j = n_motifs), which marks the last
++#' missing range as matching the last motif.
++#'
++#' Only the R layer is vendored. The MOODS C++ scanner and its p-value
++#' thresholding are unaffected by the bug (they already receive the correct
++#' background) and are still called from the installed motifmatchr.
++#'
++#' @keywords internal
++#' @name motifmatchr_patched
++NULL
++
++
++# Compiled MOODS entry points of the installed motifmatchr ---------------------
++
++mm_cpp <- function(name){
++    utils::getFromNamespace(name, ns = 'motifmatchr')
++}
++
++
++# PWM conversion (motifmatchr R/utils.R, fixed) --------------------------------
++
++#' Convert a PWM to log-odds against the scanning background
++#'
++#' Fixed version of `motifmatchr:::convert_pwm()`. Returns
++#' log(p / bg_freqs) in the base the PWM is stored in (log2 for the 'log2'
++#' and 'frequency' types).
++#'
++#' @param pwm A \code{PWMatrix}.
++#' @param bg_freqs Numeric vector of A, C, G, T background frequencies.
++#'
++#' @return A 4 x motif length numeric matrix.
++#'
++#' @keywords internal
++convert_pwm_fixed <- function(pwm, bg_freqs){
++    type <- motifmatchr::pwmType(pwm)
++    mat <- as.matrix(pwm)
++    bg_mat <- matrix(bg_freqs, nrow = 4, ncol = ncol(mat), byrow = FALSE)
++    pwm_bg <- matrix(TFBSTools::bg(pwm), nrow = 4, ncol = ncol(mat), byrow = FALSE)
++    out <- switch(type,
++        # Stored log2(p / B): log2(p / bg) = log2(p / B) + log2(B) - log2(bg)
++        log2 = mat + log2(pwm_bg) - log2(bg_mat),
++        log = mat + log(pwm_bg) - log(bg_mat),
++        frequency = log2(mat / bg_mat)
++    )
++    dimnames(out) <- dimnames(mat)
++    return(out)
++}
++
++convert_pwms_fixed <- function(pwms, bg_freqs){
++    stopifnot(inherits(pwms, 'PWMatrixList'))
++    lapply(pwms, convert_pwm_fixed, bg_freqs)
++}
++
++
++# Background frequencies (motifmatchr R/utils.R) -------------------------------
++
++check_bg_fixed <- function(bg_freqs){
++    if (length(bg_freqs) != 4){
++        stop('Invalid background frequencies -- should be length 4')
++    }
++    if (!isTRUE(all.equal(sum(bg_freqs), 1)) || min(bg_freqs) <= 0){
++        stop('Invalid background frequencies. Should be positive and sum to 1')
++    }
++    if (!is.null(names(bg_freqs))){
++        if (!all(c('A', 'C', 'G', 'T') %in% names(bg_freqs))){
++            stop('Background nucleotide frequencies have names that ',
++                 "don't match nucleotides! (A,C,G,T)")
++        }
++        bg_freqs <- bg_freqs[c('A', 'C', 'G', 'T')]
++    }
++    return(bg_freqs)
++}
++
++nuc_freqs <- function(seqs){
++    freqs <- Biostrings::letterFrequency(seqs, letters = c('A', 'C', 'G', 'T'))
++    if (is.matrix(freqs)) freqs <- colSums(freqs)
++    return(freqs / sum(freqs))
++}
++
++get_bg_fixed <- function(bg, seqs, genome){
++    if (is.numeric(bg)){
++        return(check_bg_fixed(bg))
++    }
++    bg <- match.arg(bg, c('subject', 'genome', 'even'))
++    if (bg == 'subject'){
++        return(nuc_freqs(seqs))
++    }
++    if (bg == 'genome'){
++        if (!inherits(genome, 'BSgenome')){
++            stop("bg = 'genome' requires a BSgenome object")
++        }
++        # Same as motifmatchr's getNucFreqs() for BSgenome objects
++        param <- methods::new('BSParams', X = genome, FUN = Biostrings::letterFrequency)
++        freqs <- colSums(do.call(rbind, BSgenome::bsapply(param, letters = c('A', 'C', 'G', 'T'))))
++        return(freqs / sum(freqs))
++    }
++    return(c(A = 0.25, C = 0.25, G = 0.25, T = 0.25))
++}
++
++
++# Scanning (motifmatchr R/match_motifs.R, GRanges/PFMatrixList path) -----------
++
++#' Scan genomic ranges for motifs with the corrected background conversion
++#'
++#' Replacement for \code{motifmatchr::matchMotifs(pwms, subject, genome,
++#' out = 'matches' or 'positions')} for a \code{PFMatrixList} or
++#' \code{PWMatrixList} and a \code{GRanges}.
++#'
++#' @param pwms A \code{PFMatrixList} or \code{PWMatrixList}.
++#' @param subject A \code{GRanges} object.
++#' @param genome A \code{BSgenome} object.
++#' @param bg Background nucleotide frequencies: 'subject' (composition of the
++#' scanned ranges, motifmatchr's default), 'genome', 'even' or a numeric
++#' vector of A, C, G, T frequencies.
++#' @param out 'matches' for a sparse logical ranges x motifs matrix,
++#' 'positions' for a \code{GRangesList} of motif hits.
++#' @param p.cutoff P-value cutoff for motif matches.
++#' @param w Window size for MOODS filtration.
++#'
++#' @keywords internal
++match_motifs_fixed <- function(
++    pwms,
++    subject,
++    genome,
++    bg = 'subject',
++    out = c('matches', 'positions'),
++    p.cutoff = 5e-05,
++    w = 7
++){
++    out <- match.arg(out)
++    if (inherits(pwms, 'PFMatrixList')){
++        pwms <- do.call(TFBSTools::PWMatrixList, lapply(pwms, TFBSTools::toPWM))
++    }
++    GenomicRanges::strand(subject) <- '+'
++    seqs <- Biostrings::getSeq(genome, subject)
++    bg_freqs <- get_bg_fixed(bg, seqs, genome)
++    seqs <- as.character(seqs)
++    motif_mats <- convert_pwms_fixed(pwms, bg_freqs)
++
++    if (out == 'matches'){
++        hits <- mm_cpp('get_motif_ix')(motif_mats, seqs, bg_freqs, p.cutoff, w)
++        hits <- methods::as(methods::as(hits, 'lMatrix'), 'CsparseMatrix')
++        colnames(hits) <- names(pwms)
++        return(hits)
++    }
++
++    hits <- mm_cpp('get_motif_positions')(motif_mats, seqs, bg_freqs, p.cutoff, w)
++    positions <- lapply(seq_along(motif_mats), function(x){
++        m_ix <- which(hits$motif_ix == x - 1)
++        GenomicRanges::GRanges(
++            GenomicRanges::seqnames(subject)[hits$seq_ix[m_ix] + 1],
++            IRanges::IRanges(
++                start = GenomicRanges::start(subject[hits$seq_ix[m_ix] + 1]) + hits$pos[m_ix],
++                width = ncol(motif_mats[[x]])
++            ),
++            strand = hits$strand[m_ix],
++            score = hits$score[m_ix]
++        )
++    })
++    names(positions) <- names(pwms)
++    return(GenomicRanges::GRangesList(positions))
++}
++
++
++# Motif object (Signac AddMotifs.default + CreateMotifMatrix) ------------------
++
++#' Build a Signac \code{Motif} object with the corrected background conversion
++#'
++#' Drop-in replacement for \code{Signac::AddMotifs()} on a \code{GRanges}
++#' that scans with \code{match_motifs_fixed()}.
++#'
++#' @param object A \code{GRanges} object with the regions to scan.
++#' @param genome A \code{BSgenome} object or a string recognised by
++#' \code{BSgenome::getBSgenome()}.
++#' @param pfm A \code{PFMatrixList}.
++#' @param bg Background nucleotide frequencies, see \code{match_motifs_fixed()}.
++#' @param p.cutoff P-value cutoff for motif matches.
++#' @param verbose Display messages.
++#'
++#' @return A \code{Motif} object.
++#'
++#' @keywords internal
++add_motifs_fixed <- function(
++    object,
++    genome,
++    pfm,
++    bg = 'subject',
++    p.cutoff = 5e-05,
++    verbose = TRUE
++){
++    if (is.null(names(pfm))){
++        warning("No 'names' attribute found in PFMatrixList. ",
++                'Extracting names from individual entries.', immediate. = TRUE)
++        names(pfm) <- vapply(pfm, methods::slot, FUN.VALUE = 'character', 'name')
++    }
++    if (is.character(genome)){
++        genome <- BSgenome::getBSgenome(genome = genome)
++    }
++
++    # Ranges on contigs missing from the genome get no matches
++    keep <- as.character(GenomicRanges::seqnames(object)) %in% GenomeInfoDb::seqlevels(genome)
++    if (!all(keep)){
++        warning('Not all seqlevels present in supplied genome', immediate. = TRUE)
++    }
++    scan_ranges <- object[keep]
++
++    log_message('Building motif matrix', verbose = verbose)
++    motif_matrix <- match_motifs_fixed(
++        pwms = pfm,
++        subject = scan_ranges,
++        genome = genome,
++        bg = bg,
++        out = 'matches',
++        p.cutoff = p.cutoff
++    )
++    if (!all(keep)){
++        hits <- Matrix::summary(motif_matrix)
++        motif_matrix <- Matrix::sparseMatrix(
++            i = which(keep)[hits$i], j = hits$j, x = rep(TRUE, nrow(hits)),
++            dims = c(length(object), ncol(motif_matrix)),
++            dimnames = list(NULL, colnames(motif_matrix))
++        )
++    }
++    rownames(motif_matrix) <- Signac::GRangesToString(object)
++
++    log_message('Finding motif positions', verbose = verbose)
++    motif_positions <- match_motifs_fixed(
++        pwms = pfm,
++        subject = scan_ranges,
++        genome = genome,
++        bg = bg,
++        out = 'positions',
++        p.cutoff = p.cutoff
++    )
++    GenomeInfoDb::seqinfo(motif_positions) <-
++        GenomeInfoDb::seqinfo(genome)[GenomeInfoDb::seqlevels(motif_positions)]
++
++    log_message('Creating Motif object', verbose = verbose)
++    motif <- Signac::CreateMotifObject(
++        data = motif_matrix,
++        positions = motif_positions,
++        pwm = pfm
++    )
++    return(motif)
++}
+diff --git a/R/utils.R b/R/utils.R
+index 22f292b1..3472a311 100644
+--- a/R/utils.R
++++ b/R/utils.R
+@@ -210,10 +210,23 @@ fast_aggregate <- function(
+     if (fun=='mean'){
+         result@x <- result@x/(fast_aggregate(x, groupings2, fun='count'))@x
+     }
+-    attr(result,'crosswalk') <- grr::extract(groupings, match(rownames(result), groupings2$A))
++    attr(result,'crosswalk') <- extract_rows(groupings, match(rownames(result), groupings2$A))
+     return(result)
+ }
+ 
++#' Row subsetting for vectors, matrices and data frames.
++#' Replaces \code{grr::extract}, since grr is off CRAN.
++#'
++extract_rows <- function(x, i){
++    if (is.null(dim(x))){
++        return(x[i])
++    }
++    if (is.data.frame(x)){
++        return(as.data.frame(lapply(x, function(a) a[i])))
++    }
++    return(x[i, ])
++}
++
+ #' Copy of the dMcast function from the Matrix.utils package,
+ #' since this is off CRAN and does not seem to be maintained anymore
+ #'
+@@ -346,7 +359,7 @@ aggregate_matrix <- function(
+ #' @param group_name A character vector indicating the metadata column to aggregate over.
+ #' @param fun The summary function to be applied to each group.
+ #' @param assay The assay to summarize.
+-#' @param slot The slot to summarize.
++#' @param slot The layer to summarize (passed to \code{layer} of \code{GetAssayData}).
+ #'
+ #' @return A Seurat object.
+ #'
+diff --git a/tests/testthat/test_motifmatchr_patched.R b/tests/testthat/test_motifmatchr_patched.R
+new file mode 100644
+index 00000000..cc3ded71
+--- /dev/null
++++ b/tests/testthat/test_motifmatchr_patched.R
+@@ -0,0 +1,47 @@
++context('Tests for the patched motifmatchr background conversion')
++
++library(testthat)
++library(TFBSTools)
++library(Pando)
++
++
++pfm <- PFMatrix(profileMatrix = matrix(
++    c(8, 1, 1, 0,  1, 8, 0, 1,  0, 1, 8, 1), nrow = 4,
++    dimnames = list(c('A', 'C', 'G', 'T'))
++))
++uniform <- c(A = 0.25, C = 0.25, G = 0.25, T = 0.25)
++bg <- c(A = 0.2, C = 0.3, G = 0.3, T = 0.2)
++
++
++test_that('log2 PWMs are converted to log2(p / bg)', {
++    for (pc in c(0, 0.8)){
++        pwm <- toPWM(pfm, type = 'log2probratio', bg = uniform, pseudocounts = pc)
++        p <- 2^as.matrix(pwm) * 0.25
++        expect_equal(unname(Pando:::convert_pwm_fixed(pwm, bg)), unname(log2(p / bg)))
++    }
++})
++
++test_that('natural log and frequency PWMs are converted', {
++    pwm <- toPWM(pfm, type = 'log2probratio', bg = uniform)
++    p <- 2^as.matrix(pwm) * 0.25
++    pwm_ln <- pwm
++    pwm_ln@profileMatrix <- log(p / 0.25)
++    expect_equal(unname(Pando:::convert_pwm_fixed(pwm_ln, bg)), unname(log(p / bg)))
++
++    pwm_prob <- toPWM(pfm, type = 'prob')
++    expect_equal(unname(Pando:::convert_pwm_fixed(pwm_prob, bg)),
++                 unname(log2(as.matrix(pwm_prob) / bg)))
++})
++
++test_that('uniform background leaves the PWM unchanged, as in motifmatchr', {
++    pwm <- toPWM(pfm, type = 'log2probratio', bg = uniform)
++    expect_equal(Pando:::convert_pwm_fixed(pwm, uniform), as.matrix(pwm))
++    expect_equal(Pando:::convert_pwm_fixed(pwm, uniform),
++                 motifmatchr:::convert_pwm(pwm, uniform))
++})
++
++test_that('background frequencies are validated and ordered by name', {
++    expect_equal(Pando:::check_bg_fixed(c(T = 0.2, G = 0.3, C = 0.3, A = 0.2)), bg)
++    expect_error(Pando:::check_bg_fixed(c(0.5, 0.5, 0.5, 0.5)))
++    expect_error(Pando:::check_bg_fixed(c(X = 0.25, C = 0.25, G = 0.25, T = 0.25)))
++})
+diff --git a/vignettes/.omc/state/last-tool-error.json b/vignettes/.omc/state/last-tool-error.json
+new file mode 100644
+index 00000000..44b2e566
+--- /dev/null
++++ b/vignettes/.omc/state/last-tool-error.json
+@@ -0,0 +1,7 @@
++{
++  "tool_name": "Bash",
++  "tool_input_preview": "{\"command\":\"pkill -f \\\"mamba create -y -n R_pando\\\" 2>/dev/null; sleep 5; echo \\\"remaining mamba procs: $(pgrep -cf 'mamba create' 2>/dev/null || echo 0)\\\"; echo \\\"user threads now: $(ps -u $USER -L -...",
++  "error": "Exit code 144",
++  "timestamp": "2026-08-07T08:50:32.335Z",
++  "retry_count": 2
++}
+\ No newline at end of file

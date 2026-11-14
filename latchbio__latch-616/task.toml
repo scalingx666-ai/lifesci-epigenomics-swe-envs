@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/latchbio__latch-616"
+description = "chore: release 2.77.0"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "latch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "latchbio/latch"
+ref = "ddf572b067b7abb848f3ae0a418e39e94b7bd87f"
+reference = "https://github.com/latchbio/latch/pull/616"
+source_access = "auto"
+built_at = "2026-11-14T07:15:32.730831+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:51d5cc7659828d0edfdd137eb91ffac60cbb708e4580c9b989fe20d6d28d2122"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-18T23:01:45Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "pyproject.toml",
+    "src/latch_cli/main.py",
+    "src/latch_cli/services/docker/utils.py",
+    "src/latch_cli/services/private_images.py",
+    "src/latch_cli/services/register/constants.py",
+    "src/latch_cli/services/register/register.py",
+    "src/latch_cli/services/register/staging.py",
+    "src/latch_cli/services/register/utils.py",
+    "tests/conftest.py",
+    "tests/test_docker_utils.py",
+    "tests/test_print_upload_logs.py",
+    "tests/test_private_images.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1481
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

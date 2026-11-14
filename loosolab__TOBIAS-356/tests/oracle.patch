@@ -1,0 +1,329 @@
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+new file mode 100644
+index 0000000..82f8dbd
+--- /dev/null
++++ b/.github/workflows/python-publish.yml
+@@ -0,0 +1,70 @@
++# This workflow will upload a Python Package to PyPI when a release is created
++# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
++
++# This workflow uses actions that are not certified by GitHub.
++# They are provided by a third-party and are governed by
++# separate terms of service, privacy policy, and support
++# documentation.
++
++name: Upload Python Package
++
++on:
++  release:
++    types: [published]
++
++permissions:
++  contents: read
++
++jobs:
++  release-build:
++    runs-on: ubuntu-latest
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.x"
++
++      - name: Build release distributions
++        run: |
++          # NOTE: put your own distribution build steps here.
++          python -m pip install build
++          python -m build
++
++      - name: Upload distributions
++        uses: actions/upload-artifact@v4
++        with:
++          name: release-dists
++          path: dist/
++
++  pypi-publish:
++    runs-on: ubuntu-latest
++    needs:
++      - release-build
++    permissions:
++      # IMPORTANT: this permission is mandatory for trusted publishing
++      id-token: write
++
++    # Dedicated environments with protections for publishing are strongly recommended.
++    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
++    environment:
++      name: pypi
++      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
++      # url: https://pypi.org/p/YOURPROJECT
++      #
++      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
++      # ALTERNATIVE: exactly, uncomment the following line instead:
++      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
++
++    steps:
++      - name: Retrieve release distributions
++        uses: actions/download-artifact@v4
++        with:
++          name: release-dists
++          path: dist/
++
++      - name: Publish release distributions to PyPI
++        uses: pypa/gh-action-pypi-publish@release/v1
++        with:
++          packages-dir: dist/
+diff --git a/.gitignore b/.gitignore
+index b489f6c..2805b79 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,3 +6,4 @@ dist/
+ *.egg
+ *.egg-info
+ *.so
++.idea/
+diff --git a/CHANGES b/CHANGES
+index 958f43e..0c05764 100644
+--- a/CHANGES
++++ b/CHANGES
+@@ -1,3 +1,8 @@
++## 0.17.5 (in progress)
++- migrated metadata and python build to pyproject.toml
++- fix BINDetect deprecated fallback to positional indexing #350
++- fix pypdf2 replace deprecated PdfFileMerger with PdfMerger
++
+ ## 0.17.4 (2025-03-17)
+ - fix deprecated pandas indexing fallback #346
+ 
+diff --git a/MANIFEST.in b/MANIFEST.in
+index 317846c..7d6d362 100644
+--- a/MANIFEST.in
++++ b/MANIFEST.in
+@@ -1,3 +1,4 @@
+ include README.md
+ include LICENSE
+ recursive-include tobias *.c
++recursive-include tobias *.pyx
+diff --git a/pyproject.toml b/pyproject.toml
+index 4b6e313..3f4fd4a 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -5,3 +5,64 @@ requires = [
+     "cython"
+ ]
+ build-backend = "setuptools.build_meta"
++
++[project]
++name = "tobias"
++dynamic = ["version"]
++description = "Transcription factor Occupancy prediction By Investigation of ATAC-seq Signal"
++readme = "README.md"
++license = "MIT"
++license-files = ["LICENSE"]
++authors = [
++    {name = "Mette Bentsen"}
++]
++maintainers = [
++    {name = "Hendrik Schultheis", email = "hendrik.schultheis@mpi-bn.mpg.de"},
++    {name = "Moritz Hobein", email = "moritz.hobein@mpi-bn.mpg.de"},
++    {name = "Jan Detleffsen", email = "jan.detleffsen@mpi-bn.mpg.de"}
++]
++dependencies = [
++    "numpy>=2",
++    "scipy",
++    "pysam",
++    "pybedtools",
++    "matplotlib>=2",
++    "scikit-learn",
++    "pandas",
++    "pypdf2>=1.28.0",     # PdfFileMerger -> PdfMerger
++    "xlsxwriter",
++    "adjustText>=0.8",
++    "pyBigWig>=0.3.25",      # to use values(numpy=True)
++    "MOODS-python",
++    "svist4get>=1.2.24",  # pin due to changes in API
++    #"gimmemotifs",       # only used for MotifClust; now warns for this tool if it is not there
++    "logomaker",
++    "seaborn>=0.9.1",
++    "boto3",
++    "pyyaml>5.1",         # requirement for norns full_load
++    "kneed"
++]
++classifiers = [
++    "Intended Audience :: Science/Research",
++    "Topic :: Scientific/Engineering :: Bio-Informatics",
++    "Programming Language :: Python :: 3"
++]
++
++[project.urls]
++Homepage = "https://github.com/loosolab/TOBIAS"
++
++[project.scripts]
++TOBIAS = "tobias.TOBIAS:main"
++
++[tool.setuptools]
++script-files = [
++    "tobias/scripts/filter_important_factors.py",
++    "tobias/scripts/cluster_sites_by_overlap.py"
++]
++zip-safe = false  # gives cython import error if true
++
++[tool.setuptools.packages.find]
++include = ["tobias*"]
++
++[tool.setuptools.dynamic]
++version = {attr = "tobias.__version__"}
+diff --git a/setup.py b/setup.py
+index 9a258ae..3d3e0cb 100644
+--- a/setup.py
++++ b/setup.py
+@@ -1,100 +1,25 @@
+ import os
+ import sys
+-import re
+-from setuptools import setup, Extension, dist, find_packages
++from setuptools import setup, Extension
+ 
+-#Test if numpy is installed
+-try:
+-	import numpy as np
+-except:
+-	#Else, fetch numpy if needed
+-	dist.Distribution().fetch_build_eggs(['numpy'])
+-	import numpy as np
++# numpy and cython are guaranteed present at build time via
++# pyproject.toml [build-system].requires (PEP 517 build isolation).
++import numpy as np
+ 
+-#Add cython modules depending on the availability of cython
+-cmdclass = {}
++# Compile from .pyx if Cython is available, otherwise from pre-generated .c
+ try:
+ 	from Cython.Distutils import build_ext
+ 	cmdclass = {'build_ext': build_ext}
++	source_ext = "pyx"
+ except ImportError:
+-	use_cython = False
+-else:
+-	use_cython = True
+-
+-#To compile or not to compile
+-if use_cython:
+-	ext_modules = [Extension("tobias.utils.ngs", ["tobias/utils/ngs.pyx"], include_dirs=[np.get_include()]),
+-				Extension("tobias.utils.sequences", ["tobias/utils/sequences.pyx"], include_dirs=[np.get_include()]),
+-				Extension("tobias.utils.signals", ["tobias/utils/signals.pyx"], include_dirs=[np.get_include()])]
+-
+-else:
+-	if os.path.exists("tobias/utils/ngs.c"):
+-		ext_modules = [Extension("tobias.utils.ngs", ["tobias/utils/ngs.c"], include_dirs=[np.get_include()]),
+-						Extension("tobias.utils.sequences", ["tobias/utils/sequences.c"], include_dirs=[np.get_include()]),
+-						Extension("tobias.utils.signals", ["tobias/utils/signals.c"], include_dirs=[np.get_include()])] 
+-	else: #Only happens when installing directly from source
++	cmdclass = {}
++	source_ext = "c"
++	if not os.path.exists("tobias/utils/ngs.c"):  # only happens when installing directly from source
+ 		sys.exit("Cython is needed to compile TOBIAS.")
+ 
+-#Path of setup file to establish version
+-setupdir = os.path.abspath(os.path.dirname(__file__))
+-
+-def find_version(init_file):
+-	version_file = open(init_file).read()
+-	version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
+-	if version_match:
+-		return version_match.group(1)
+-	else:
+-		raise RuntimeError("Unable to find version string.")
+-
+-#Readme from git
+-def readme():
+-	with open('README.md') as f:
+-		return f.read()
++ext_modules = [Extension("tobias.utils.ngs", ["tobias/utils/ngs." + source_ext], include_dirs=[np.get_include()]),
++			Extension("tobias.utils.sequences", ["tobias/utils/sequences." + source_ext], include_dirs=[np.get_include()]),
++			Extension("tobias.utils.signals", ["tobias/utils/signals." + source_ext], include_dirs=[np.get_include()])]
+ 
+-setup(name='tobias',
+-		version=find_version(os.path.join(setupdir, "tobias", "__init__.py")),	#get version from __init__.py
+-		description='Transcription factor Occupancy prediction By Investigation of ATAC-seq Signal',
+-		long_description=readme(),
+-		long_description_content_type='text/markdown',
+-		url='https://github.com/loosolab/TOBIAS',
+-		author='Mette Bentsen',
+-		author_email='mette.bentsen@mpi-bn.mpg.de',
+-		license='MIT',
+-		packages=find_packages(),
+-		entry_points={
+-			'console_scripts': ['TOBIAS=tobias.TOBIAS:main']
+-		},
+-		ext_modules=ext_modules,
+-		cmdclass=cmdclass,
+-		setup_requires=["numpy"],
+-		install_requires=[
+-			'numpy>=2',
+-			'scipy',
+-			'pysam',
+-			'pybedtools',
+-			'matplotlib>=2',
+-			'scikit-learn',
+-			'pandas',
+-			'pypdf2>=1.28.0',       #PdfFileMerger -> PdfMerger
+-			'xlsxwriter',
+-			'adjustText>=0.8',
+-			'pyBigWig>=0.3',		#to use values(numpy=True)
+-			'MOODS-python',
+-			'svist4get>=1.2.24',	#pin due to changes in API
+-			#'gimmemotifs',			#only used for MotifClust; now warns for this tool if it is not there
+-			'logomaker',
+-			'seaborn>=0.9.1',
+-			'boto3',
+-			'pyyaml>5.1',			#requirement for norns full_load
+-			'kneed'
+-		],
+-		scripts=["tobias/scripts/filter_important_factors.py",
+-				 "tobias/scripts/cluster_sites_by_overlap.py"],
+-		classifiers=[
+-			'License :: OSI Approved :: MIT License',
+-			'Intended Audience :: Science/Research',
+-			'Topic :: Scientific/Engineering :: Bio-Informatics',
+-			'Programming Language :: Python :: 3'
+-		],
+-		zip_safe=False	#gives cython import error if True
+-		)
++# All package metadata now lives in pyproject.toml; only the C-extension build stays here.
++setup(ext_modules=ext_modules, cmdclass=cmdclass)
+diff --git a/tobias/__init__.py b/tobias/__init__.py
+index 7eeb902..d89e16f 100644
+--- a/tobias/__init__.py
++++ b/tobias/__init__.py
+@@ -1 +1 @@
+-__version__ = "0.17.4"
++__version__ = "0.17.5"
+diff --git a/tobias/tools/plot_tracks.py b/tobias/tools/plot_tracks.py
+index 13bc6a2..c197c06 100644
+--- a/tobias/tools/plot_tracks.py
++++ b/tobias/tools/plot_tracks.py
+@@ -14,7 +14,7 @@
+ import argparse
+ import numpy as np
+ 
+-from PyPDF2 import PdfFileMerger, PdfFileReader
++from PyPDF2 import PdfMerger, PdfReader
+ import matplotlib
+ from matplotlib import textpath
+ from matplotlib.font_manager import findfont, FontProperties
+@@ -388,11 +388,11 @@ def run_tracks(args):
+ 			output_plots.append(pa.config["output_filename"])
+ 
+ 	#Done plotting all regions; join to one pdf
+-	merger = PdfFileMerger(strict=False)
++	merger = PdfMerger(strict=False)
+ 	pdf_filenames = [prefix + ".pdf" for prefix in output_plots]
+ 	for pdf in pdf_filenames:
+ 		if os.stat(pdf).st_size != 0:	#only join files containing plots
+-			merger.append(PdfFileReader(pdf))
++			merger.append(PdfReader(pdf))
+ 	merger.write(os.path.join(args.outdir, "all_plots.pdf"))
+ 
+ 	#End PlotTracks

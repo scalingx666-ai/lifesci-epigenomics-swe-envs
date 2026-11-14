@@ -1,0 +1,256 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 8e044c5..a0d0390 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,7 +1,7 @@
+ Package: MAESTRO
+ Type: Package
+ Title: Model-based Analyses of Single-cell Transcriptome and Regulome
+-Version: 1.5.0
++Version: 1.5.1
+ Date: 2021-03-05
+ Author: Chenfei Wang, Dongqing Sun, Tao Liu, Changxin Wan, Ming (Tommy) Tang, Gali Bai
+ Maintainer: Dongqing Sun<dongqingsun96@gmail.com>, Gali Bai<gali.bai@hotmail.com>
+diff --git a/MAESTRO/MAESTRO b/MAESTRO/MAESTRO
+index eb7bdaa..2dad2a2 100644
+--- a/MAESTRO/MAESTRO
++++ b/MAESTRO/MAESTRO
+@@ -5,7 +5,7 @@
+ # @Last Modified by:   Gali Bai, Dongqing Sun
+ # @Last Modified time: 2021-06-07 11:11:58
+ 
+-version = "1.5.0"
++version = "1.5.1"
+ 
+ import logging
+ import sys, os
+@@ -59,7 +59,7 @@ def main():
+         exit(0)
+     elif args.subcommand == "samples-init":
+         sample_json(args)
+-  
++
+     elif args.subcommand == "scatac-init":
+         scatac_validator(args)
+         scatac_config(args)
+diff --git a/MAESTRO/MAESTRO_PipeInit.py b/MAESTRO/MAESTRO_PipeInit.py
+index 6dc7133..73ad60a 100644
+--- a/MAESTRO/MAESTRO_PipeInit.py
++++ b/MAESTRO/MAESTRO_PipeInit.py
+@@ -3,8 +3,7 @@
+ # @E-mail: Dongqingsun96@gmail.com
+ # @Date:   2020-02-23 19:40:27
+ # @Last Modified by: Gali Bai
+-# @Last Modified time: 2021-06-14 17:34:46
+-
++# @Last Modified time: 2021-07-12 17:34:46
+ 
+ import os
+ import shutil
+@@ -199,6 +198,17 @@ def scrna_parser(subparsers):
+         choices = ["GRCh38", "GRCm38"], type = str,
+         help = "Specify the genome assembly (GRCh38 for human and GRCm38 for mouse). DEFAULT: GRCh38.")
+ 
++    #STARsolo arguments
++    group_star = workflow.add_argument_group("STARsolo parameters arguments")
++    group_star.add_argument("--STARsolo_Features", dest= "STARsolo_Features", default = "Gene", type = str,
++        choices = ["Gene", "GeneFull", "Gene GeneFull", "SJ", "Velocyto"],
++        help = "Parameters passed to STARsolo --soloFeatures."
++        "specify --soloFeatures Gene for single-cell data."
++        "specify --soloFeatures GeneFull for single-nuclei data"
++        "specify --soloFeatures Gene GeneFull for getting both counts in exons level and exon + intron level (velocity)")
++    group_star.add_argument("--STARsolo_threads", dest = "STARsolo_threads", default = 12, type = int,
++        help = "Threads for running STARsolo. DEFAULT: 12.")
++
+     # Output arguments
+     group_output = workflow.add_argument_group("Running and output arguments")
+     group_output.add_argument("--cores", dest = "cores", default = 10,
+@@ -423,6 +433,8 @@ def scrna_config(args):
+             sample_file = args.sample_file,
+             species = args.species,
+             platform = args.platform,
++            STARsolo_Features = args.STARsolo_Features,
++            STARsolo_threads = args.STARsolo_threads,
+             mergedname = args.mergedname,
+             outprefix = args.outprefix,
+             rseqc = args.rseqc,
+diff --git a/MAESTRO/Snakemake/scRNA/config_template.yaml b/MAESTRO/Snakemake/scRNA/config_template.yaml
+index 8a58a89..bfc346d 100644
+--- a/MAESTRO/Snakemake/scRNA/config_template.yaml
++++ b/MAESTRO/Snakemake/scRNA/config_template.yaml
+@@ -7,7 +7,7 @@ SAMPLES_JSON: {{ sample_file }}
+ STARsolo_threads: 12
+ 
+ # can specify "--soloFeatures FullGene" for single nuclei data
+-STARsolo_custom: '--soloFeatures Gene'
++STARsolo_Features: {{STARsolo_Features}}
+ 
+ # Species to use [GRCh38, GRCm38] (GRCh38 for human and GRCm38 for mouse)
+ species: {{ species }}
+diff --git a/MAESTRO/Snakemake/scRNA/rules/sc_rna_map.smk b/MAESTRO/Snakemake/scRNA/rules/sc_rna_map.smk
+index 121b790..72b2f7c 100644
+--- a/MAESTRO/Snakemake/scRNA/rules/sc_rna_map.smk
++++ b/MAESTRO/Snakemake/scRNA/rules/sc_rna_map.smk
+@@ -16,11 +16,11 @@ if config["platform"] == "10x-genomics":
+         output:
+             bam = "Result/STAR/{sample}/{sample}Aligned.sortedByCoord.out.bam",
+             bai = "Result/STAR/{sample}/{sample}Aligned.sortedByCoord.out.bam.bai",
+-            rawmtx = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/matrix.mtx",
+-            feature = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/features.tsv",
+-            barcode = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/barcodes.tsv"
++            rawmtx = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/matrix.mtx" %(config["STARsolo_Features"].split(" ")[0]),
++            feature = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/features.tsv" %(config["STARsolo_Features"].split(" ")[0]),
++            barcode = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/barcodes.tsv" %(config["STARsolo_Features"].split(" ")[0])
+         params:
+-            star_custom = config.get("STARsolo_custom", ""),
++            star_custom = config["STARsolo_Features"],
+             outprefix = "Result/STAR/{sample}/{sample}",
+             transcript = lambda wildcards: ','.join(FILES[wildcards.sample]["R2"]),
+             barcode = lambda wildcards: ','.join(FILES[wildcards.sample]["R1"]),
+@@ -47,7 +47,7 @@ if config["platform"] == "10x-genomics":
+                 --outSAMtype BAM SortedByCoordinate \
+                 --outSAMattributes NH HI nM AS CR UR CB UB GX GN sS sQ sM \
+                 --soloType CB_UMI_Simple \
+-                {params.star_custom} \
++                --soloFeatures {params.star_custom} \
+                 --soloCBwhitelist {input.whitelist} \
+                 --soloCBstart {params.barcodestart} \
+                 --soloCBlen {params.barcodelength} \
+@@ -62,6 +62,7 @@ if config["platform"] == "10x-genomics":
+ 
+             samtools index -b -@ {threads} {output.bam} >> {log} 2>&1
+             """
++
+ elif config["platform"] == "Dropseq":
+     rule scrna_map:
+         input:
+@@ -111,6 +112,7 @@ elif config["platform"] == "Dropseq":
+ 
+             samtools index -b -@ {threads} {output.bam}
+             """
++
+ elif config["platform"] == "Smartseq2":
+     rule scrna_map:
+         input:
+diff --git a/MAESTRO/Snakemake/scRNA/rules/sc_rna_merge.smk b/MAESTRO/Snakemake/scRNA/rules/sc_rna_merge.smk
+index fc23e87..ee3d95b 100644
+--- a/MAESTRO/Snakemake/scRNA/rules/sc_rna_merge.smk
++++ b/MAESTRO/Snakemake/scRNA/rules/sc_rna_merge.smk
+@@ -1,8 +1,8 @@
+ rule scrna_merge:
+     input:
+-        rawmtx = expand("Result/STAR/{sample}/{sample}Solo.out/Gene/raw/matrix.mtx", sample=ALL_SAMPLES),
+-        features = expand("Result/STAR/{sample}/{sample}Solo.out/Gene/raw/features.tsv", sample=ALL_SAMPLES)[1],
+-        barcodes = expand("Result/STAR/{sample}/{sample}Solo.out/Gene/raw/barcodes.tsv", sample=ALL_SAMPLES)
++        rawmtx = expand("Result/STAR/{sample}/{sample}Solo.out/%s/raw/matrix.mtx" %(config["STARsolo_Features"].split(" ")[0]), sample=ALL_SAMPLES),
++        features = expand("Result/STAR/{sample}/{sample}Solo.out/%s/raw/features.tsv" %(config["STARsolo_Features"].split(" ")[0]), sample=ALL_SAMPLES)[1],
++        barcodes = expand("Result/STAR/{sample}/{sample}Solo.out/%s/raw/barcodes.tsv" %(config["STARsolo_Features"].split(" ")[0]), sample=ALL_SAMPLES)
+     output:
+         mergedmtx = "Result/STAR/%s/rawmatrix/matrix.mtx" % config["mergedname"],
+         mergedfeatures = "Result/STAR/%s/rawmatrix/features.tsv" % config["mergedname"],
+diff --git a/MAESTRO/Snakemake/scRNA/rules/sc_rna_qc.smk b/MAESTRO/Snakemake/scRNA/rules/sc_rna_qc.smk
+index 41b6953..0972ccd 100644
+--- a/MAESTRO/Snakemake/scRNA/rules/sc_rna_qc.smk
++++ b/MAESTRO/Snakemake/scRNA/rules/sc_rna_qc.smk
+@@ -1,9 +1,9 @@
+ if config["platform"] == "10x-genomics" or config["platform"] == "Dropseq":
+     rule scrna_qc:
+         input:
+-            rawmtx = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/matrix.mtx",
+-            feature = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/features.tsv",
+-            barcode = "Result/STAR/{sample}/{sample}Solo.out/Gene/raw/barcodes.tsv"
++            rawmtx = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/matrix.mtx" %(config["STARsolo_Features"].split(" ")[0]),
++            feature = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/features.tsv" %(config["STARsolo_Features"].split(" ")[0]),
++            barcode = "Result/STAR/{sample}/{sample}Solo.out/%s/raw/barcodes.tsv" %(config["STARsolo_Features"].split(" ")[0])
+         output:
+             countgene = "Result/QC/{sample}/{sample}_count_gene_stat.txt",
+             filtermatrix = "Result/QC/{sample}/{sample}_filtered_gene_count.h5",
+diff --git a/MAESTRO/sample2json.py b/MAESTRO/sample2json.py
+index fdb20ee..ecdba91 100755
+--- a/MAESTRO/sample2json.py
++++ b/MAESTRO/sample2json.py
+@@ -58,14 +58,14 @@ def sample_json(args):
+                     full_path = join(root, file)
+                     if args.assay_type == "scrna":
+                         #R1 will be sample barcode, R2 will be reverse reads, I1 will be the index
+-                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]_(L[0-9]{3})_([IR][12])_[0-9]+.fastq.gz", file)
++                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]+_(L[0-9]{3})_([IR][12])_[0-9]+.fastq.gz", file)
+                         if m:
+                             sample = m.group(1)
+                             lane = m.group(2)
+                             reads = m.group(3)
+                             FILES[sample][reads].append(full_path)
+                     elif args.assay_type == "scatac" and args.platform == "10x-genomics":
+-                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]_(L[0-9]{3})_([IR][123])_[0-9]+.fastq.gz", file)
++                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]+_(L[0-9]{3})_([IR][123])_[0-9]+.fastq.gz", file)
+                         if m:
+                             sample = m.group(1)
+                             lane = m.group(2)
+@@ -94,14 +94,14 @@ def sample_json(args):
+                     full_path = join(root, file)
+                     if args.assay_type == "scrna":
+                         #R1 will be sample barcode, R2 will be reverse reads, I1 will be the index
+-                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]_(L[0-9]{3})_([IR][12])_[0-9]+.fastq", file)
++                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]+_(L[0-9]{3})_([IR][12])_[0-9]+.fastq", file)
+                         if m:
+                             sample = m.group(1)
+                             lane = m.group(2)
+                             reads = m.group(3)
+                             FILES[sample][reads].append(full_path)
+                     elif args.assay_type == "scatac" and args.platform == "10x-genomics":
+-                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]_(L[0-9]{3})_([IR][123])_[0-9]+.fastq", file)
++                        m = re.search(r"([A-Z0-9a-z_]+)_S[0-9]+_(L[0-9]{3})_([IR][123])_[0-9]+.fastq", file)
+                         if m:
+                             sample = m.group(1)
+                             lane = m.group(2)
+diff --git a/README.md b/README.md
+index 5b03fee..cee6f13 100644
+--- a/README.md
++++ b/README.md
+@@ -77,7 +77,11 @@ We are hosting MAESTRO documentation, instruction and tutorials at [MAESTRO Webs
+ * Support multi-sample scATAC-seq when starting from bam file with CB tag or 10X like fragment file.
+ * Fix the ratio of genes mapped to mitochondrial to percentage.
+ * Move MAESTRO documentation to [workfowr](https://github.com/jdblischak/workflowr).
+-
++### v1.5.1
++* Expand STARsolo --soloFeatures and --runThreadN as MAESTRO subcommands.
++* Support single-nuclei RNA-seq pipeline.
++* Fix bug in sample initiation subcommand to read fastq with sample id greater than 9.
++* Update MAESTRO documentation to v1.5.1. Add snRNA-seq tutorials. Expand scRNA-seq tutorial with lisa2 TF prediction custom analysis. Add multi-scATAC-seq genome track plot for pseudobulk peaks. Explain multi-samples peak calling parameters.
+ 
+ ## System requirements
+ * Linux/Unix
+@@ -107,7 +111,7 @@ $ conda config --add channels bioconda
+ $ conda config --add channels conda-forge
+ # To make the installation faster, we recommend using mamba
+ $ conda install mamba -c conda-forge
+-$ mamba create -n MAESTRO maestro=1.5.0 -c liulab-dfci
++$ mamba create -n MAESTRO maestro=1.5.1 -c liulab-dfci
+ # Activate the environment
+ $ conda activate MAESTRO
+ ```
+diff --git a/conda/MAESTRO/meta.yaml b/conda/MAESTRO/meta.yaml
+index 6344462..4886c6b 100644
+--- a/conda/MAESTRO/meta.yaml
++++ b/conda/MAESTRO/meta.yaml
+@@ -1,6 +1,6 @@
+ package:
+   name: maestro
+-  version: "1.5.0"
++  version: "1.5.1"
+ source:
+   path: ../../
+ # build:
+diff --git a/setup.py b/setup.py
+index 6908b39..b7af83f 100644
+--- a/setup.py
++++ b/setup.py
+@@ -18,7 +18,7 @@
+ def main():
+     setup(
+         name = "MAESTRO",
+-        version = "1.5.0",
++        version = "1.5.1",
+         package_dir = {'MAESTRO':'MAESTRO'},
+         packages = ['MAESTRO'],
+         package_data={'MAESTRO':['Snakemake/scRNA/*', 'Snakemake/integrate/*', 'Snakemake/scATAC/*', 'Snakemake/scATAC/rules/*', 'Snakemake/scRNA/rules/*', 'R/*', 'utils/*','annotations/*', 'html/*', '']},

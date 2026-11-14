@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/inutano__chip-atlas-230"
+description = "Remove node switch note from EA pages and update what's new"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "chip-atlas",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "inutano/chip-atlas"
+ref = "b85b7c02545e2e90ded1288d35431b15e1400099"
+reference = "https://github.com/inutano/chip-atlas/pull/230"
+source_access = "auto"
+built_at = "2026-11-14T07:17:07.833014+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:38143b18a22c8b756e9fedb09286398578e250dc4807927c0610e801767cdee8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-30T00:18:51Z"
+diff_format = "unified"
+context_files = [
+    "views/enrichment_analysis.haml",
+    "views/enrichment_analysis_result.haml",
+    "views/updates.markdown",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 10
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

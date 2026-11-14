@@ -1,0 +1,27 @@
+diff --git a/.gitignore b/.gitignore
+index f594186..3c1a7eb 100755
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,6 +2,8 @@
+ build
+ testing
+ README.html
++debian/.debhelper
++debian/ataqv.debhelper.log
+ debian/ataqv.substvars
+ debian/ataqv/
+ debian/debhelper-build-stamp
+diff --git a/debian/changelog b/debian/changelog
+index b9077b0..2fc79a3 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++ataqv (1.2.0-1) unstable; urgency=medium
++
++  * Add option to reduce redundant metrics
++
++ -- Parker Lab Software <parkerlab-software@umich.edu>  Sun, 14 Jun 2020 09:42:17 -0400
++
+ ataqv (1.1.1-1) unstable; urgency=low
+ 
+   * Speed up TSS coverage/enrichment calculations when multiple read

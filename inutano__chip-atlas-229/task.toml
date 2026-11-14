@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/inutano__chip-atlas-229"
+description = "Fall back to plain .bed when no .bed.gz exists"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "chip-atlas",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "inutano/chip-atlas"
+ref = "b85b7c02545e2e90ded1288d35431b15e1400099"
+reference = "https://github.com/inutano/chip-atlas/pull/229"
+source_access = "auto"
+built_at = "2026-11-14T07:17:10.173060+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:011ffdaa16eee739cc5b6ca76f5ab5047b9f0c9de6a08752bba991a0e9d97095"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-30T00:23:39Z"
+diff_format = "unified"
+context_files = [
+    "lib/pj/location.rb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 24
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

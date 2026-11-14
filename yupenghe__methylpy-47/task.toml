@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/yupenghe__methylpy-47"
+description = "Add keep_temp_files argument to call-methylation-state"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "methylpy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "yupenghe/methylpy"
+ref = "d354ef50e8e603ee79d0356cdfd262f2e8e4bfe7"
+reference = "https://github.com/yupenghe/methylpy/pull/47"
+source_access = "auto"
+built_at = "2026-11-14T07:15:57.347709+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:48cfb33a184cc7a2d71fcb3ea911c08fe69b24398164046e7a28ede01fd126e4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-01-16T03:41:20Z"
+diff_format = "unified"
+context_files = [
+    "methylpy/parser.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

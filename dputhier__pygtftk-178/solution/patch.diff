@@ -1,0 +1,13 @@
+diff --git a/pygtftk/plugins/html_diagram.py b/pygtftk/plugins/html_diagram.py
+index df32f61..446ea03 100644
+--- a/pygtftk/plugins/html_diagram.py
++++ b/pygtftk/plugins/html_diagram.py
+@@ -78,7 +78,7 @@ def html_diagram(inputfile=None,
+     ####################################################################################################
+     # Instanciate a Dash app
+     ####################################################################################################
+-    app = dash.Dash(external_stylesheets=[dbc.themes.YETI])
++    app = dash.Dash(name=__name__,server=True,external_stylesheets=[dbc.themes.YETI])
+     app.config.suppress_callback_exceptions = True
+ 
+     ####################################################################################################

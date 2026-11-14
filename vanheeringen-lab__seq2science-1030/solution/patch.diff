@@ -1,0 +1,160 @@
+diff --git a/.github/workflows/docs.yml b/.github/workflows/docs.yml
+index 61e55cebe..a9051cb45 100644
+--- a/.github/workflows/docs.yml
++++ b/.github/workflows/docs.yml
+@@ -2,24 +2,27 @@ name: docs
+ 
+ on:
+   push:
++    branches: [ "master" , "develop" ]
++  # Allows you to run this workflow manually from the Actions tab
++  workflow_dispatch:
+ 
+ jobs:
+   docs:
+     runs-on: ubuntu-latest
+     steps:
+-      - uses: actions/checkout@v3
++      - uses: actions/checkout@v4
+         with:
+           persist-credentials: false
+ 
+-      - uses: actions/setup-python@v3
++      - uses: actions/setup-python@v5
+         with:
+           python-version: 3.8
+ 
+       - name: Install dependencies 🔨 & Build 🔧
+         run: |
+-          # setup mambaforge
+-          wget -q -O Mambaforge.sh  "https://github.com/conda-forge/miniforge/releases/download/4.11.0-1/Mambaforge-$(uname)-$(uname -m).sh"
+-          bash Mambaforge.sh -b -p "${HOME}/conda" > /dev/null
++          # setup miniforge
++          wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
++          bash Miniforge3.sh -b -p "${HOME}/conda" > /dev/null
+           source "${HOME}/conda/etc/profile.d/conda.sh"
+           source "${HOME}/conda/etc/profile.d/mamba.sh"
+           mamba activate
+@@ -45,7 +48,7 @@ jobs:
+           mamba env create --name seq2science --file doc_reqs.yaml
+           rm doc_reqs.yaml
+           mamba activate seq2science
+-          pip3 install .
++          pip3 install . --no-deps --ignore-installed
+ 
+           # make the docs
+           python docs/scripts/schemas.py
+@@ -55,7 +58,6 @@ jobs:
+           sphinx-build docs/ build -W
+           touch build/.nojekyll
+ 
+-      # only deploy
+       - name: Deploy 📬
+         uses: JamesIves/github-pages-deploy-action@releases/v3
+         if: github.ref == 'refs/heads/master'
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6a2656969..5d6f74420 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,7 +9,15 @@ All changed fall under either one of these types: `Added`, `Changed`, `Deprecate
+ 
+ ## [Unreleased]
+ 
+-## [1.2.3] - 2024-05-9
++## [1.2.4] - 2025-05-14
++
++### Fixed
++
++- updated genomepy version (works with all providers again)
++- fixed chipseeker warnings
++- fixed upsetplot warnings
++
++## [1.2.3] - 2025-05-9
+ 
+ ### Fixed
+ 
+@@ -849,7 +857,8 @@ Many minor bug- and quality of life fixes.
+ 
+ First release of seq2science!
+ 
+-[Unreleased]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.3...develop
++[Unreleased]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.4...develop
++[1.2.4]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.3...v1.2.4
+ [1.2.3]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.2...v1.2.3
+ [1.2.2]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.1...v1.2.2
+ [1.2.1]: https://github.com/vanheeringen-lab/seq2science/compare/v1.2.0...v1.2.1
+diff --git a/requirements.yaml b/requirements.yaml
+index ef0021233..ede648ee8 100644
+--- a/requirements.yaml
++++ b/requirements.yaml
+@@ -7,7 +7,7 @@ dependencies:
+   - bioconda::snakemake-minimal=7.25.0
+   - conda-forge::conda=24.1.2
+   - conda-forge::mamba=1.5.9
+-  - bioconda::genomepy=0.16.1
++  - bioconda::genomepy=0.16.2
+   - conda-forge::biopython=1.81
+   - conda-forge::filelock=3.10.7
+   - conda-forge::pyyaml=6.0
+diff --git a/seq2science/__init__.py b/seq2science/__init__.py
+index e74c6ea05..1798b4548 100644
+--- a/seq2science/__init__.py
++++ b/seq2science/__init__.py
+@@ -1,4 +1,4 @@
+ from . import util
+ 
+ __all__ = ["util"]
+-__version__ = "1.2.2"
++__version__ = "1.2.4"
+diff --git a/seq2science/envs/chipseeker.yaml b/seq2science/envs/chipseeker.yaml
+index ac19ebe56..c9ed58e0a 100644
+--- a/seq2science/envs/chipseeker.yaml
++++ b/seq2science/envs/chipseeker.yaml
+@@ -4,4 +4,5 @@ channels:
+   - bioconda
+ dependencies:
+   - bioconda::bioconductor-chipseeker=1.42.0
++  - bioconda::bioconductor-txdbmaker=1.2.0
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
+diff --git a/seq2science/envs/upset.yaml b/seq2science/envs/upset.yaml
+index 982176569..db0f6ed13 100644
+--- a/seq2science/envs/upset.yaml
++++ b/seq2science/envs/upset.yaml
+@@ -2,6 +2,7 @@ name: upset
+ channels:
+   - conda-forge
+ dependencies:
+-  - conda-forge::upsetplot=0.8.0
++  - conda-forge::upsetplot=0.9.0
++  - conda-forge::pandas=2.1.4
+   - conda-forge::matplotlib-base=3.7.1
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
+diff --git a/seq2science/scripts/chipseeker.R b/seq2science/scripts/chipseeker.R
+index ac1442596..94e5d1385 100755
+--- a/seq2science/scripts/chipseeker.R
++++ b/seq2science/scripts/chipseeker.R
+@@ -33,7 +33,7 @@ cat('\n')
+ 
+ 
+ # load the gtf file and make it a txdb
+-txdb_from_gtf <- makeTxDbFromGFF(gtf)
++txdb_from_gtf <- txdbmaker::makeTxDbFromGFF(gtf)
+ 
+ peaks_list = list()
+ for (i in seq_along(narrowpeaks)) {
+diff --git a/seq2science/workflows/chip_seq/samples.tsv b/seq2science/workflows/chip_seq/samples.tsv
+index c849a4be9..f21640aee 100644
+--- a/seq2science/workflows/chip_seq/samples.tsv
++++ b/seq2science/workflows/chip_seq/samples.tsv
+@@ -3,7 +3,7 @@
+ # https://vanheeringen-lab.github.io/seq2science/content/workflows/chip_seq.html#filling-out-the-samples-tsv
+ # Make sure that you use tab as a delimiter
+ sample	assembly	biological_replicates	descriptive_name	control
+-GSM1689671	BDGP6.46	gd7ectoderm	gd7_ectodermal_rep1	GSM1689679
+-GSM1689672	BDGP6.46	gd7ectoderm	gd7_ectodermal_rep2	GSM1689680
+-GSM1689692	BDGP6.46	tl10bmesoderm	tl10b_mesodermal_rep1	GSM1689700
+-GSM1689693	BDGP6.46	tl10bmesoderm	tl10b_mesodermal_rep2	GSM1689701
++GSM1689671	dm6	gd7ectoderm	gd7_ectodermal_rep1	GSM1689679
++GSM1689672	dm6	gd7ectoderm	gd7_ectodermal_rep2	GSM1689680
++GSM1689692	dm6	tl10bmesoderm	tl10b_mesodermal_rep1	GSM1689700
++GSM1689693	dm6	tl10bmesoderm	tl10b_mesodermal_rep2	GSM1689701

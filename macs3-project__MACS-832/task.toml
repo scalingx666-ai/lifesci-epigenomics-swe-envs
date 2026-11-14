@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/macs3-project__MACS-832"
+description = "Reject degenerate HMM models before decoding (#814)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MACS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "macs3-project/MACS"
+ref = "ebdc4417ab304b2cd9e00486800e6f349d06ef9c"
+reference = "https://github.com/macs3-project/MACS/pull/832"
+source_access = "auto"
+built_at = "2026-11-14T07:13:28.176118+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fb687bff5b6981dd1962686fce66610f863ce4a8e5fc469accc0e3d0bae44a24"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T15:09:26Z"
+diff_format = "unified"
+context_files = [
+    "MACS3/Signal/HMMR_HMM.py",
+    "docs/source/docs/hmmratac.md",
+    "test/hmm_model_probe.py",
+    "test/issue_814_verification.md",
+    "test/test_HMMR_HMM.py",
+    "test/test_HMMR_validation.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 690
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/COLA-Laboratory__OmniGenBench-1"
+description = "Added comments explaining each code block in English."
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "OmniGenBench",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "COLA-Laboratory/OmniGenBench"
+ref = "9ecd8aa0b93d744a6894775046b8fcce3b7b5fbc"
+reference = "https://github.com/COLA-Laboratory/OmniGenBench/pull/1"
+source_access = "auto"
+built_at = "2026-11-14T07:14:27.951685+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6276c60d020db495df8120e9a528744397a419bc3f00131ca4b8bed52df39b22"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-05-14T10:39:22Z"
+diff_format = "unified"
+context_files = [
+    "examples/RGB/RNA-mRNA/config.py",
+    "examples/tutorials/SSP_Demo.py",
+    "examples/tutorials/Secondary_Structure_Prediction_Tutorial.ipynb",
+    "omnigenome/auto/auto_bench/auto_bench.py",
+    "omnigenome/src/abc/abstract_dataset.py",
+    "omnigenome/src/abc/abstract_model.py",
+    "omnigenome/src/model/classiifcation/model.py",
+    "omnigenome/src/trainer/accelerate_trainer.py",
+    "omnigenome/src/trainer/trainer.py",
+    "omnigenome/utility/model_hub/model_hub.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 520
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

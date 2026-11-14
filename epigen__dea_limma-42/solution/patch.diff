@@ -1,0 +1,349 @@
+diff --git a/README.md b/README.md
+index 3f807d2..6948c29 100644
+--- a/README.md
++++ b/README.md
+@@ -80,8 +80,8 @@ The workflow performs the following steps that produce the outlined results:
+   - effect size (>= absolute log 2 fold change: `lfc`)
+   - average expression (>= `ave_expr`) in the data (to skip this filter use `-Inf`)
+ - Visualizations
+-  - filtered DEA result statistics ie number of features and direction (stacked bar plots)
+-  - volanco plots per comparison with effect size on the x-axis and raw p-value(rawp)/adjusted p-value (adjp) on the y-axis
++  - filtered DEA result statistics i.e. number of features and direction (stacked bar plots) (if OvA is performed, also combined for all levels of all terms in one plot)
++  - volcano plots per comparison with effect size on the x-axis and raw p-value(rawp)/adjusted p-value (adjp) on the y-axis
+       - highlighting features according to configured cut-offs for statistical significance (pCutoff) and effect size (FCcutoff)
+       - (optional) highlighting features according to configured feature lists
+   - hierarchically clustered heatmap of effect sizes (LFC) per comparison (features x comparisons) indicating statistical significance with a star '\*'
+@@ -102,14 +102,14 @@ The workflow performs the following steps that produce the outlined results:
+ 
+ # 🛠️ Usage
+ Here are some tips for the usage of this workflow:
+-- _limma_ usage and best practices are not explained. For deatiled documentation, tutorials and insctructions see [Resources](#resources). To understand the implementation at hand see [limma.R](./workflow/scripts/limma.R).
++- _limma_ usage and best practices are not explained. For detailed documentation, tutorials and instructions see [Resources](#resources). To understand the implementation at hand see [limma.R](./workflow/scripts/limma.R).
+ - Perform your first run(s) with loose filtering options/cut-offs and use the same for visualization to see if further filtering is even necessary or useful.
+ - Test minimal complex configurations on a subset of your data.
+ - Start with simple models and try to understand the results.
+ 
+ # ⚖️ Contrasts
+ Currently, we do not support contrasts. If you have any idea how to implement contrasts, feel invited to reach out.
+-If you require contrasts to ask questions your model does not answer, just load the fitted model and perform the contrast manually (see examle in [_limma's_ User's Guide](https://www.bioconductor.org/packages/devel/bioc/vignettes/limma/inst/doc/usersguide.pdf) chapter 9.5):
++If you require contrasts to ask questions your model does not answer, just load the fitted model and perform the contrast manually (see example in [_limma's_ User's Guide](https://www.bioconductor.org/packages/devel/bioc/vignettes/limma/inst/doc/usersguide.pdf) chapter 9.5):
+ ```R
+ # load model and design
+ fit <- readRDS(file.path('{result_path}/dea_limma/{analysis}/lmfit_object.rds'))
+diff --git a/config/README.md b/config/README.md
+index 2e86cca..4db4bc8 100644
+--- a/config/README.md
++++ b/config/README.md
+@@ -6,7 +6,7 @@ You need one configuration file and one annotation file to run the complete work
+ - annotation (annotation): CSV file with one row per analysis and consisting of 10 mandatory columns
+     -  name: name of the dataset/analysis (tip: keep it short, but descriptive, distinctive and unique; `OvA` is a forbidden keyword)
+     -  data: Absolute path to the input data as CSV file as feature by sample table (eg RNA count matrix) that has already been quality controlled (eg bad samples removed) and filtered for relevant features (eg only expressed genes). The first column has to contain the features and the first row the sample-names.
+-    -  metadata: Absolute path to the metadata as CSV file for the required analysis (ie every variable in the formula and opyional blocking variable needs to have a corresponding column). The first column has to be the sample name. The metadata file has to be R compatible (eg column names should not start with a number or contain colons).
++    -  metadata: Absolute path to the metadata as CSV file for the required analysis (ie every variable in the formula and optional blocking variable needs to have a corresponding column). The first column has to be the sample name. The metadata file has to be R compatible (eg column names should not start with a number or contain colons).
+     -  formula: A string that will be converted to a formula in R (eg ~ treatment + batch).
+     -  block_var: Flag to indicate which variable (present in the metadata as column) should be used for the blocking feature (see README > Features) or if it should be skipped (0).
+     -  comparisons: Variable names contained in the formula (and metadata) which coefficient's you are interested in, separated by `|` (e.g., `treatment|batch`). Results of all derived groups (e.g., `treatmentLPS`) containing one of the comparisons will be returned in the results. Empty comparisons field is allowed if one is only interested in the one-vs-all contrasts provided by the OvA analysis (see OvA field) and results in empty result files and plots.
+diff --git a/workflow/Snakefile b/workflow/Snakefile
+index ba57f8f..eeaa517 100644
+--- a/workflow/Snakefile
++++ b/workflow/Snakefile
+@@ -8,6 +8,7 @@ import sys
+ import pandas as pd
+ import yaml
+ from snakemake.utils import min_version
++from collections import defaultdict
+ 
+ ##### set minimum snakemake version #####
+ min_version("8.20.1")
+@@ -24,13 +25,21 @@ configfile: os.path.join("config", "config.yaml")
+ annot = pd.read_csv(config['annotation'], index_col='name')
+ std_analyses = list(annot.index)
+ # check if OvA columns exists and returns non-empty indices with postfix "_OvA"
+-ova_analyses = [
+-    f"{idx}_OvA_{val}"
++# to avoid ':' in the filepaths for interaction terms, need to replace it with '__', but remember original ova_var
++# to avoid new column naming restrictions (i.e., keep allowing '__' in column names)
++ova_analyses = {
++    f"{idx}_OvA_{val.replace(':', '__')}": val
+     for idx, cell in annot.get('OvA', pd.Series('', index=annot.index)).fillna('').loc[lambda s: s!=''].items()
+     for val in cell.split('|')
+-]
++}
+ # create list of all analyses
+-analyses = std_analyses + ova_analyses
++analyses = std_analyses + list(ova_analyses.keys())
++
++# find all OvA analyses to be done and which dea they come from
++std_analyses_to_ova_dict = defaultdict(list)
++for ova_analysis in ova_analyses.keys():
++    std_analysis = ova_analysis.split('_OvA_')[0]
++    std_analyses_to_ova_dict[std_analysis].append(ova_analysis)
+ 
+ # convert dictionary for parametrization of rules
+ annot_dict = annot.to_dict('index')
+@@ -64,6 +73,9 @@ rule all:
+         stats = expand(os.path.join(result_path,'{analysis}','stats.csv'),
+                                analysis = analyses,
+                       ),
++        stats_ova = expand(os.path.join(result_path,'{analysis}', 'stats_OvA.csv'),
++                               analysis = std_analyses_to_ova_dict.keys(),
++                      ),
+         heatmaps = expand(os.path.join(result_path,'{analysis}','plots','heatmap','{feature_list}.png'),
+                           analysis = analyses,
+                           feature_list = feature_lists + ['FILTERED'],
+diff --git a/workflow/report/dea_stats_OvA.rst b/workflow/report/dea_stats_OvA.rst
+new file mode 100644
+index 0000000..9bf8e75
+--- /dev/null
++++ b/workflow/report/dea_stats_OvA.rst
+@@ -0,0 +1 @@
++Statistics and visualizations of one-versus-all (OvA) DEA results of analysis {{snakemake.wildcards["analysis"]}} using adjusted p-value <= {{snakemake.params["adj_pval"]}}, abs(log2 fold change) >= {{snakemake.params["lfc"]}} and average expression >= {{snakemake.params["ave_expr"]}}.
+\ No newline at end of file
+diff --git a/workflow/rules/common.smk b/workflow/rules/common.smk
+index 34adaad..7c137bb 100644
+--- a/workflow/rules/common.smk
++++ b/workflow/rules/common.smk
+@@ -8,3 +8,9 @@ def get_metadata_path(wildcards):
+ 
+ def get_feature_list_path(wildcards):
+     return config["feature_lists"][wildcards.feature_list]
++
++def get_input_ova_stats_plot(wildcards):
++    return [
++        os.path.join(result_path, analysis,'results.csv')
++        for analysis in std_analyses_to_ova_dict[wildcards.analysis]
++    ]
+\ No newline at end of file
+diff --git a/workflow/rules/dea.smk b/workflow/rules/dea.smk
+index 468eb22..f89a23b 100644
+--- a/workflow/rules/dea.smk
++++ b/workflow/rules/dea.smk
+@@ -47,6 +47,8 @@ rule one_vs_all_contrasts:
+         limma_trend = lambda w: annot_dict["{}".format(w.analysis)]["limma_trend"],
+         feature_annotation_col = config["feature_annotation"]["column"],
+         formula = lambda w: annot_dict["{}".format(w.analysis)]["formula"],
++        reference_levels = config["reference_levels"],
++        original_ova_var = lambda w: ova_analyses[f"{w.analysis}_OvA_{w.ova_var}"]
+     resources:
+         mem_mb=config.get("mem", "16000"),
+     threads: config.get("threads", 1)
+@@ -110,6 +112,43 @@ rule aggregate:
+     script:
+         "../scripts/aggregate.R"
+ 
++rule ova_stats_plot:
++    input:
++        dea_results = get_input_ova_stats_plot,
++    output:
++        dea_stats_OvA = report(os.path.join(result_path,'{analysis}','stats_OvA.csv'), 
++                                  caption="../report/dea_stats_OvA.rst", 
++                                  category="{}_{}".format(config["project_name"], module_name),
++                                  subcategory="{analysis}",
++                                  labels={
++                                      "name": "Statistics",
++                                      "type": "table",
++                                      "misc": "CSV",
++                                  }),
++        dea_stats_plot_OvA = report(os.path.join(result_path,'{analysis}','plots','stats_OvA.png'),
++                                  caption="../report/dea_stats_OvA.rst", 
++                                  category="{}_{}".format(config["project_name"], module_name),
++                                  subcategory="{analysis}",
++                                  labels={
++                                      "name": "Statistics",
++                                      "type": "Bar plot",
++                                      "misc": "PNG",
++                                  }),
++    resources:
++        mem_mb=config.get("mem", "16000"),
++    threads: config.get("threads", 1)
++    conda:
++        "../envs/ggplot.yaml"
++    log:
++        os.path.join("logs","rules","ova_stats_plot_{analysis}.log"),
++    params:
++        score_formula = config["score_formula"],
++        adj_pval = config["filters"]["adj_pval"],
++        lfc = config["filters"]["lfc"],
++        ave_expr = config["filters"]["ave_expr"],
++        utils_path=workflow.source_path("../scripts/utils.R"),
++    script:
++        "../scripts/ova_stats_plot.R"
+ 
+ # shadow rule to enable downstream processing
+ # requires to know that the file will exist in that exact location, otherwise MissingInputException error
+diff --git a/workflow/scripts/one_vs_all_contrasts.R b/workflow/scripts/one_vs_all_contrasts.R
+index e101f0a..1103e6a 100644
+--- a/workflow/scripts/one_vs_all_contrasts.R
++++ b/workflow/scripts/one_vs_all_contrasts.R
+@@ -15,7 +15,7 @@ contrast_object_path <- snakemake@output[["contrast_object"]]
+ contrast_matrix_path <- snakemake@output[["contrast_matrix"]]
+ 
+ # parameters
+-ova_var <- snakemake@wildcards[["ova_var"]]
++ova_var <- snakemake@params[["original_ova_var"]]
+ feature_annotation_col <- base::make.names(snakemake@params[["feature_annotation_col"]])[1]
+ eBayes_flag <- snakemake@params[["eBayes"]]
+ limma_trend <- snakemake@params[["limma_trend"]]
+@@ -64,14 +64,17 @@ ova_is_interaction <- grepl(":", ova_var, fixed=TRUE)
+ #### identify groups for one-vs-all contrasts using the metadata table, column prefix & design matrix
+ # check if ova_var is numeric, and if yes, cause error since OvA does not make sense for continuous variables
+ # ok to kill the process, since the user should not get to make this wrong choice
+-if (!ova_is_interaction && is.numeric(meta[, ova_var])){
+-    stop(paste0("One-vs-all contrasts do not make sense for numeric (non-factor) variable '", ova_var))
++# split in case this is an interaction term, i.e., contains a colon
++ova_vars <- unlist(strsplit(ova_var, ':'))
++for (var in ova_vars){
++    if (is.numeric(meta[, var])){
++        stop(paste0("One-vs-all contrasts do not make sense for numeric (non-factor) variable '", var, "'"))
++    }
+ }
+ 
+ if (ova_is_interaction){
+     # for interaction terms, need to generate all combinations of the levels
+     # there could be multiple colons in the variable name for high-order interaction terms
+-    ova_vars <- unlist(strsplit(ova_var, ':'))
+     # the ova_vars need to be sorted in the order their main effects appear in the formula so that
+     # the naming is actually in the correct order 
+     ova_vars <- ova_vars[order(match(ova_vars, all_terms))]
+@@ -84,14 +87,14 @@ if (ova_is_interaction){
+     # the design matrix is saved with : in the column names for interaction terms, but fread replaces them with .
+     # this is based on the make.names() function, so use it here as well to make exactly the same names
+     group_names <- apply(level_combinations, 1, function(row) {
+-        base::make.names(paste(row, collapse = ":"))
++        paste(row, collapse = ":")
+     })
+     # add prefix to match the design matrix
+     group_cols <- apply(level_combinations, 1, function(row) {
+         base::make.names(paste0(ova_vars, row, collapse = ":"))
+     })
+ } else {
+-    group_names <- base::make.names(unique(meta[,ova_var]))
++    group_names <- unique(meta[,ova_var])
+     group_cols <- base::make.names(paste0(ova_var, group_names))
+ }
+ 
+@@ -115,7 +118,7 @@ for (i in seq(length(group_names))){
+         # reference group), where the relative effect for the reference group itself is 0 (in the contrast formula just
+         # falls away, but is counted for the denominator in the mean).
+     
+-        reference_group <- setdiff(group_cols, colnames(design))
++        group <- setdiff(group_cols, colnames(design))
+         if (length(reference_group) != 1) {
+             # something went wrong
+             stop("There should be exactly one reference group in the design matrix.")
+@@ -257,4 +260,5 @@ for(coefx in colnames(coef(fit2))){
+ contrast_result <- contrast_result[!is.na(contrast_result$adj.P.Val),]
+ 
+ #### save results
++contrast_result$group <- gsub("\\.", "__", contrast_result$group)
+ fwrite(as.data.frame(contrast_result), file=file.path(contrast_result_path), row.names=FALSE)
+\ No newline at end of file
+diff --git a/workflow/scripts/ova_stats_plot.R b/workflow/scripts/ova_stats_plot.R
+new file mode 100644
+index 0000000..4779919
+--- /dev/null
++++ b/workflow/scripts/ova_stats_plot.R
+@@ -0,0 +1,102 @@
++#### load libraries & utility function 
++library("ggplot2")
++library("data.table")
++
++# source utility functions
++# source("workflow/scripts/utils.R")
++# snakemake@source("./utils.R") # does not work when loaded as module (https://github.com/snakemake/snakemake/issues/2205)
++source(snakemake@params[["utils_path"]])
++
++# inputs
++dea_result_paths <- snakemake@input[["dea_results"]]
++
++# outputs
++dea_stats_path <- snakemake@output[["dea_stats_OvA"]]
++dea_stats_plot_path <- snakemake@output[["dea_stats_plot_OvA"]]
++
++# parameters
++adj_pval <- as.numeric(snakemake@params[["adj_pval"]]) # 0.05
++lfc <- as.numeric(snakemake@params[["lfc"]]) # 0
++ave_expr <- as.numeric(snakemake@params[["ave_expr"]]) # 0
++score_formula <- snakemake@params[["score_formula"]] # "-log10(dea_results$P.Value)*sign(dea_results$logFC)"
++
++# plot specifications
++width <- 0.25
++height <- 5
++
++### load DEA results
++dea_results <- data.frame()
++for (path in dea_result_paths) {
++    new_dea_results <- data.frame(fread(file.path(path), header=TRUE))
++    # results for OvA are saved without group prefix, add this here
++    group_name <- gsub(".*dea_limma/.*_OvA_([^/]+)/results.csv", "\\1", path)
++    if (!any(grepl(group_name, new_dea_results$group))) {
++        new_dea_results$group <- paste0(group_name, "_", new_dea_results$group)
++    }
++    dea_results <- rbind(dea_results, new_dea_results)
++}
++
++# annotate differential direction (up or down)
++dea_results$direction <- as.character(lapply(dea_results$logFC, function(x) if(x>0){"up"}else{"down"}))
++
++### aggregate & save FILTERED DEA statistics
++dea_filtered_results <- dea_results[(dea_results$adj.P.Val <= adj_pval) & 
++                                  (abs(dea_results$logFC) >= lfc) & 
++                                  (dea_results$AveExpr >= ave_expr), ]
++                                                                                          
++dea_filtered_stats <- table(dea_filtered_results$group, dea_filtered_results$direction)
++dea_filtered_stats_df <- as.data.frame.matrix(dea_filtered_stats)
++
++# Handling the exception when no significant genes are found in either up or down categories
++if (!all(c("up", "down") %in% colnames(dea_filtered_stats_df))) {
++    missing_cols <- setdiff(c("up", "down"), colnames(dea_filtered_stats_df))
++    if (length(missing_cols) == 2) {
++        # just make a new dataframe, otherwise index fails completely
++        dea_filtered_stats_df <- data.frame(up=0, down=0)
++    } else {
++        dea_filtered_stats_df[missing_cols] <- 0
++    }
++}
++
++dea_filtered_stats_df$total <- rowSums(dea_filtered_stats_df)
++fwrite(as.data.frame(dea_filtered_stats_df), file=file.path(dea_stats_path), row.names=TRUE)
++
++if (nrow(dea_filtered_stats) != 0) { # If there are DEA results after filtering
++    ### visualize DEA statistics
++    groups <- unique(dea_filtered_results$group)
++    width_panel <- length(groups) * width + 2
++
++    dea_filtered_stats_df$total <- NULL
++    dea_filtered_stats_df[,"down"] <- -1 * dea_filtered_stats_df[,"down"]
++    plot_stats_df <- stack(dea_filtered_stats_df)
++    colnames(plot_stats_df) <- c("n_features","direction")
++    plot_stats_df$groups <- rep(rownames(dea_filtered_stats_df), ncol(dea_filtered_stats_df))
++
++    # plot
++    dea_filtered_results_p <- ggplot(plot_stats_df, aes(x=groups, y=n_features, fill=direction)) + 
++                                             geom_bar(stat="identity", position="identity") +
++                                             xlab("groups") +
++                                             ylab("number of differential features") +
++                                             scale_fill_manual(values=list("up"="red", "down"="blue"), drop=FALSE) +
++                                             scale_y_continuous(labels = function(y) sapply(y, function(y) ifelse(y < 0, paste0(sub("-", "", as.character(y))), y))) +
++                                             geom_text(aes(label=ifelse(n_features == 0, '', abs(n_features)), vjust=ifelse(n_features < 0, 1.5, -0.5), hjust=0.5), size=2) +
++                                             custom_theme +
++                                             theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 6))
++
++    # save plot
++    # options(repr.plot.width=width_panel, repr.plot.height=height)
++    # print(dea_results_p)
++    ggsave_new(filename = "stats_OvA", 
++           results_path=dirname(dea_stats_plot_path), 
++           plot=dea_filtered_results_p, #dea_results_p, 
++           width=width_panel, 
++           height=height)
++                                             
++} else { # If there are no filtered features.
++	# empty stats plot
++	ggsave_new(filename = "stats_OvA", 
++           results_path=dirname(dea_stats_plot_path), 
++           plot = ggplot() + annotate("text", x = 0.5, y = 0.5, label = "No filtered features in DEA results.") + theme_void(), 
++           width=4, 
++           height=1)
++}
+\ No newline at end of file

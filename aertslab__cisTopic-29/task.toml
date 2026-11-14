@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/aertslab__cisTopic-29"
+description = "Minor update to createcisTopicObjectFrom10Xmatrix"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "cisTopic",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aertslab/cisTopic"
+ref = "faabc3f1ca33498cfd95983f7a31a3f426509131"
+reference = "https://github.com/aertslab/cisTopic/pull/29"
+source_access = "auto"
+built_at = "2026-11-14T07:15:58.477603+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:dc980ef9aca1e32a8821b16a6a588b20299528a516ff0b25790d91e4d38b9fe5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-09-19T09:06:57Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "R/InitializecisTopic.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 12
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

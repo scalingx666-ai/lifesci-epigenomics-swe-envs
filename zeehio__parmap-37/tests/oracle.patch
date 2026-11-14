@@ -1,0 +1,374 @@
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 599c0cc..6c8f3f9 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -18,16 +18,33 @@ jobs:
+       uses: actions/setup-python@v6
+       with:
+         python-version: ${{ matrix.python-version }}
+-    - name: Install dependencies
++    - name: Install parmap and test dependencies
+       run: |
+-        python -m pip install --upgrade build pip tox tox-gh-actions wheel
+-    - name: Test with tox
+-      run: tox
++        python -m pip install --upgrade pip
++        pip install .[progress_bar] pytest
++    - name: Run tests
++      run: pytest
++    - name: Install mypy
++      if: ${{ matrix.python-version == '3.13' }}
++      run: pip install mypy
++    - name: Run mypy
++      if: ${{ matrix.python-version == '3.13' }}
++      run: mypy -p parmap
++    - name: Install coverage
++      if: ${{ matrix.python-version == '3.13' }}
++      run: pip install coverage
++    - name: Run tests with coverage
++      if: ${{ matrix.python-version == '3.13' }}
++      run: |
++        coverage run --parallel-mode --concurrency=multiprocessing test_parmap.py
++        coverage combine
++        coverage report
++        coverage xml
+     - name: Upload coverage.xml
+       if: ${{ matrix.python-version == '3.13' }}
+       uses: actions/upload-artifact@v7
+       with:
+-        name: tox-gh-actions-coverage
++        name: coverage-xml
+         path: coverage.xml
+         if-no-files-found: error
+     - name: Upload coverage.xml to codecov
+diff --git a/.gitignore b/.gitignore
+index cc16eac..f06ae1d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -24,7 +24,6 @@ pip-log.txt
+ 
+ # Unit test / coverage reports
+ .coverage
+-.tox
+ nosetests.xml
+ 
+ # Translations
+diff --git a/ChangeLog b/ChangeLog
+index 28b6fed..cc0389a 100644
+--- a/ChangeLog
++++ b/ChangeLog
+@@ -1,5 +1,13 @@
+ parmap (1.7.0.9000)
+ 
++  [Enhancement]
++
++  * Warn (UserWarning) when a mapped function's own signature declares a
++    parameter name that collides with one of parmap's reserved keyword
++    arguments (`pm_*` and their deprecated aliases): parmap always consumes
++    those for itself, so the function silently never received the caller's
++    intended value. This was previously only documented, not enforced.
++
+   [Bug fixes]
+ 
+   * Stop silently swallowing all exceptions (including KeyboardInterrupt) in
+@@ -18,6 +26,18 @@ parmap (1.7.0.9000)
+     requirement in the README.
+   * Test and add support for Python 3.12 and 3.13 (CI matrix, tox envlist
+     and classifiers).
++  * Increase the test suite's timing safety margins to reduce flakiness on
++    slower or more loaded CI runners. (A first attempt at this calibrated
++    the margin by creating a real multiprocessing.Pool as a module-level
++    side effect at import time; that hung indefinitely in CI, so it was
++    reverted in favor of a plain, generous constant.)
++  * Update GitHub Actions used in CI to their latest major versions
++    (checkout, setup-python, upload-artifact, codecov-action).
++  * Drop tox/tox-gh-actions from CI in favor of plain pip install + pytest
++    (and mypy/coverage on the latest Python version) steps: the Actions
++    matrix already provides one job per Python version, so tox's own
++    per-version env selection was redundant, and collapsing it into a
++    single opaque `tox` step made a CI hang much harder to diagnose.
+ 
+  -- Sergio Oller <sergioller@gmail.com>  Sat, 09 Sep 2023 20:05:00 +0200
+ 
+diff --git a/README.rst b/README.rst
+index 7afd3a7..a747cec 100644
+--- a/README.rst
++++ b/README.rst
+@@ -193,6 +193,11 @@ functions you write, because of parmap backwards compatibility reasons. The list
+ of conflicting arguments is: ``parallel``, ``chunksize``, ``pool``,
+ ``processes``, ``callback``, ``error_callback`` and ``parmap_progress``.
+ 
++If your function's own signature declares a parameter with one of these
++reserved names and you pass a value for it, ``parmap`` will emit a
++``UserWarning`` pointing out the collision: it will still consume the value
++for itself, and your function will not receive it.
++
+ 
+ 
+ Acknowledgments:
+diff --git a/parmap/parmap.py b/parmap/parmap.py
+index d5169c1..50c2589 100644
+--- a/parmap/parmap.py
++++ b/parmap/parmap.py
+@@ -68,6 +68,7 @@
+ # The original idea for this implementation was given by J.F. Sebastian
+ # at  http://stackoverflow.com/a/5443941/446149
+ 
++import inspect
+ import multiprocessing
+ import typing as T
+ import warnings
+@@ -238,11 +239,69 @@ def _deprecated_kwargs(kwargs, arg_newarg):
+     return kwargs
+ 
+ 
++# Keyword arguments reserved by parmap for its own use. If the mapped
++# function's own signature declares a parameter with one of these names,
++# parmap will consume the caller's value for itself and the function will
++# never see it (see _warn_reserved_kwarg_collisions).
++_RESERVED_KWARGS_MAP = (
++    "pm_parallel",
++    "pm_chunksize",
++    "pm_pool",
++    "pm_processes",
++    "pm_pbar",
++    "parallel",
++    "chunksize",
++    "pool",
++    "processes",
++    "parmap_progress",
++)
++_RESERVED_KWARGS_ASYNC = (
++    "pm_parallel",
++    "pm_chunksize",
++    "pm_pool",
++    "pm_processes",
++    "pm_callback",
++    "pm_error_callback",
++    "parallel",
++    "chunksize",
++    "pool",
++    "processes",
++    "callback",
++    "error_callback",
++)
++
++
++def _warn_reserved_kwarg_collisions(function, kwargs, reserved_names):
++    """Warn if `function`'s own signature declares a parameter name that
++    the caller also passed as one of parmap's reserved keyword arguments.
++    parmap always consumes those itself, so `function` will not receive
++    the value the caller most likely intended for it.
++    """
++    try:
++        parameters = inspect.signature(function).parameters
++    except (TypeError, ValueError):
++        # function does not support introspection (e.g. some builtins);
++        # nothing we can check.
++        return
++    colliding = [name for name in reserved_names if name in kwargs and name in parameters]
++    if colliding:
++        warnings.warn(
++            "The argument(s) '{}' are reserved for parmap and will not be "
++            "passed to {!r}, even though its signature declares a "
++            "parameter with that name. Rename the parameter in your "
++            "function, or the keyword argument in your call, to avoid "
++            "this collision.".format(", ".join(colliding), function),
++            UserWarning,
++            stacklevel=4,
++        )
++
++
+ def _map_or_starmap(function, iterable, args, kwargs, map_or_starmap):
+     """
+     Shared function between parmap.map and parmap.starmap.
+     Refer to those functions for details.
+     """
++    _warn_reserved_kwarg_collisions(function, kwargs, _RESERVED_KWARGS_MAP)
+     arg_newarg = (
+         ("parallel", "pm_parallel"),
+         ("chunksize", "pm_chunksize"),
+@@ -458,6 +517,7 @@ def _map_or_starmap_async(function, iterable, args, kwargs, map_or_starmap):
+     Shared function between parmap.map_async and parmap.starmap_async.
+     Refer to those functions for details.
+     """
++    _warn_reserved_kwarg_collisions(function, kwargs, _RESERVED_KWARGS_ASYNC)
+     arg_newarg = (
+         ("parallel", "pm_parallel"),
+         ("chunksize", "pm_chunksize"),
+diff --git a/pyproject.toml b/pyproject.toml
+index 00913b2..601abbc 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -46,41 +46,3 @@ include = [
+   "docs/make.bat",
+ ]
+ 
+-[tool.tox]
+-legacy_tox_ini = """
+-[tox]
+-envlist = py38, py39, py310, py311, py312, py313, mypy, coverage
+-
+-[gh-actions]
+-python =
+-    3.8: py38
+-    3.9: py39
+-    3.10: py310
+-    3.11: py311
+-    3.12: py312
+-    3.13: py313, mypy, coverage
+-
+-[testenv:coverage]
+-deps =
+-  coverage
+-  tqdm
+-
+-commands = 
+-  coverage run --parallel-mode --concurrency=multiprocessing test_parmap.py
+-  coverage combine
+-  coverage report
+-  coverage xml
+-
+-[testenv:mypy]
+-deps = 
+-  mypy
+-  tqdm
+-commands = 
+-  mypy -p parmap
+-
+-[testenv]
+-deps = pytest
+-
+-commands = pytest {posargs} # substitute with tox' positional arguments
+-"""
+-
+diff --git a/test_parmap.py b/test_parmap.py
+index 7d083a7..5a41976 100644
+--- a/test_parmap.py
++++ b/test_parmap.py
+@@ -6,11 +6,21 @@
+ import parmap
+ 
+ # The fact that parallelization is happening is controlled via reasonable
+-# guesses of the parmap overhead and the CPU speeds
++# guesses of the parmap overhead and the CPU speeds.
++#
++# An earlier version of this file computed TIME_OVERHEAD by creating a real
++# multiprocessing.Pool as a module-level side effect (i.e. on every import,
++# before any test ran) to calibrate it against the running machine. That
++# hung indefinitely in CI even though it worked in every environment tested
++# locally, so it was reverted in favor of a generous static constant.
+ 
+ 
+-# Overhead of map_async, should be less than TIME_PER_TEST
+-TIME_OVERHEAD = 0.4
++def _identity(*x):
++    return x
++
++
++# Overhead of map_async / pool creation, should be less than TIME_PER_TEST.
++TIME_OVERHEAD = 2.0
+ 
+ # The time each call takes to return in the _wait test
+ TIME_PER_TEST = 0.8
+@@ -22,10 +32,6 @@ def _wait(x):
+     return x
+ 
+ 
+-def _identity(*x):
+-    return x
+-
+-
+ def _boom(x):
+     """Dummy function that raises for one specific input"""
+     if x == 2:
+@@ -40,6 +46,17 @@ def _fun_with_keywords(x, a=0, b=_DEFAULT_B):
+     return x + a + b
+ 
+ 
++def _fun_needing_processes(x, processes=None):
++    """A function whose own parameter collides with the deprecated
++    'processes' alias for parmap's pm_processes."""
++    return (x, processes)
++
++
++def _fun_needing_pm_pbar(x, pm_pbar="default"):
++    """A function whose own parameter collides with parmap's pm_pbar."""
++    return (x, pm_pbar)
++
++
+ class ProgrBar:
+     def __init__(self, **kwargs):
+         self.expected = "S" + "T" * kwargs["total"] + "E"
+@@ -75,7 +92,7 @@ def test_map_with_parallel_timings(self):
+         ptrue = parmap.map(_wait, items, pm_processes=NUM_TASKS, pm_parallel=True)
+         elapsed = time.time() - mytime
+         self.assertTrue(elapsed >= TIME_PER_TEST)
+-        self.assertTrue(elapsed < TIME_PER_TEST * (NUM_TASKS - 1))
++        self.assertTrue(elapsed < TIME_PER_TEST * (NUM_TASKS - 1) + TIME_OVERHEAD)
+         self.assertEqual(ptrue, list(range(NUM_TASKS)))
+ 
+     def test_map_kwargs(self):
+@@ -170,7 +187,7 @@ def test_map_async(self):
+         self.assertEqual(pfalse, noparmap)
+         self.assertTrue(elapsed_false > TIME_PER_TEST * (NUM_TASKS - 1))
+         self.assertTrue(elap_true_async < TIME_OVERHEAD)
+-        self.assertTrue(elap_true_get < TIME_PER_TEST * (NUM_TASKS - 1))
++        self.assertTrue(elap_true_get < TIME_PER_TEST * (NUM_TASKS - 1) + TIME_OVERHEAD)
+ 
+     def test_starmap(self):
+         items = [(1, 2), (3, 4), (5, 6)]
+@@ -247,6 +264,53 @@ class _FakePool:
+ 
+         self.assertEqual(_get_default_chunksize(None, _FakePool(), 10), 1)
+ 
++    def test_reserved_legacy_alias_collision_warns(self):
++        with warnings.catch_warnings(record=True) as w:
++            warnings.simplefilter("always")
++            result = parmap.map(
++                _fun_needing_processes, range(2), processes=4, pm_parallel=False
++            )
++        collision_warnings = [
++            warning
++            for warning in w
++            if issubclass(warning.category, UserWarning)
++            and "processes" in str(warning.message)
++            and "reserved" in str(warning.message)
++        ]
++        self.assertTrue(len(collision_warnings) > 0)
++        # The function's own `processes` parameter never receives 4: parmap
++        # reserved that name (as a legacy alias for pm_processes) for itself.
++        self.assertEqual(result, [(0, None), (1, None)])
++
++    def test_reserved_pm_kwarg_collision_warns(self):
++        with warnings.catch_warnings(record=True) as w:
++            warnings.simplefilter("always")
++            result = parmap.map(
++                _fun_needing_pm_pbar, range(2), pm_pbar=False, pm_parallel=False
++            )
++        collision_warnings = [
++            warning
++            for warning in w
++            if issubclass(warning.category, UserWarning)
++            and "pm_pbar" in str(warning.message)
++            and "reserved" in str(warning.message)
++        ]
++        self.assertTrue(len(collision_warnings) > 0)
++        # The function's own `pm_pbar` parameter never receives False:
++        # parmap reserved that name for the progress bar option.
++        self.assertEqual(result, [(0, "default"), (1, "default")])
++
++    def test_no_collision_warning_without_collision(self):
++        with warnings.catch_warnings(record=True) as w:
++            warnings.simplefilter("always")
++            parmap.map(_fun_with_keywords, range(2), pm_parallel=False, a=10)
++        collision_warnings = [
++            warning
++            for warning in w
++            if issubclass(warning.category, UserWarning) and "reserved" in str(warning.message)
++        ]
++        self.assertEqual(collision_warnings, [])
++
+ 
+ if __name__ == "__main__":
+     multiprocessing.freeze_support()

@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/open2c__polychrom-76"
+description = "updated build system and deprecated modules"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "polychrom",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "open2c/polychrom"
+ref = "320f25e97a27f97253a1e93ff9ef2a9f1dc9fd9b"
+reference = "https://github.com/open2c/polychrom/pull/76"
+source_access = "auto"
+built_at = "2026-11-14T07:17:32.254732+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1762881ba87315ec32036b28a8e16f973fd6b38ba7082892c4dd85c1f9ea1f8e"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-11-10T22:41:04Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/pythonapp.yml",
+    ".gitignore",
+    "docs/conf.py",
+    "docs/index.rst",
+    "polychrom/__init__.py",
+    "polychrom/__polymer_math.cpp",
+    "polychrom/cli/show",
+    "polychrom/cli/xyz",
+    "polychrom/legacy/polymerutils.py",
+    "polychrom/polymer_analyses.py",
+    "polychrom/polymerutils.py",
+    "pyproject.toml",
+    "requirements.txt",
+    "setup.py",
+    "utilities/showChainWithRasmol.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 351
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

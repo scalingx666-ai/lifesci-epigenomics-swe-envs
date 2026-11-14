@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/stuart-lab__signac-1983"
+description = "Update motif positions with genome seqinfo"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "signac",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "stuart-lab/signac"
+ref = "bb231ab701782ce2849e80d136f9ef1c9f92da6a"
+reference = "https://github.com/stuart-lab/signac/pull/1983"
+source_access = "auto"
+built_at = "2026-11-14T05:46:52.194028+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9bc9a054ea56a26150bc951f54afdbf7a3f16e7f00248f380cc17c3a23493d9b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-31T04:36:26Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "NAMESPACE",
+    "NEWS.md",
+    "R/motifs.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 19
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

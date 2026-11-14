@@ -1,0 +1,147 @@
+diff --git a/bin/ExtractGName.R b/bin/ExtractGName.R
+index e7c3c88..51bb906 100644
+--- a/bin/ExtractGName.R
++++ b/bin/ExtractGName.R
+@@ -1,13 +1,56 @@
++#!/usr/bin/env Rscript
++
+ # Extract gene names as ordered by GO algo from ngs.plot output zip file.
+ # Input should be the file name of the zip file without .zip suffix.
+ 
++help<-function(){
++	cat("Usage: ExtractGname.R file\n\n")
++  cat("Extract function for ngsplot\n")
++  cat("file can either be the zip file containing the RData file or the RData file directly\n")
++	cat("Output varies depending on input. If input data file has no cluster information, only one gene_name.txt file produced for each plot.\n")
++	cat("If cluster information present, an additional cluster.*.txt file produced for each cluster for each plot.\n")
++	q(status=1)
++}
++
+ fname <- commandArgs(T)
++if( length(fname) < 1 || length(fname) > 1){
++	help()
++}
++
++if(grepl(".zip",fname)){
++  root<-strsplit(fname,'.',T)[[1]][1]
++	heatmap.dat <- file.path(root, 'heatmap.RData')
++	load(unz(fname, heatmap.dat))
++} else if (grepl(".RData",fname)) {
++  root<-strsplit(fname,'.',T)[[1]][1]
++  load(fname)
++} else { #assume zip file missing .zip suffix. maintains compatibility
++  heatmap.dat <- file.path(fname, 'heatmap.RData')
++  load(unz(paste(fname,"zip",sep='.'), heatmap.dat))
++}
++
++###Step through each gene list
++for(i in 1:length(go.list[[1]])){
++  if(is.na(go.list[[2]][i])){ #no cluster information
++    gene.list <- data.frame(go.list[[1]][i], stringsAsFactors = FALSE)
++
++    gname.list <- strsplit(gene.list[,1], ':')
++    gene.list <- data.frame(do.call(rbind, gname.list))
++
++    write.table(gene.list, file=paste(root, i,'gene_name.txt', sep='.'),
++                col.names=F, row.names=F)
++  } else{ # With Clusters
++    gene.list <- data.frame(gene=go.list[[1]][i],cluster=go.list[[2]][i], stringsAsFactors = FALSE)
+ 
+-zip.fname <- paste(fname, 'zip', sep='.')
+-heatmap.dat <- file.path(fname, 'heatmap.RData')
+-load(unz(zip.fname, heatmap.dat))
++    gname.list <- strsplit(gene.list[,1], ':')
++    gene.list <- data.frame(do.call(rbind, gname.list),gene.list[,2])
+ 
+-gene.list <- strsplit(go.list[[1]], ':')
+-gname.list <- sapply(gene.list, function(x) x[1])
+-write.table(gname.list, file=paste(fname, 'gname.txt', sep='.'), 
+-            col.names=F, row.names=F)
+\ No newline at end of file
++    write.table(gene.list, file=paste(root, i,'gene_name.txt', sep='.'),
++                col.names=F, row.names=F)
++    clusters <- max(gene.list[,3])
++    for( j in 1:clusters ){ # Write Clusters
++      filename <- paste("cluster",j,".txt",sep="")
++      write.table(gene.list[gene.list[,3]==j,1], file=paste(root,i, filename, sep='.'),  col.names=F, row.names=F, quote = FALSE)
++    }
++  }
++}
+diff --git a/lib/plotlib.r b/lib/plotlib.r
+index 1558741..7b56331 100644
+--- a/lib/plotlib.r
++++ b/lib/plotlib.r
+@@ -386,26 +386,27 @@ OrderGenesHeatmap <- function(enrichList, lowCutoffs,
+         # Clustering and order genes.
+         hc <- hclust(dist(rankCombined, method='euclidean'), 
+                      method='complete')
+-        hc$order
++        memb <- cutree(hc, k = go.paras$knc)
++        list(hc$order,memb)
+     } else if(method == 'km') {
+         rankCombined <- do.call('cbind', rankList)
+         km <- kmeans(rankCombined, centers=go.paras$knc, 
+                      iter.max=go.paras$max.iter, nstart=go.paras$nrs)
+-        order(km$cluster)
++        list(order(km$cluster), km$cluster)
+     } else if(method == 'total' || method == 'diff' && np == 1) {  
+-        order(rowSums(rankList[[1]]))
++        list(order(rowSums(rankList[[1]])), NULL)
+     } else if(method == 'max') {  # peak enrichment value of the 1st profile.
+-        order(apply(rankList[[1]], 1, max))
++        list(order(apply(rankList[[1]], 1, max)), NULL)
+     } else if(method == 'prod') {  # product of all profiles.
+         rs.mat <- sapply(rankList, rowSums)
+         g.prod <- apply(rs.mat, 1, prod)
+-        order(g.prod)
++        list(order(g.prod), NULL)
+     } else if(method == 'diff' && np > 1) {  # difference between 2 profiles.
+-        order(rowSums(rankList[[1]]) - rowSums(rankList[[2]]))
++        list(order(rowSums(rankList[[1]]) - rowSums(rankList[[2]])), NULL)
+     } else if(method == 'none') {  # according to the order of input gene list.
+         # Because the image function draws from bottom to top, the rows are 
+         # reversed to give a more natural look.
+-        rev(1:nrow(enrichList[[1]]))
++        list(rev(1:nrow(enrichList[[1]])),NULL)
+     } else {
+         # pass.
+     }
+@@ -513,7 +514,11 @@ plotheat <- function(reg.list, uniq.reg, enrichList, v.low.cutoff, go.algo,
+     # Do NOT use "dopar" in the "foreach" loops here because this will disturb
+     # the image order.
+     go.list <- vector('list', length(uniq.reg))
++    go.cluster <- vector('list', length(uniq.reg))
++
+     names(go.list) <- uniq.reg
++    names(go.cluster) <- uniq.reg
++
+     for(ur in uniq.reg) {
+         # ur <- uniq.reg[i]
+         plist <- which(reg.list==ur)  # get indices in the config file.
+@@ -536,11 +541,15 @@ plotheat <- function(reg.list, uniq.reg, enrichList, v.low.cutoff, go.algo,
+             } else {
+                 lowCutoffs <- v.low.cutoff[plist]
+             }
+-            g.order <- OrderGenesHeatmap(enrichSelected, lowCutoffs, go.algo, 
+-                                         go.paras)
++            g.order.list <- OrderGenesHeatmap(enrichSelected, lowCutoffs, go.algo,
++                                              go.paras)
++            g.order <- g.order.list[[1]]
++            g.cluster <- g.order.list[[2]]
++            go.cluster[[ur]] <- rev(g.cluster[g.order])
+             go.list[[ur]] <- rev(rownames(enrichSelected[[1]][g.order, ]))
+         } else {
+             g.order <- NULL
++            g.cluster <- NULL
+             go.list[[ur]] <- g.order
+         }
+ 
+@@ -581,7 +590,7 @@ plotheat <- function(reg.list, uniq.reg, enrichList, v.low.cutoff, go.algo,
+             axis(1, at=xticks$pos, labels=xticks$lab, lwd=1, lwd.ticks=1)
+         }
+     }
+-    go.list
++    list(go.list,go.cluster)
+ }
+ 
+ trim <- function(x, p){

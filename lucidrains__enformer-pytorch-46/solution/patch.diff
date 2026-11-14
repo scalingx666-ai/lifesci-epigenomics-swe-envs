@@ -1,0 +1,13 @@
+diff --git a/enformer_pytorch/modeling_enformer.py b/enformer_pytorch/modeling_enformer.py
+index 9007878..68e655f 100644
+--- a/enformer_pytorch/modeling_enformer.py
++++ b/enformer_pytorch/modeling_enformer.py
+@@ -26,7 +26,7 @@
+ # solution came from @johahi
+ 
+ DIR = Path(__file__).parents[0]
+-TF_GAMMAS = torch.load(str(DIR / "precomputed"/ "tf_gammas.pt"))
++TF_GAMMAS = torch.load(str(DIR / "precomputed"/ "tf_gammas.pt"), weights_only=True)
+ 
+ # helpers
+ 

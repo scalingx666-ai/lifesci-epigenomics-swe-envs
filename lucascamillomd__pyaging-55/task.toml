@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/lucascamillomd__pyaging-55"
+description = "Release pyaging 0.6.0 with DNAm median fallback"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pyaging",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lucascamillomd/pyaging"
+ref = "c15cf28347f5b7a984646a16f5f01b95a1e15c20"
+reference = "https://github.com/lucascamillomd/pyaging/pull/55"
+source_access = "auto"
+built_at = "2026-11-14T07:16:10.799281+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:74f76a0ace5f12bf6a47cffe23bb2ec4d0924c120725343b4500297c15fe366d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-03T13:38:17Z"
+diff_format = "unified"
+context_files = [
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "clocks/build_dnam_feature_medians.py",
+    "clocks/validate_dnam_feature_medians.py",
+    "docs/development/dnam-median-fallback-validation.md",
+    "docs/superpowers/plans/2026-11-03-pyaging-0.6.0-dnam-median-fallback.md",
+    "docs/superpowers/specs/2026-11-03-dnam-median-fallback-design.md",
+    "src/pyaging/__init__.py",
+    "src/pyaging/data/dnam_feature_medians.json.gz",
+    "src/pyaging/models/_author_extensions.py",
+    "src/pyaging/models/_models.py",
+    "src/pyaging/predict/_pred_utils.py",
+    "tests/models/test_author_extensions.py",
+    "tests/predict/test_input_and_batching.py",
+    "tests/test_dnam_feature_medians.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 618
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

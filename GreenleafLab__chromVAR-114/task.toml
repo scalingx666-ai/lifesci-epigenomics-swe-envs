@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/GreenleafLab__chromVAR-114"
+description = "feat: allow different jaspar DB sources"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "chromVAR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "GreenleafLab/chromVAR"
+ref = "0f27fcc8463d537d770f164a55f949701beb6add"
+reference = "https://github.com/GreenleafLab/chromVAR/pull/114"
+source_access = "auto"
+built_at = "2026-11-14T07:15:07.423007+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2db09308e1d1c6fff1167b59ced21f12da76c3b40fc2f8a53a925c2e1d96c66f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-01T03:55:20Z"
+diff_format = "unified"
+context_files = [
+    "R/motifs.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 25
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

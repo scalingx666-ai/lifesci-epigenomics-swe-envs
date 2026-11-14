@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/vanheeringen-lab__seq2science-1033"
+description = "update genomepy + gimmemotifs + fix install"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "seq2science",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "vanheeringen-lab/seq2science"
+ref = "a86a1eb1074d8df35725cae30f7481fb2bd74cc0"
+reference = "https://github.com/vanheeringen-lab/seq2science/pull/1033"
+source_access = "auto"
+built_at = "2026-11-14T07:15:41.906185+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3c42b392ea0f4bf12938013a9a6485dd8b09f3d379930bc40d381408fbc3c9d3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-22T08:33:10Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/continuousdeployment.yml",
+    ".gitignore",
+    "CHANGELOG.md",
+    "requirements.yaml",
+    "seq2science/cli.py",
+    "seq2science/envs/assembly_stats.yaml",
+    "seq2science/envs/gimme.yaml",
+    "seq2science/envs/pytxi.yaml",
+    "seq2science/rules/configuration_generic.smk",
+    "seq2science/rules/configuration_logging.smk",
+    "seq2science/rules/configuration_workflows.smk",
+    "seq2science/rules/qc.smk",
+    "seq2science/util.py",
+    "tests/dag_tests.sh",
+    "tests/run_tests.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 109
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

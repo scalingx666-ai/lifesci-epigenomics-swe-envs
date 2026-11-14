@@ -1,0 +1,43 @@
+diff --git a/views/enrichment_analysis.haml b/views/enrichment_analysis.haml
+index 8a9a8fa..88a0fb3 100644
+--- a/views/enrichment_analysis.haml
++++ b/views/enrichment_analysis.haml
+@@ -245,9 +245,6 @@
+                         %a{ id: "#{genome}-estimated-run-time" }
+                           \-
+ 
+-                      %p.text-danger
+-                        %strong Note:
+-                        Jobs submitted before April 2026 may not complete due to a node switch. Please re-submit your job.
+                       %p
+                         %a{ href: "https://sc.ddbj.nig.ac.jp/en/operation/job_queue_status/", target: "_blank" }
+                           node status (epyc.q)
+diff --git a/views/enrichment_analysis_result.haml b/views/enrichment_analysis_result.haml
+index 42bf861..6fd7a1e 100644
+--- a/views/enrichment_analysis_result.haml
++++ b/views/enrichment_analysis_result.haml
+@@ -73,11 +73,6 @@
+         .container#executionLog
+         %hr
+ 
+-        %p.text-danger
+-          %strong Note:
+-          Jobs submitted before April 2026 may not complete due to a node switch. Please re-submit your job from the
+-          %a{ href: "#{app_root}/enrichment_analysis" } Enrichment Analysis
+-          page.
+         %p
+           As this function uses the NIG supercomputer system, it may take time to start your job when the nodes are busy. Please check computation node status
+           %a{ href: "https://sc.ddbj.nig.ac.jp/en/operation/job_queue_status/", target: "_blank" }
+diff --git a/views/updates.markdown b/views/updates.markdown
+index df62d48..6808898 100644
+--- a/views/updates.markdown
++++ b/views/updates.markdown
+@@ -1,7 +1,7 @@
+ ### What's new
+ 
+ <!-- - <span style="color:red">**Enrichment analysis will be temporarily unavailable due to the backend server maintenance: June 28th 9am - July 1st 0am (GMT+9)**</span> -->
+-- Added new genome assembly **A. thaliana**, welcome! (2026/09/26)
++- Added new genome assembly **TAIR12** of **A. thaliana**, welcome! (2026/09/26)
+ - **ChIP-Atlas turns 10!** New publication in the NAR Web Server Issue. Happy to have supported so many researchers over the past decade! [https://doi.org/10.1093/nar/gkag378](https://doi.org/10.1093/nar/gkag378) (2026/04/29)
+ - **New publication** on the NAR web server issue! [https://doi.org/10.1093/nar/gkae358](https://doi.org/10.1093/nar/gkae358) (2024/05/16)
+ - Added **Annotation tracks** to Peak Browser, together with UI improvement (2023/10/25)

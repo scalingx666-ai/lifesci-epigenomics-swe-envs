@@ -1,0 +1,246 @@
+diff --git a/src/pycisTopic/cli/subcommand/topic_modeling.py b/src/pycisTopic/cli/subcommand/topic_modeling.py
+index 4ab13f8..2661dae 100644
+--- a/src/pycisTopic/cli/subcommand/topic_modeling.py
++++ b/src/pycisTopic/cli/subcommand/topic_modeling.py
+@@ -29,7 +29,7 @@ def run_topic_modeling_with_lda(args):
+         if args.keep_intermediate_topic_models
+         else None
+     )
+-    random_state = args.seed
++    random_seed = args.seed
+     temp_dir = args.temp_dir
+ 
+     if args.verbose:
+@@ -48,7 +48,7 @@ def run_topic_modeling_with_lda(args):
+     print(f"  - Divide eta by the number of topics:         {eta_by_topic}")
+     print(f"  - Number of iterations:                       {n_iter}")
+     print(f"  - Number of topic models to run in parallel:  {n_cpu}")
+-    print(f"  - Seed:                                       {random_state}")
++    print(f"  - Seed:                                       {random_seed}")
+     print(f"  - Save intermediate topic models in dir:      {save_path}")
+     print(f"  - TMP dir:                                    {temp_dir}")
+ 
+@@ -64,7 +64,7 @@ def run_topic_modeling_with_lda(args):
+         n_topics=n_topics,
+         n_cpu=n_cpu,
+         n_iter=n_iter,
+-        random_state=random_state,
++        random_state=random_seed,
+         alpha=alpha,
+         alpha_by_topic=alpha_by_topic,
+         eta=eta,
+@@ -91,8 +91,10 @@ def run_topic_modeling_with_mallet(args):
+     eta = args.eta
+     eta_by_topic = args.eta_by_topic
+     n_iter = args.iterations
+-    n_cpu = args.parallel
+-    random_state = args.seed
++    optimize_interval = args.optimize_interval
++    optimize_burn_in = args.optimize_burn_in
++    n_threads = args.parallel
++    random_seed = args.seed
+     memory_in_gb = f"{args.memory_in_gb}G"
+     mallet_path = args.mallet_path
+ 
+@@ -110,9 +112,11 @@ def run_topic_modeling_with_mallet(args):
+     print(f"  - Divide alpha by the number of topics:       {alpha_by_topic}")
+     print(f"  - Eta:                                        {eta}")
+     print(f"  - Divide eta by the number of topics:         {eta_by_topic}")
+-    print(f"  - Number of iterations:                       {n_iter}")
+-    print(f"  - Number threads Mallet is allowed to use:    {n_cpu}")
+-    print(f"  - Seed:                                       {random_state}")
++    print(f"  - Number of iterations of Gibbs sampling:     {n_iter}")
++    print(f"  - Optimize interval for hyperparameters:      {optimize_interval}")
++    print(f"  - Number of burn-in iterations:               {optimize_burn_in}")
++    print(f"  - Number threads Mallet is allowed to use:    {n_threads}")
++    print(f"  - Seed:                                       {random_seed}")
+     print(f"  - Amount of memory Mallet is allowed to use:  {memory_in_gb}")
+     print(f"  - Mallet binary:                              {mallet_path}")
+ 
+@@ -131,11 +135,12 @@ def run_topic_modeling_with_mallet(args):
+             alpha_by_topic=alpha_by_topic,
+             eta=eta,
+             eta_by_topic=eta_by_topic,
+-            n_cpu=n_cpu,
+-            optimize_interval=0,
++            n_threads=n_threads,
+             iterations=n_iter,
++            optimize_interval=optimize_interval,
++            optimize_burn_in=optimize_burn_in,
+             topic_threshold=0.0,
+-            random_seed=random_state,
++            random_seed=random_seed,
+             mallet_path=mallet_path,
+         )
+ 
+@@ -559,7 +564,7 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+         type=int,
+         required=False,
+         default=10,
+-        help='Amount of memory (in GB) Mallet is allowed to use. Default: "10"',
++        help='Amount of memory (in GB) Mallet is allowed to use. Default: "10".',
+     )
+     parser_topic_modeling_mallet_create_corpus.add_argument(
+         "-b",
+@@ -627,7 +632,27 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+         type=int,
+         required=False,
+         default=150,
+-        help="Number of iterations. Default: 150.",
++        help="Number of iterations of Gibbs sampling. Default: 150.",
++    )
++    parser_topic_modeling_mallet_run.add_argument(
++        "--optimize-interval",
++        dest="optimize_interval",
++        type=int,
++        required=False,
++        default=0,
++        help="Optimize hyperparameters every `optimize_interval` iterations. "
++        "Only takes effect after running `optimize_burn_in` iterations. "
++        "Disable optimizing hyperparameters by setting this option to 0. "
++        "Default: 0.",
++    )
++    parser_topic_modeling_mallet_run.add_argument(
++        "--optimize-burn-in",
++        dest="optimize_burn_in",
++        type=int,
++        required=False,
++        default=50,
++        help="The number of iterations before starting hyperparameter optimization. "
++        "Default: 50.",
+     )
+     parser_topic_modeling_mallet_run.add_argument(
+         "-a",
+@@ -674,7 +699,9 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+         type=int,
+         required=False,
+         default=555,
+-        help="Seed for ensuring reproducibility. Default: 555.",
++        help="Seed for ensuring reproducibility. "
++        "To get reproducible output, Mallet also has to be run with the same number of threads. "
++        "Default: 555.",
+     )
+     parser_topic_modeling_mallet_run.add_argument(
+         "-m",
+@@ -683,7 +710,7 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+         type=int,
+         required=False,
+         default=100,
+-        help='Amount of memory (in GB) Mallet is allowed to use. Default: "100"',
++        help='Amount of memory (in GB) Mallet is allowed to use. Default: "100".',
+     )
+     parser_topic_modeling_mallet_run.add_argument(
+         "-b",
+@@ -752,7 +779,7 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+     parser_topic_modeling_mallet_plot_stats = (
+         subparser_topic_modeling_mallet.add_parser(
+             "plot_stats",
+-            help="Plot evaluation statistics",
++            help="Plot evaluation statistics.",
+         )
+     )
+     parser_topic_modeling_mallet_plot_stats.set_defaults(
+@@ -784,11 +811,12 @@ def add_parser_topic_modeling(subparsers: _SubParsersAction[ArgumentParser]):
+         type=str,
+         required=False,
+         default="png",
+-        help="File format of the resulting plots. Default: png",
++        help="File format of the resulting plots. Default: png.",
+     )
+ 
+     parser_topic_modeling_mallet_binarize = subparser_topic_modeling_mallet.add_parser(
+-        "binarize", help="Binarize cell- or region-topic probabilities"
++        "binarize",
++        help="Binarize cell- or region-topic probabilities.",
+     )
+     parser_topic_modeling_mallet_binarize.set_defaults(
+         func=binarize_cell_or_region_topic
+diff --git a/src/pycisTopic/topic_modeling/mallet_models.py b/src/pycisTopic/topic_modeling/mallet_models.py
+index 014583f..fd97fb4 100644
+--- a/src/pycisTopic/topic_modeling/mallet_models.py
++++ b/src/pycisTopic/topic_modeling/mallet_models.py
+@@ -80,7 +80,7 @@ def convert_binary_matrix_to_mallet_corpus_file(
+                 #   - column 2: document number (always 0).
+                 #   - column 3: region IDs indices accessible in the current cell barcode.
+                 mallet_corpus_txt_fh.write(
+-                    f'{cell_barcode_idx}\t0\t{" ".join([str(x) for x in region_ids_idx])}\n'
++                    f"{cell_barcode_idx}\t0\t{' '.join([str(x) for x in region_ids_idx])}\n"
+                 )
+ 
+         mallet_import_file_cmd = [
+@@ -337,7 +337,7 @@ def read_parameters_json_filename(parameters_json_filename: str) -> dict:
+         Dictionary with Mallet LDA parameters and settings.
+ 
+         """
+-        with open(parameters_json_filename, "r") as fh:
++        with open(parameters_json_filename) as fh:
+             mallet_train_topics_parameters = json.load(fh)
+         return mallet_train_topics_parameters
+ 
+@@ -350,9 +350,10 @@ def run_mallet_topic_modeling(
+         alpha_by_topic: bool = True,
+         eta: float = 0.1,
+         eta_by_topic: bool = False,
+-        n_cpu: int = 1,
+-        optimize_interval: int = 0,
++        n_threads: int = 1,
+         iterations: int = 150,
++        optimize_interval: int = 0,
++        optimize_burn_in: int = 50,
+         topic_threshold: float = 0.0,
+         random_seed: int = 555,
+         mallet_path: str = "mallet",
+@@ -379,15 +380,19 @@ def run_mallet_topic_modeling(
+             multinomials. Default: 0.1.
+         eta_by_topic
+             Boolean indicating whether the scalar given in beta has to be divided by
+-            the number of topics. Default: False
+-        n_cpu
++            the number of topics. Default: False.
++        n_threads
+             Number of threads that will be used for training. Default: 1.
++        iterations
++            Number of training iterations of Gibbs sampling. Default: 150.
+         optimize_interval
+             Optimize hyperparameters every `optimize_interval` iterations (sometimes
+             leads to Java exception, 0 to switch off hyperparameter optimization).
++            Only takes effect after running `optimize_burn_in` iterations.
+             Default: 0.
+-        iterations
+-            Number of training iterations. Default: 150.
++        optimize_burn_in
++            The number of iterations before hyperparameter optimization begins.
++            Default: 50.
+         topic_threshold
+             Threshold of the probability above which we consider a topic. Default: 0.0.
+         random_seed
+@@ -427,8 +432,10 @@ def run_mallet_topic_modeling(
+             str(mallet_beta),
+             "--optimize-interval",
+             str(optimize_interval),
++            "--optimize-burn-in",
++            str(optimize_burn_in),
+             "--num-threads",
+-            str(n_cpu),
++            str(n_threads),
+             "--num-iterations",
+             str(iterations),
+             "--word-topic-counts-file",
+@@ -483,9 +490,10 @@ def run_mallet_topic_modeling(
+                 "alpha_by_topic": alpha_by_topic,
+                 "eta": eta,
+                 "eta_by_topic": eta_by_topic,
+-                "n_cpu": n_cpu,
+-                "optimize_interval": optimize_interval,
++                "n_threads": n_threads,
+                 "iterations": iterations,
++                "optimize_interval": optimize_interval,
++                "optimize_burn_in": optimize_burn_in,
+                 "random_seed": random_seed,
+                 "mallet_path": mallet_path,
+                 "time": total_time,
+@@ -551,4 +559,3 @@ def anndata_cell_topic_filename(self):
+     @property
+     def anndata_region_topic_filename(self):
+         return f"{self.output_prefix}.{self.n_topics}_topics_region_topic_adata.h5ad"
+-

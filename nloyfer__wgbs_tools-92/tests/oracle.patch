@@ -1,0 +1,13 @@
+diff --git a/src/pipeline_wgbs/snp_patter.cpp b/src/pipeline_wgbs/snp_patter.cpp
+index 5fc33c5a..cee1f351 100644
+--- a/src/pipeline_wgbs/snp_patter.cpp
++++ b/src/pipeline_wgbs/snp_patter.cpp
+@@ -52,7 +52,7 @@ char snp_patter::compareSeqToRef(std::string &seq,
+     }
+     if (allowed_letters1.find(snp_val) != allowed_letters1.end()){
+         snp_letter = snp_let1;
+-    } else if (allowed_letters2.find(snp_val) != allowed_letters1.end()) {
++    } else if (allowed_letters2.find(snp_val) != allowed_letters2.end()) {
+         snp_letter = snp_let2;
+     }
+     return snp_letter;

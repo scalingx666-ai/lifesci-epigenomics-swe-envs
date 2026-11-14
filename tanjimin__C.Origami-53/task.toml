@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/tanjimin__C.Origami-53"
+description = "Add weights_only parameter to torch.load"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "C.Origami",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tanjimin/C.Origami"
+ref = "e0c26c63623896cd666bcb6bd3ecf64196d73116"
+reference = "https://github.com/tanjimin/C.Origami/pull/53"
+source_access = "auto"
+built_at = "2026-11-14T07:16:48.060336+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:36a7cce8e7973892d873d6bb1130569b6da8989cbf25aed159acba6daf78379b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-17T02:58:53Z"
+diff_format = "unified"
+context_files = [
+    "src/corigami/inference/utils/model_utils.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

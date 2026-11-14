@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/dpryan79__MethylDackel-182"
+description = "Fix #180, getopt_long returns int, not char"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "MethylDackel",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dpryan79/MethylDackel"
+ref = "3a48a86da691361b7c6e3f8db62ef6d75ac657f4"
+reference = "https://github.com/dpryan79/MethylDackel/pull/182"
+source_access = "auto"
+built_at = "2026-11-14T07:15:24.034682+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ed5480710531fba573f5b2314ea07a1f6c6b484c179476718bad146a65888a93"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-20T12:49:41Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "mergeContext.c",
+    "perRead.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

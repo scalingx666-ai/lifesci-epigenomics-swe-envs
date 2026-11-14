@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/YuLab-SMU__ChIPseeker-265"
+description = "update test for change of txdb version"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "ChIPseeker",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "YuLab-SMU/ChIPseeker"
+ref = "a073bc5481f6d286be23f2ab696cfee4412cac6a"
+reference = "https://github.com/YuLab-SMU/ChIPseeker/pull/265"
+source_access = "auto"
+built_at = "2026-11-14T07:14:36.705380+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0d2c0699e19e9d62c35b050bbd00eff7b45efd5aa6d4ce2c1ebaac869474c889"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-11-04T14:19:16Z"
+diff_format = "unified"
+context_files = [
+    "R/utilities.R",
+    "tests/testthat/test-txdb.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 21
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/tidyomics__plyranges-126"
+description = "Respect column names in mutate"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "plyranges",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tidyomics/plyranges"
+ref = "c2ff9bc597c85867c08a9fee502402c08431f1d8"
+reference = "https://github.com/tidyomics/plyranges/pull/126"
+source_access = "auto"
+built_at = "2026-11-14T07:15:42.582565+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f23f9b0e21b2cd95723fd653f54d057415671a3fed98b6327d6497fb3bb23979"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-14T02:17:13Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "R/dplyr-mutate.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 35
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

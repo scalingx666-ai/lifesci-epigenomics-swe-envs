@@ -1,0 +1,35 @@
+diff --git a/gimmemotifs/c_metrics.c b/gimmemotifs/c_metrics.c
+index 3099e5f8..ec62dc88 100644
+--- a/gimmemotifs/c_metrics.c
++++ b/gimmemotifs/c_metrics.c
+@@ -312,7 +312,7 @@ static PyObject * c_metrics_score(PyObject *self, PyObject * args)
+ 
+ }
+ 
+-int get_truncate_len(len1, len2, pos) {
++int get_truncate_len(int len1, int len2, int pos) {
+ 	// 
+ 	
+ 	if (pos < 0) {
+@@ -898,7 +898,7 @@ static PyMethodDef CoreMethods[] = {
+ 	{"c_max_subtotal", c_metrics_max_subtotal, METH_VARARGS,"Test"},
+ 	{"pfmscan", c_metrics_pfmscan, METH_VARARGS,"Test"},
+ 	{"pwmscan", c_metrics_pwmscan, METH_VARARGS,"Test"},
+-	{NULL, NULL, NULL, 0, NULL}
++	{NULL, NULL, 0, NULL}
+ };
+ 
+ #if PY_MAJOR_VERSION >= 3
+diff --git a/setup.py b/setup.py
+index 09f7dd83..725a7060 100644
+--- a/setup.py
++++ b/setup.py
+@@ -126,7 +126,7 @@ def run(self):
+         "setuptools >=0.7",
+         # copied from the requirements.yaml
+         "biofluff >=3.0.4",
+-        "configparser",
++        "configparser <6.0.0",
+         "diskcache",
+         "feather-format",
+         "genomepy >=0.13.0",

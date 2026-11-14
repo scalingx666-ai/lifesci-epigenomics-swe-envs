@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/al2na__methylKit-342"
+description = "update GitHub Actions workflow for test coverage"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "methylKit",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "al2na/methylKit"
+ref = "8507dcc91ec01806df2b5fe7f4fb9b73540ae104"
+reference = "https://github.com/al2na/methylKit/pull/342"
+source_access = "auto"
+built_at = "2026-11-14T07:14:22.352044+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d927795b5645353a853282b9ee11238a998f12bda449ed3abbd035df5c777305"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-02-12T09:28:40Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test-coverage.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 27
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

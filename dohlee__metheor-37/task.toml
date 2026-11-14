@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/dohlee__metheor-37"
+description = "Fix reference-skip and deletion-edge XM tagging"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "metheor",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dohlee/metheor"
+ref = "15434b58df35bba0c4ddcfc30cb131feedfbb21e"
+reference = "https://github.com/dohlee/metheor/pull/37"
+source_access = "auto"
+built_at = "2026-11-14T07:17:50.085741+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4f0328ef789693c2982956a47e9b345fac3a617c34834a46330f3cb8c7ad2272"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-29T00:56:26Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "src/tag.rs",
+    "tests/tag_cigar.rs",
+    "tests/tag_cigar_bismark.tsv",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 247
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

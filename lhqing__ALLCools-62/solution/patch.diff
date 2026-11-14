@@ -1,0 +1,13 @@
+diff --git a/ALLCools/_merge_allc.py b/ALLCools/_merge_allc.py
+index 63f6a66..5f45bc6 100644
+--- a/ALLCools/_merge_allc.py
++++ b/ALLCools/_merge_allc.py
+@@ -40,7 +40,7 @@ def __init__(self, path, region):
+             self.f_region = TabixIterator()
+ 
+     def readline(self):
+-        return self.f_region.next()
++        return next(self.f_region)
+ 
+     def close(self):
+         self.f.close()

@@ -1,0 +1,1926 @@
+diff --git a/CITATION.cff b/CITATION.cff
+index b8dc5a40..13ee545f 100644
+--- a/CITATION.cff
++++ b/CITATION.cff
+@@ -7,7 +7,7 @@ authors:
+     given-names: Yaoxiang
+   - family-names: Yi
+     given-names: Chunling
+-version: 0.2.0rc12
++version: 0.2.0rc13
+ license: MIT
+ repository-code: "https://github.com/oncologylab/fp-tools"
+ url: "https://github.com/oncologylab/fp-tools"
+diff --git a/DEV_PLAN.md b/DEV_PLAN.md
+index f7de5f1f..3cdf5ed2 100644
+--- a/DEV_PLAN.md
++++ b/DEV_PLAN.md
+@@ -70,6 +70,12 @@ a separately planned breaking release explicitly changes the contract.
+   scrolling YAML previews, verified in the native Windows and macOS audits.
+   Path messages use forced cross-platform line breaking, and failed desktop
+   audits retain screenshots as CI artifacts for diagnosis.
++- Responsive GUI navigation and forms across every destination: the mobile
++  sidebar has named open/close controls, the persistent sidebar header stays
++  compact, workspace details remain available on demand, loaded YAML refreshes
++  all form controls, and main-panel labels use explicit high-contrast colors.
++  Frozen Windows and Apple Silicon audits exercise every page at desktop and
++  narrow widths and retain screenshots for visual review.
+ - Browser-verified plot controls and SVG exports for aggregate and
+   aggregate-free reports, including explicit subplot-bound checks.
+ - Command-aware logging across shared analysis engines, so `match-motifs` and
+diff --git a/docs/demos/gui/fp-tools-gui-static-demo.html b/docs/demos/gui/fp-tools-gui-static-demo.html
+index 1612be2b..8869158d 100644
+--- a/docs/demos/gui/fp-tools-gui-static-demo.html
++++ b/docs/demos/gui/fp-tools-gui-static-demo.html
+@@ -64,23 +64,14 @@
+       padding: 18px 16px;
+     }
+     .brand {
+-      background: #101d33;
+-      border: 1px solid #2b3a55;
+-      border-radius: 8px;
+-      padding: 13px 14px;
+-      margin-bottom: 14px;
++      padding: 3px 1px 7px;
++      margin: 0;
+     }
+     .brand h1 {
+       font-size: 20px;
+       line-height: 1.05;
+       margin: 0;
+     }
+-    .brand p {
+-      color: #aebbd0;
+-      font-size: 12px;
+-      line-height: 1.35;
+-      margin: 5px 0 0;
+-    }
+     .nav-group {
+       color: #93a4b8;
+       font-size: 11px;
+@@ -325,7 +316,6 @@
+     <aside id="preview-navigation" aria-label="Preview navigation">
+       <div class="brand">
+         <h1>fp-tools</h1>
+-        <p>Command-ready footprint workflows</p>
+       </div>
+       <div class="nav-group">Overview</div>
+       <a class="nav-item active" href="#home" data-page="home">Home</a>
+diff --git a/docs/get-started/installation.md b/docs/get-started/installation.md
+index e783bbe4..58dea194 100644
+--- a/docs/get-started/installation.md
++++ b/docs/get-started/installation.md
+@@ -19,8 +19,8 @@ starts from coordinate-sorted BAM/BAI files and matching peak BED files.
+ Download the app for your computer, then open it. fp-tools opens in its own
+ application window; no browser or Python installation is required.
+ 
+-[Download for Windows](https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc12/fp-tools-gui-windows-x64.exe){ .md-button }
+-[Download for Apple silicon](https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc12/fp-tools-gui-macos-apple-silicon.dmg){ .md-button }
++[Download for Windows](https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc13/fp-tools-gui-windows-x64.exe){ .md-button }
++[Download for Apple silicon](https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc13/fp-tools-gui-macos-apple-silicon.dmg){ .md-button }
+ 
+ Windows may ask you to confirm the unsigned preview download. For the unsigned
+ Mac preview, drag `fp-tools.app` to Applications and run this once in Terminal:
+diff --git a/examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh b/examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh
+index 49c0fe2c..32094d5f 100755
+--- a/examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh
++++ b/examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh
+@@ -5,7 +5,7 @@ set -euo pipefail
+ #
+ # Before running on a new server:
+ # 1. Install fp-tools:
+-#      python -m pip install fp-tools-bio==0.2.0rc12
++#      python -m pip install fp-tools-bio==0.2.0rc13
+ #
+ # 2. Prepare raw data under RAW:
+ #      RAW/ATAC_Nutrients_hg38_*.txt
+@@ -37,7 +37,7 @@ RAW="${RAW:-$ROOT/data/public/raw/nutrient_project}"
+ PROJECT="${PROJECT:-$ROOT/data/public/processed/nutrient_project_ctrl_vs_10fbs}"
+ REF_ROOT="${REF_ROOT:-$RAW/references}"
+ CORES="${CORES:-$(nproc)}"
+-VERSION="${FP_TOOLS_VERSION:-0.2.0rc12}"
++VERSION="${FP_TOOLS_VERSION:-0.2.0rc13}"
+ MOTIF_DB="${MOTIF_DB:-jaspar2026_vertebrates}"
+ 
+ if [[ -d "$ROOT/.venv/bin" ]]; then
+diff --git a/packaging/desktop/Info.plist b/packaging/desktop/Info.plist
+index 30bc0f8d..1712e26f 100644
+--- a/packaging/desktop/Info.plist
++++ b/packaging/desktop/Info.plist
+@@ -8,7 +8,7 @@
+   <key>CFBundleIconFile</key><string>fp-tools.icns</string>
+   <key>CFBundleName</key><string>fp-tools</string>
+   <key>CFBundlePackageType</key><string>APPL</string>
+-  <key>CFBundleShortVersionString</key><string>0.2.0rc12</string>
++  <key>CFBundleShortVersionString</key><string>0.2.0rc13</string>
+   <key>LSMinimumSystemVersion</key><string>12.0</string>
+   <key>NSHighResolutionCapable</key><true/>
+ </dict>
+diff --git a/pyproject.toml b/pyproject.toml
+index 94376c6b..a8c26f78 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "fp-tools-bio"
+-version = "0.2.0rc12"
++version = "0.2.0rc13"
+ description = "Standalone footprint tools with vendored Cython internals"
+ readme = "README.md"
+ license = "MIT"
+@@ -147,7 +147,7 @@ environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
+ # --- Poetry mirror of the important bits so `poetry build` works too ---
+ [tool.poetry]
+ name = "fp-tools-bio"
+-version = "0.2.0rc12"
++version = "0.2.0rc13"
+ description = "Standalone footprint tools with vendored Cython internals"
+ authors = ["Yaoxiang Li"]
+ readme = "README.md"
+diff --git a/scripts/audit_desktop_gui.py b/scripts/audit_desktop_gui.py
+index b622036b..58b013bd 100644
+--- a/scripts/audit_desktop_gui.py
++++ b/scripts/audit_desktop_gui.py
+@@ -5,6 +5,7 @@
+ 
+ import argparse
+ import os
++import re
+ import socket
+ import signal
+ import subprocess
+@@ -14,7 +15,8 @@
+ import urllib.request
+ from pathlib import Path
+ 
+-from playwright.sync_api import sync_playwright
++import yaml
++from playwright.sync_api import expect, sync_playwright
+ 
+ 
+ SIDEBAR_FIRST_PAGES = (
+@@ -27,6 +29,23 @@
+     ("Configuration", "Config"),
+ )
+ MINIMUM_SIDEBAR_GAP_PX = 2.0
++GUI_RUN_PAGES = (
++    "atac-correct",
++    "call-footprints",
++    "match-motifs",
++    "diff-footprints",
++    "normalize-bigwig",
++    "plot-aggregate",
++    "bulk-footprinting",
++    "review-multi-comparisons",
++    "discover-motifs",
++    "summarize-motifs",
++    "pseudobulk-fragments",
++    "find-signature-fp",
++    "sc-footprinting",
++    "Config",
++)
++SIMPLE_GUI_PAGES = ("Home", "Run History")
+ 
+ 
+ def _free_port() -> int:
+@@ -78,7 +97,7 @@ def _write_valid_bulk_fixture(root: Path) -> tuple[Path, Path, Path]:
+     """Create existence-only inputs for the GUI validation state transition."""
+ 
+     fixture = root / "valid-bulk-inputs"
+-    fixture.mkdir()
++    fixture.mkdir(exist_ok=True)
+     genome = fixture / "genome.fa"
+     peaks = fixture / "peaks.bed"
+     for path in (genome, peaks):
+@@ -102,6 +121,88 @@ def _write_valid_bulk_fixture(root: Path) -> tuple[Path, Path, Path]:
+     return samples, comparisons, genome
+ 
+ 
++def _write_loaded_bulk_config(root: Path) -> tuple[Path, dict[str, object]]:
++    samples, comparisons, genome = _write_valid_bulk_fixture(root)
++    motif = root / "motifs" / "MA0139.1.jaspar"
++    motif.parent.mkdir()
++    motif.write_text(">MA0139.1 CTCF\nA [1]\nC [0]\nG [0]\nT [0]\n", encoding="utf-8")
++    values: dict[str, object] = {
++        "sample_table": str(samples),
++        "comparison_table": str(comparisons),
++        "genome": str(genome),
++        "outdir": str(root / "bulk project with spaces"),
++        "cores": 2,
++        "normalization": "sample-quantile",
++        "plot_aggregate": "top",
++        "review_format": "bundle",
++        "motifs": [str(motif)],
++        "dry_run": True,
++    }
++    config = root / "loaded-bulk.yml"
++    config.write_text(
++        yaml.safe_dump(
++            {
++                "version": 1,
++                "run_mode": "single",
++                "defaults": {},
++                "samples": [
++                    {
++                        "sample_id": "loaded_bulk",
++                        "tool": "bulk-footprinting",
++                        **values,
++                    }
++                ],
++                "comparisons": [],
++            },
++            sort_keys=False,
++        ),
++        encoding="utf-8",
++    )
++    return config, values
++
++
++def _write_uploaded_diff_config(root: Path) -> tuple[Path, dict[str, object]]:
++    values: dict[str, object] = {
++        "comparison_axis": "regions",
++        "motifs": [
++            str(root / "motif one.jaspar"),
++            str(root / "motif two.jaspar"),
++        ],
++        "motif_db": "jaspar2026_vertebrates",
++        "signals": [str(root / "replicate 1.bw"), str(root / "replicate 2.bw")],
++        "sample_names": ["replicate_1", "replicate_2"],
++        "cond_names": ["K562", "K562"],
++        "regions": [str(root / "CTCF bound.bed"), str(root / "matched control.bed")],
++        "region_labels": ["CTCF bound", "matched control"],
++        "region_strata_column": 4,
++        "genome": str(root / "genome.fa"),
++        "outdir": str(root / "region comparison"),
++        "cores": 3,
++        "skip_excel": True,
++    }
++    config = root / "uploaded-diff.yml"
++    config.write_text(
++        yaml.safe_dump(
++            {
++                "version": 1,
++                "run_mode": "single",
++                "defaults": {},
++                "samples": [
++                    {
++                        "sample_id": "uploaded_regions",
++                        "tool": "diff-footprints",
++                        **values,
++                    }
++                ],
++                "comparisons": [],
++            },
++            sort_keys=False,
++        ),
++        encoding="utf-8",
++    )
++    return config, values
++
++
+ def _audit_page(
+     browser,
+     base_url: str,
+@@ -113,6 +214,13 @@ def _audit_page(
+ ) -> None:
+     context = browser.new_context(viewport={"width": width, "height": height})
+     page = context.new_page()
++    console_errors: list[str] = []
++    page.on(
++        "console",
++        lambda message: console_errors.append(message.text)
++        if message.type == "error"
++        else None,
++    )
+     page.goto(
+         f"{base_url}/?page={urllib.parse.quote(page_name)}",
+         wait_until="domcontentloaded",
+@@ -137,7 +245,81 @@ def _audit_page(
+         raise RuntimeError(f"{page_name} at {width}px permits mid-word summary breaks")
+     if metrics["overflow"]:
+         raise RuntimeError(f"{page_name} at {width}px has horizontal overflow")
+-    if capture_screenshots:
++    if page.locator("[data-testid='stException']").count():
++        raise RuntimeError(f"{page_name} at {width}px rendered a Streamlit exception")
++    label_locator = page.locator(
++        "[data-testid='stMain'] [data-testid='stWidgetLabel']"
++    )
++    page.locator(
++        "[data-testid='stMain'] [data-testid='stWidgetLabel']:visible"
++    ).first.wait_for(state="visible", timeout=30_000)
++    visible_labels = label_locator.evaluate_all(
++        """elements => elements.filter(element => {
++          const text = (element.innerText || element.textContent || '').trim();
++          const style = getComputedStyle(element);
++          const box = element.getBoundingClientRect();
++          return text && box.width > 0 && box.height > 0 && style.display !== 'none';
++        }).map(element => {
++          const style = getComputedStyle(element);
++          const match = style.color.match(/[\\d.]+/g) || [];
++          const rgb = match.slice(0, 3).map(Number);
++          return {
++            text: (element.innerText || element.textContent || '').trim().slice(0, 80),
++            color: style.color,
++            opacity: Number(style.opacity),
++            visibility: style.visibility,
++            nearlyWhite: rgb.length === 3 && rgb.every(value => value > 235)
++          };
++        })"""
++    )
++    if not visible_labels:
++        raise RuntimeError(f"{page_name} at {width}px has no visible form labels")
++    unreadable_labels = [
++        label
++        for label in visible_labels
++        if label["opacity"] < 0.95
++        or label["visibility"] != "visible"
++        or label["nearlyWhite"]
++        or label["color"] == "rgba(0, 0, 0, 0)"
++    ]
++    if unreadable_labels:
++        raise RuntimeError(
++            f"{page_name} at {width}px has unreadable form labels: "
++            f"{unreadable_labels[:5]}"
++        )
++    field_metrics = page.locator(
++        "[data-testid='stMain'] input, [data-testid='stMain'] textarea, "
++        "[data-testid='stMain'] button, [data-testid='stMain'] label"
++    ).evaluate_all(
++        """elements => elements.filter(element => {
++          const style = getComputedStyle(element);
++          const box = element.getBoundingClientRect();
++          return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0;
++        }).map(element => {
++          const box = element.getBoundingClientRect();
++          return {
++            tag: element.tagName,
++            text: (element.innerText || element.textContent || '').trim().slice(0, 80),
++            outside: Math.max(0, -box.left, box.right - window.innerWidth),
++            clipped: element.scrollWidth - element.clientWidth
++          };
++        })"""
++    )
++    bad_fields = [
++        metric
++        for metric in field_metrics
++        if metric["outside"] > 1 or (metric["tag"] != "INPUT" and metric["clipped"] > 2)
++    ]
++    if bad_fields:
++        raise RuntimeError(
++            f"{page_name} at {width}px has clipped/out-of-viewport controls: "
++            f"{bad_fields[:5]}"
++        )
++    if console_errors:
++        raise RuntimeError(
++            f"{page_name} at {width}px logged browser errors: {console_errors[:3]}"
++        )
++    if capture_screenshots and width in {1280, 390}:
+         page.screenshot(
+             path=str(output / f"{page_name}-{width}.png"),
+             full_page=False,
+@@ -148,6 +330,360 @@ def _audit_page(
+     context.close()
+ 
+ 
++def _audit_simple_page(
++    browser,
++    base_url: str,
++    page_name: str,
++    width: int,
++    height: int,
++    output: Path,
++    capture_screenshots: bool,
++) -> None:
++    context = browser.new_context(viewport={"width": width, "height": height})
++    page = context.new_page()
++    try:
++        page.goto(
++            f"{base_url}/?page={urllib.parse.quote(page_name)}",
++            wait_until="domcontentloaded",
++        )
++        if page_name == "Home":
++            page.locator(".fp-hero h1").wait_for(timeout=60_000)
++        else:
++            page.locator(".fp-page-heading h1", has_text=page_name).wait_for(timeout=60_000)
++        metrics = page.evaluate(
++            """() => ({
++              overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
++              exceptions: document.querySelectorAll('[data-testid="stException"]').length
++            })"""
++        )
++        if metrics["overflow"] > 1 or metrics["exceptions"]:
++            raise RuntimeError(f"{page_name} at {width}px is not rendered cleanly: {metrics}")
++        if capture_screenshots and width in {1280, 390}:
++            page.screenshot(
++                path=str(output / f"{page_name.replace(' ', '-')}-{width}.png"),
++                full_page=False,
++                animations="disabled",
++                timeout=30_000,
++            )
++    finally:
++        context.close()
++
++
++def _audit_compact_sidebar(
++    browser,
++    base_url: str,
++    output: Path,
++    capture_screenshots: bool,
++) -> None:
++    context = browser.new_context(viewport={"width": 1280, "height": 720})
++    page = context.new_page()
++    try:
++        page.goto(f"{base_url}/?page=Home", wait_until="domcontentloaded")
++        page.locator(".fp-sidebar-brand-title", has_text="fp-tools").wait_for(timeout=60_000)
++        sidebar = page.locator("[data-testid='stSidebar']")
++        text = sidebar.inner_text()
++        if "Command-first footprinting workflows" in text:
++            raise RuntimeError("Sidebar still shows the persistent branding tagline")
++        if "Current run directory" in text:
++            raise RuntimeError("Collapsed Workspace exposes the current run directory")
++        overview_top = page.locator(".fp-nav-group", has_text="Overview").bounding_box()
++        if not overview_top or overview_top["y"] > 175:
++            raise RuntimeError(f"Sidebar navigation starts too low: {overview_top}")
++        workspace = page.locator("details", has_text="Workspace").first
++        workspace.evaluate("element => { element.open = true; }")
++        page.get_by_text("Current run directory", exact=True).wait_for(timeout=30_000)
++        path = page.locator(".fp-workspace-path")
++        path_text = path.inner_text().strip()
++        if "very long" not in path_text and "very\\long" not in path_text:
++            raise RuntimeError(f"Workspace does not expose the complete test path: {path_text}")
++        path_metrics = path.evaluate(
++            """element => {
++              const box = element.getBoundingClientRect();
++              const sidebar = element.closest('[data-testid="stSidebar"]').getBoundingClientRect();
++              return {
++                outside: Math.max(sidebar.left - box.left, box.right - sidebar.right),
++                overflow: element.scrollWidth - element.clientWidth
++              };
++            }"""
++        )
++        if path_metrics["outside"] > 1 or path_metrics["overflow"] > 1:
++            raise RuntimeError(f"Workspace path overflows the sidebar: {path_metrics}")
++        if capture_screenshots:
++            page.screenshot(
++                path=str(output / "sidebar-workspace-expanded-1280.png"),
++                full_page=False,
++                animations="disabled",
++                timeout=30_000,
++            )
++    finally:
++        context.close()
++
++
++def _audit_mobile_sidebar_navigation(
++    browser,
++    base_url: str,
++    output: Path,
++    capture_screenshots: bool,
++) -> None:
++    context = browser.new_context(viewport={"width": 390, "height": 844})
++    page = context.new_page()
++    try:
++        page.goto(f"{base_url}/?page=Home", wait_until="domcontentloaded")
++        page.locator(".fp-hero h1").wait_for(timeout=60_000)
++        open_button = page.get_by_role("button", name="Open navigation")
++        open_button.wait_for(state="visible", timeout=30_000)
++        box = open_button.bounding_box()
++        if not box or min(box["width"], box["height"]) < 40:
++            raise RuntimeError(f"Mobile navigation control is too small: {box}")
++        open_button.click()
++        page.wait_for_function(
++            """() => {
++              const sidebar = document.querySelector('[data-testid="stSidebar"]');
++              return sidebar && sidebar.getBoundingClientRect().left >= -1;
++            }""",
++            timeout=30_000,
++        )
++        close_button = page.get_by_role("button", name="Close navigation")
++        close_button.wait_for(state="visible", timeout=30_000)
++        target = page.get_by_role("button", name="bulk-footprinting", exact=True)
++        target.scroll_into_view_if_needed()
++        target.click()
++        page.locator(".fp-page-heading h1", has_text="bulk-footprinting").wait_for(
++            timeout=60_000
++        )
++        close_after_navigation = page.get_by_role(
++            "button", name="Close navigation"
++        )
++        if close_after_navigation.is_visible():
++            close_after_navigation.click()
++        reopened = page.get_by_role("button", name="Open navigation")
++        reopened.wait_for(state="visible", timeout=30_000)
++        reopened.click()
++        page.get_by_role("button", name="Close navigation").click()
++        reopened.wait_for(state="visible", timeout=30_000)
++        metrics = page.evaluate(
++            """() => ({
++              overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
++              exceptions: document.querySelectorAll('[data-testid="stException"]').length
++            })"""
++        )
++        if metrics["overflow"] > 1 or metrics["exceptions"]:
++            raise RuntimeError(f"Mobile navigation left a broken page: {metrics}")
++        if capture_screenshots:
++            reopened.click()
++            page.screenshot(
++                path=str(output / "mobile-sidebar-open-390.png"),
++                full_page=False,
++                animations="disabled",
++                timeout=30_000,
++            )
++    finally:
++        context.close()
++
++
++def _control_by_label(page, label: str):
++    """Locate a Streamlit control, including BaseWeb select boxes."""
++
++    control = page.get_by_label(label, exact=True)
++    if control.count():
++        return control
++    label_node = page.locator(
++        "[data-testid='stWidgetLabel']",
++        has_text=re.compile(rf"^{re.escape(label)}$"),
++    ).first
++    container = label_node.locator(
++        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), "
++        "' stElementContainer ')][1]"
++    )
++    return container.locator("input, textarea, [role='combobox']").first
++
++
++def _assert_control_value(page, label: str, expected: object) -> None:
++    control = _control_by_label(page, label)
++    if isinstance(expected, bool):
++        control.wait_for(state="attached", timeout=30_000)
++        if expected:
++            expect(control).to_be_checked(timeout=30_000)
++        else:
++            expect(control).not_to_be_checked(timeout=30_000)
++        actual = control.is_checked()
++    else:
++        control.wait_for(state="visible", timeout=30_000)
++        tag_name = control.evaluate("element => element.tagName")
++        role = control.get_attribute("role")
++        if role == "combobox":
++            deadline = time.monotonic() + 30
++            actual = ""
++            while time.monotonic() < deadline:
++                control = _control_by_label(page, label)
++                input_value = control.input_value()
++                if input_value:
++                    actual = input_value
++                else:
++                    aria_label = control.get_attribute("aria-label") or ""
++                    actual = aria_label.removeprefix("Selected ").split(".", 1)[0]
++                if str(actual) == str(expected):
++                    break
++                page.wait_for_timeout(100)
++        elif tag_name in {"INPUT", "TEXTAREA", "SELECT"}:
++            expect(control).to_have_value(str(expected), timeout=30_000)
++            actual = control.input_value()
++        else:
++            expect(control).to_have_text(str(expected), timeout=30_000)
++            actual = control.inner_text().strip()
++    if str(actual) != str(expected):
++        raise RuntimeError(
++            f"Control {label!r} shows {actual!r}; expected {expected!r}"
++        )
++
++
++def _open_expander(details) -> None:
++    """Open a Streamlit expander through the same summary control a user clicks."""
++
++    details.locator("summary").evaluate("element => element.click()")
++    expect(details).to_have_attribute("open", "", timeout=30_000)
++
++
++def _submit_text_control(page, label: str, value: str) -> None:
++    """Enter a text value and wait until Streamlit records it server-side."""
++
++    control = _control_by_label(page, label)
++    control.fill(value)
++    control.press("Enter")
++    expect(page.get_by_label(label, exact=True)).to_have_value(value, timeout=30_000)
++
++
++def _audit_loaded_config_sync(
++    browser,
++    base_url: str,
++    workdir: Path,
++    output: Path,
++    capture_screenshots: bool,
++) -> None:
++    """Loaded files, examples, and uploads must replace visible widget state."""
++
++    context = browser.new_context(viewport={"width": 1440, "height": 960})
++    page = context.new_page()
++    try:
++        bulk_path, values = _write_loaded_bulk_config(workdir)
++        page.goto(f"{base_url}/?page=bulk-footprinting", wait_until="domcontentloaded")
++        page.locator(".fp-page-heading h1", has_text="bulk-footprinting").wait_for(
++            timeout=60_000
++        )
++        loader = page.locator("details", has_text="Load bulk-footprinting config").first
++        _open_expander(loader)
++        _submit_text_control(page, "Config path", str(bulk_path))
++        loader = page.locator("details", has_text="Load bulk-footprinting config").first
++        if loader.get_attribute("open") is None:
++            _open_expander(loader)
++        page.get_by_role("button", name="Load YAML from path", exact=True).evaluate(
++            "element => element.click()"
++        )
++        expect(page.get_by_label("Sample Table", exact=True)).to_have_value(
++            str(values["sample_table"]),
++            timeout=30_000,
++        )
++        for label, key in (
++            ("Sample Table", "sample_table"),
++            ("Comparison Table", "comparison_table"),
++            ("Genome", "genome"),
++            ("Outdir", "outdir"),
++            ("Cores", "cores"),
++            ("Normalization", "normalization"),
++            ("Plot Aggregate", "plot_aggregate"),
++            ("Review Format", "review_format"),
++        ):
++            _assert_control_value(page, label, values[key])
++        _assert_control_value(page, "Motifs", str(values["motifs"][0]))
++        _assert_control_value(page, "Dry Run", True)
++        print("Audited loaded bulk-footprinting config", flush=True)
++
++        new_outdir = str(workdir / "changed output only")
++        _submit_text_control(page, "Outdir", new_outdir)
++        page.get_by_role("button", name="Update page config", exact=True).evaluate(
++            "element => element.click()"
++        )
++        page.get_by_label("Outdir", exact=True).wait_for(timeout=30_000)
++        _assert_control_value(page, "Outdir", new_outdir)
++        for label, key in (
++            ("Sample Table", "sample_table"),
++            ("Comparison Table", "comparison_table"),
++            ("Genome", "genome"),
++            ("Cores", "cores"),
++            ("Normalization", "normalization"),
++            ("Plot Aggregate", "plot_aggregate"),
++            ("Review Format", "review_format"),
++        ):
++            _assert_control_value(page, label, values[key])
++        print("Audited edited bulk-footprinting config", flush=True)
++
++        page.goto(f"{base_url}/?page=normalize-bigwig", wait_until="domcontentloaded")
++        page.locator(".fp-page-heading h1", has_text="normalize-bigwig").wait_for(
++            timeout=60_000
++        )
++        normalizer_loader = page.locator(
++            "details", has_text="Load normalize-bigwig config"
++        ).first
++        _open_expander(normalizer_loader)
++        example_select = _control_by_label(page, "Example YAML")
++        example_select.click(force=True)
++        page.get_by_text("normalize_bigwig_single.yml", exact=True).click(force=True)
++        page.get_by_role("button", name="Load example", exact=True).evaluate(
++            "element => element.click()"
++        )
++        page.get_by_label("Background", exact=True).wait_for(timeout=30_000)
++        if not page.get_by_label("Background", exact=True).input_value().strip():
++            raise RuntimeError("Example YAML did not refresh normalize-bigwig fields")
++        print("Audited loaded normalize-bigwig example", flush=True)
++
++        diff_path, diff_values = _write_uploaded_diff_config(workdir)
++        page.goto(f"{base_url}/?page=diff-footprints", wait_until="domcontentloaded")
++        page.locator(".fp-page-heading h1", has_text="diff-footprints").wait_for(
++            timeout=60_000
++        )
++        diff_loader = page.locator("details", has_text="Load diff-footprints config").first
++        _open_expander(diff_loader)
++        page.locator("input[type='file']").set_input_files(str(diff_path))
++        page.get_by_role("button", name="Apply uploaded YAML", exact=True).evaluate(
++            "element => element.click()"
++        )
++        _assert_control_value(page, "Comparison axis", diff_values["comparison_axis"])
++        _assert_control_value(page, "Motifs", "\n".join(diff_values["motifs"]))
++        _assert_control_value(page, "Signals", "\n".join(diff_values["signals"]))
++        _assert_control_value(
++            page,
++            "Condition names",
++            "\n".join(diff_values["cond_names"]),
++        )
++        _assert_control_value(
++            page,
++            "Region-set BED files",
++            "\n".join(diff_values["regions"]),
++        )
++        _assert_control_value(
++            page,
++            "Region labels",
++            ",".join(diff_values["region_labels"]),
++        )
++        _assert_control_value(
++            page,
++            "Matching-stratum BED column (0 = none)",
++            diff_values["region_strata_column"],
++        )
++        _assert_control_value(page, "Cores", diff_values["cores"])
++        _assert_control_value(page, "Skip Excel", True)
++        print("Audited uploaded diff-footprints config", flush=True)
++        if capture_screenshots:
++            page.screenshot(
++                path=str(output / "loaded-config-sync-diff-footprints.png"),
++                full_page=False,
++                animations="disabled",
++                timeout=30_000,
++            )
++    finally:
++        context.close()
++
++
+ def _audit_sidebar_navigation(
+     browser,
+     base_url: str,
+@@ -407,7 +943,12 @@ def main() -> int:
+     base_url = f"http://127.0.0.1:{port}"
+     with tempfile.TemporaryDirectory(prefix="fp-tools-desktop-browser-") as workdir:
+         workdir_path = Path(workdir)
+-        run_dir = workdir_path / "runs"
++        run_dir = (
++            workdir_path
++            / "very long workspace path"
++            / "nested analysis project"
++            / "fp-tools runs"
++        )
+         runtime_cache = workdir_path / "runtime-cache"
+         process = subprocess.Popen(
+             [
+@@ -438,7 +979,7 @@ def main() -> int:
+                     args=["--disable-dev-shm-usage"],
+                 )
+                 try:
+-                    for page_name in ("plot-aggregate", "bulk-footprinting", "review-multi-comparisons"):
++                    for page_name in GUI_RUN_PAGES:
+                         for width, height in ((1920, 1080), (1280, 720), (390, 844)):
+                             _audit_page(
+                                 browser,
+@@ -450,6 +991,31 @@ def main() -> int:
+                                 not args.skip_screenshots,
+                             )
+ 
++                    for page_name in SIMPLE_GUI_PAGES:
++                        for width, height in ((1280, 720), (390, 844)):
++                            _audit_simple_page(
++                                browser,
++                                base_url,
++                                page_name,
++                                width,
++                                height,
++                                output,
++                                not args.skip_screenshots,
++                            )
++
++                    _audit_compact_sidebar(
++                        browser,
++                        base_url,
++                        output,
++                        not args.skip_screenshots,
++                    )
++                    _audit_mobile_sidebar_navigation(
++                        browser,
++                        base_url,
++                        output,
++                        not args.skip_screenshots,
++                    )
++
+                     for width, height, scale in (
+                         (1920, 1080, 2.0),
+                         (1280, 720, 1.25),
+@@ -485,6 +1051,14 @@ def main() -> int:
+                                 not args.skip_screenshots,
+                             )
+ 
++                    _audit_loaded_config_sync(
++                        browser,
++                        base_url,
++                        workdir_path,
++                        output,
++                        not args.skip_screenshots,
++                    )
++
+                     context = browser.new_context(viewport={"width": 1280, "height": 720})
+                     page = context.new_page()
+                     page.goto(f"{base_url}/?page=bulk-footprinting", wait_until="domcontentloaded")
+diff --git a/src/fp_tools/__init__.py b/src/fp_tools/__init__.py
+index c43de6d1..82380a64 100644
+--- a/src/fp_tools/__init__.py
++++ b/src/fp_tools/__init__.py
+@@ -1,3 +1,3 @@
+-__version__ = "0.2.0rc12"
++__version__ = "0.2.0rc13"
+ 
+ __all__ = ["__version__"]
+diff --git a/src/fp_tools/gui_app.py b/src/fp_tools/gui_app.py
+index d769af0d..a78b213b 100644
+--- a/src/fp_tools/gui_app.py
++++ b/src/fp_tools/gui_app.py
+@@ -209,12 +209,13 @@ def main() -> None:
+ 
+     page = _current_page_from_query()
+     _sync_config_for_page(page)
+-    _render_sidebar_header(run_dir)
++    _render_sidebar_header()
+     _render_sidebar_run_dir_controls()
+     if not _tutorial_visible() and st.sidebar.button("Show guided tutorial", key="show_tutorial_button", width="stretch"):
+         st.session_state.show_tutorial = True
+         st.session_state.hide_tutorial = False
+     _render_sidebar_nav(page)
++    _render_config_update_notice()
+ 
+     if _tutorial_visible():
+         _render_tutorial_panel()
+@@ -491,26 +492,45 @@ def _apply_page_style() -> None:
+             max-width: 100% !important;
+             overflow-x: auto !important;
+         }
++        [data-testid="stMain"] label,
++        [data-testid="stMain"] label *,
++        [data-testid="stMain"] [data-testid="stWidgetLabel"],
++        [data-testid="stMain"] [data-testid="stWidgetLabel"] *,
++        [data-testid="stMain"] [role="radiogroup"] label,
++        [data-testid="stMain"] [role="radiogroup"] label *,
++        [data-testid="stMain"] [data-baseweb="checkbox"] *,
++        [data-testid="stMain"] [data-baseweb="radio"] *,
++        [data-testid="stMain"] [data-baseweb="select"] *,
++        [data-testid="stMain"] [data-testid="stFileUploader"] * {
++            color: var(--fp-text) !important;
++            opacity: 1 !important;
++            -webkit-text-fill-color: var(--fp-text) !important;
++            visibility: visible !important;
++        }
++        [data-testid="stMain"] input,
++        [data-testid="stMain"] textarea,
++        [data-testid="stMain"] [data-baseweb="input"] input {
++            color: var(--fp-text) !important;
++            opacity: 1 !important;
++            -webkit-text-fill-color: var(--fp-text) !important;
++        }
++        [data-testid="stMain"] input::placeholder,
++        [data-testid="stMain"] textarea::placeholder {
++            color: #64748b !important;
++            opacity: 1 !important;
++            -webkit-text-fill-color: #64748b !important;
++        }
+         .fp-sidebar-brand {
+-            background: #101d33;
+             color: #ffffff;
+-            border-radius: 8px;
+-            padding: 0.76rem 0.82rem;
+-            margin: 0.03rem 0 0.42rem;
+-            border: 1px solid #2b3a55;
++            padding: 0.18rem 0.08rem 0.28rem;
++            margin: 0;
+         }
+         .fp-sidebar-brand-title {
+-            font-size: 1.28rem;
++            font-size: 1.2rem;
+             font-weight: 800;
+             letter-spacing: 0;
+             line-height: 1.1;
+         }
+-        .fp-sidebar-brand-subtitle {
+-            margin-top: 0.18rem;
+-            color: #aebbd0;
+-            font-size: 0.78rem;
+-            line-height: 1.28;
+-        }
+         .fp-nav-group {
+             margin: 0;
+             display: block;
+@@ -527,15 +547,33 @@ def _apply_page_style() -> None:
+         [data-testid="stMarkdownContainer"] {
+             margin-bottom: 0 !important;
+         }
+-        .fp-run-dir-pill {
+-            display: block;
++        .fp-workspace-meta {
+             color: #aebbd0;
+             font-size: 0.76rem;
+             line-height: 1.35;
+-            margin: -0.08rem 0 0.32rem;
+-            white-space: nowrap;
+-            overflow: hidden;
+-            text-overflow: ellipsis;
++            margin-bottom: 0.28rem;
++        }
++        .fp-workspace-path {
++            background: #101d33;
++            border: 1px solid #334155;
++            border-radius: 6px;
++            color: #e5edf6;
++            font-family: Arial, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
++            font-size: 0.76rem;
++            line-height: 1.35;
++            margin: 0.18rem 0 0.48rem;
++            max-width: 100%;
++            overflow-wrap: anywhere;
++            padding: 0.42rem 0.5rem;
++            user-select: text;
++            white-space: normal;
++            word-break: break-word;
++        }
++        [data-testid="stSidebar"] .st-key-show_tutorial_button .stButton > button {
++            font-size: 0.78rem !important;
++            font-weight: 700 !important;
++            min-height: 1.95rem !important;
++            padding: 0.2rem 0.55rem !important;
+         }
+         .fp-hero {
+             background: #ffffff;
+@@ -771,13 +809,122 @@ def _apply_page_style() -> None:
+             }
+         }
+         @media (max-width: 900px) {
++            header[data-testid="stHeader"] {
++                height: 3.4rem !important;
++                pointer-events: none !important;
++            }
++            [data-testid="stToolbar"] {
++                align-items: center !important;
++                display: flex !important;
++                height: 2.75rem !important;
++                left: 0.55rem !important;
++                pointer-events: auto !important;
++                position: fixed !important;
++                right: auto !important;
++                top: 0.45rem !important;
++                visibility: visible !important;
++                width: 2.75rem !important;
++                z-index: 1000000 !important;
++            }
++            [data-testid="stToolbar"] > div,
++            [data-testid="stToolbar"] > div > div,
++            [data-testid="stToolbar"] > div > div > div:has([data-testid="stExpandSidebarButton"]) {
++                align-items: center !important;
++                display: flex !important;
++                height: 2.75rem !important;
++                margin: 0 !important;
++                padding: 0 !important;
++                width: 2.75rem !important;
++            }
++            [data-testid="stToolbarActions"],
++            [data-testid="stAppDeployButton"],
++            [data-testid="stMainMenu"] {
++                display: none !important;
++            }
++            [data-testid="stExpandSidebarButton"] {
++                align-items: center !important;
++                background: #0f172a !important;
++                border: 1px solid #334155 !important;
++                border-radius: 8px !important;
++                box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18) !important;
++                display: flex !important;
++                height: 2.75rem !important;
++                justify-content: center !important;
++                min-height: 2.75rem !important;
++                min-width: 2.75rem !important;
++                padding: 0 !important;
++                visibility: visible !important;
++                width: 2.75rem !important;
++            }
++            [data-testid="stExpandSidebarButton"] span {
++                color: #ffffff !important;
++            }
++            [data-testid="stExpandSidebarButton"]::after {
++                clip-path: inset(50%);
++                content: "Open navigation";
++                height: 1px;
++                overflow: hidden;
++                position: absolute;
++                white-space: nowrap;
++                width: 1px;
++            }
+             [data-testid="stSidebar"] {
+                 min-width: 300px !important;
+                 max-width: 300px !important;
+             }
++            [data-testid="stSidebarHeader"] {
++                align-items: center !important;
++                background: #0f172a !important;
++                display: flex !important;
++                height: 3rem !important;
++                justify-content: flex-end !important;
++                min-height: 3rem !important;
++                padding: 0.18rem 0.28rem !important;
++                position: sticky !important;
++                top: 0 !important;
++                z-index: 10 !important;
++            }
++            [data-testid="stSidebarCollapseButton"] {
++                display: flex !important;
++            }
++            [data-testid="stSidebarCollapseButton"] button {
++                align-items: center !important;
++                background: #1e293b !important;
++                border: 1px solid #475569 !important;
++                border-radius: 8px !important;
++                display: flex !important;
++                height: 2.5rem !important;
++                justify-content: center !important;
++                min-height: 2.5rem !important;
++                min-width: 2.5rem !important;
++                width: 2.5rem !important;
++            }
++            [data-testid="stSidebarCollapseButton"] button span {
++                color: #ffffff !important;
++            }
++            [data-testid="stSidebarCollapseButton"] button::after {
++                clip-path: inset(50%);
++                content: "Close navigation";
++                height: 1px;
++                overflow: hidden;
++                position: absolute;
++                white-space: nowrap;
++                width: 1px;
++            }
+             .fp-card-grid, .fp-example-grid, .fp-summary-strip, .fp-tool-shell, .fp-tutorial-panel ol {
+                 grid-template-columns: 1fr;
+             }
++            [data-testid="stMain"] [data-testid="stHorizontalBlock"] {
++                align-items: stretch !important;
++                flex-direction: column !important;
++                gap: 0.72rem !important;
++                width: 100% !important;
++            }
++            [data-testid="stMain"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
++                flex: 1 1 auto !important;
++                min-width: 0 !important;
++                width: 100% !important;
++            }
+             .fp-run-card {
+                 position: static;
+             }
+@@ -795,6 +942,8 @@ def _apply_page_style() -> None:
+ 
+ 
+ def _ensure_session_config() -> None:
++    if "config_revision" not in st.session_state:
++        st.session_state.config_revision = 0
+     if "current_config" not in st.session_state:
+         st.session_state.current_config = make_single_config(
+             "atac-correct",
+@@ -805,6 +954,17 @@ def _ensure_session_config() -> None:
+         st.session_state.gui_run_dir = os.environ.get("FP_TOOLS_GUI_RUN_DIR", str(default_gui_run_dir()))
+ 
+ 
++def _config_widget_key(name: str) -> str:
++    revision = int(st.session_state.get("config_revision", 0))
++    return f"cfg_{revision}_{name}"
++
++
++def _render_config_update_notice() -> None:
++    message = st.session_state.pop("config_update_notice", "")
++    if message:
++        st.toast(str(message))
++
++
+ def _tool_pages() -> set[str]:
+     return set(PAGE_OPTIONS).difference({"Home", "Run History", "Config"})
+ 
+@@ -815,7 +975,11 @@ def _sync_config_for_page(page: str) -> None:
+     current_tool = _current_config_tool()
+     canonical_page = canonical_tool_name(page)
+     if current_tool != canonical_page:
+-        st.session_state.current_config = _default_config_for_tool(canonical_page)
++        _set_config(
++            _default_config_for_tool(canonical_page),
++            rerun=False,
++            notify=False,
++        )
+ 
+ 
+ def _current_config_tool() -> str:
+@@ -861,27 +1025,23 @@ def _default_config_for_tool(tool: str) -> dict[str, Any]:
+ 
+ 
+ def _current_page_from_query() -> str:
+-    session_page = st.session_state.get("gui_page")
+-    if session_page in PAGE_OPTIONS:
+-        return str(session_page)
+     raw_page = st.query_params.get("page", "Home")
+     if isinstance(raw_page, list):
+         raw_page = raw_page[0] if raw_page else "Home"
+     page = str(raw_page)
+     if page not in PAGE_OPTIONS:
+-        page = "Home"
++        session_page = st.session_state.get("gui_page")
++        page = str(session_page) if session_page in PAGE_OPTIONS else "Home"
+     st.session_state.gui_page = page
+     return page
+ 
+ 
+-def _render_sidebar_header(run_dir: Path) -> None:
++def _render_sidebar_header() -> None:
+     st.sidebar.markdown(
+-        f"""
++        """
+         <div class="fp-sidebar-brand">
+           <div class="fp-sidebar-brand-title">fp-tools</div>
+-          <div class="fp-sidebar-brand-subtitle">Command-first footprinting workflows · v{escape(__version__)}</div>
+         </div>
+-        <span class="fp-run-dir-pill" title="{escape(str(run_dir))}">Run dir: {escape(str(run_dir))}</span>
+         """,
+         unsafe_allow_html=True,
+     )
+@@ -1072,30 +1232,66 @@ def _render_atacorrect_page(run_dir: Path) -> None:
+     form_col, run_col = st.columns([0.64, 0.36], gap="large")
+     with form_col:
+         _render_page_loader("atac-correct")
+-        mode = st.radio("Mode", ["Single run", "Batch sample list"], horizontal=True, key="at_mode")
++        mode_options = ["Single run", "Batch sample list"]
++        mode_default = _config_form_mode("atac-correct")
++        mode = st.radio(
++            "Mode",
++            mode_options,
++            index=mode_options.index(mode_default),
++            horizontal=True,
++            key=_config_widget_key("at_mode"),
++        )
+         single = _current_single_params("atac-correct")
+         batch_rows = _current_sample_rows(
+             "atac-correct",
+             default_rows=[{"sample_id": "sample1", "bams": "", "genome": "", "peaks": "", "blacklist": "", "outdir": "", "cores": 1}],
+         )
+         if mode == "Single run":
+-            with st.form("atacorrect_single_form"):
++            with st.form(_config_widget_key("ataccorrect_single_form")):
+                 left, right = st.columns(2)
+                 with left:
+                     bams_value = single.get("bams", "")
+                     if isinstance(bams_value, list):
+                         bams_value = "\n".join(str(value) for value in bams_value)
+-                    bams = st.text_area("BAMs", value=str(bams_value), height=82, help="One BAM path per line")
+-                    genome = st.text_input("Genome FASTA", value=str(single.get("genome", "")))
+-                    peaks = st.text_input("Peaks BED", value=str(single.get("peaks", "")))
++                    bams = st.text_area(
++                        "BAMs",
++                        value=str(bams_value),
++                        height=82,
++                        help="One BAM path per line",
++                        key=_config_widget_key("atacorrect_bams"),
++                    )
++                    genome = st.text_input(
++                        "Genome FASTA",
++                        value=str(single.get("genome", "")),
++                        key=_config_widget_key("atacorrect_genome"),
++                    )
++                    peaks = st.text_input(
++                        "Peaks BED",
++                        value=str(single.get("peaks", "")),
++                        key=_config_widget_key("atacorrect_peaks"),
++                    )
+                 with right:
+-                    blacklist = st.text_input("Blacklist BED", value=str(single.get("blacklist", "")))
+-                    outdir = st.text_input("Output directory", value=str(single.get("outdir", "")))
+-                    cores = st.number_input("Cores", min_value=1, value=int(single.get("cores", 1)), step=1)
++                    blacklist = st.text_input(
++                        "Blacklist BED",
++                        value=str(single.get("blacklist", "")),
++                        key=_config_widget_key("atacorrect_blacklist"),
++                    )
++                    outdir = st.text_input(
++                        "Output directory",
++                        value=str(single.get("outdir", "")),
++                        key=_config_widget_key("atacorrect_outdir"),
++                    )
++                    cores = st.number_input(
++                        "Cores",
++                        min_value=1,
++                        value=int(single.get("cores", 1)),
++                        step=1,
++                        key=_config_widget_key("atacorrect_cores"),
++                    )
+                 submitted = st.form_submit_button("Update page config")
+             if submitted:
+                 _set_config(
+-                    make_single_config(
++                    _updated_single_config(
+                         "atac-correct",
+                         {
+                             "bams": [line.strip() for line in bams.splitlines() if line.strip()],
+@@ -1129,28 +1325,59 @@ def _render_footprintscores_page(run_dir: Path) -> None:
+     form_col, run_col = st.columns([0.64, 0.36], gap="large")
+     with form_col:
+         _render_page_loader("call-footprints")
+-        mode = st.radio("Mode", ["Single run", "Batch sample list"], horizontal=True, key="fs_mode")
++        mode_options = ["Single run", "Batch sample list"]
++        mode_default = _config_form_mode("call-footprints")
++        mode = st.radio(
++            "Mode",
++            mode_options,
++            index=mode_options.index(mode_default),
++            horizontal=True,
++            key=_config_widget_key("fs_mode"),
++        )
+         single = _current_single_params("call-footprints")
+         batch_rows = _current_sample_rows(
+             "call-footprints",
+             default_rows=[{"sample_id": "sample1", "signal": "", "regions": "", "output": "", "score": "footprint", "cores": 1}],
+         )
+         if mode == "Single run":
+-            with st.form("footprintscores_single_form"):
++            with st.form(_config_widget_key("footprintscores_single_form")):
+                 left, right = st.columns([0.68, 0.32])
+                 with left:
+-                    signal = st.text_input("Signal bigWig", value=str(single.get("signal", "")))
+-                    regions = st.text_input("Regions BED", value=str(single.get("regions", "")))
+-                    output = st.text_input("Output bigWig", value=str(single.get("output", "")))
++                    signal = st.text_input(
++                        "Signal bigWig",
++                        value=str(single.get("signal", "")),
++                        key=_config_widget_key("footprintscores_signal"),
++                    )
++                    regions = st.text_input(
++                        "Regions BED",
++                        value=str(single.get("regions", "")),
++                        key=_config_widget_key("footprintscores_regions"),
++                    )
++                    output = st.text_input(
++                        "Output bigWig",
++                        value=str(single.get("output", "")),
++                        key=_config_widget_key("footprintscores_output"),
++                    )
+                 with right:
+                     score_values = ["footprint", "sum", "mean", "none"]
+                     score_default = str(single.get("score", "footprint"))
+-                    score = st.selectbox("Score", score_values, index=score_values.index(score_default) if score_default in score_values else 0)
+-                    cores = st.number_input("Cores", min_value=1, value=int(single.get("cores", 1)), step=1, key="fs_single_cores")
++                    score = st.selectbox(
++                        "Score",
++                        score_values,
++                        index=score_values.index(score_default) if score_default in score_values else 0,
++                        key=_config_widget_key("footprintscores_score"),
++                    )
++                    cores = st.number_input(
++                        "Cores",
++                        min_value=1,
++                        value=int(single.get("cores", 1)),
++                        step=1,
++                        key=_config_widget_key("fs_single_cores"),
++                    )
+                 submitted = st.form_submit_button("Update page config")
+             if submitted:
+                 _set_config(
+-                    make_single_config(
++                    _updated_single_config(
+                         "call-footprints",
+                         {
+                             "signal": signal,
+@@ -1183,11 +1410,18 @@ def _render_diff_footprints_page(run_dir: Path) -> None:
+     form_col, run_col = st.columns([0.64, 0.36], gap="large")
+     with form_col:
+         _render_page_loader("diff-footprints")
++        mode_options = [
++            "Single condition",
++            "Batch single-condition list",
++            "Batch comparison list",
++        ]
++        mode_default = _config_form_mode("diff-footprints")
+         mode = st.radio(
+             "Mode",
+-            ["Single condition", "Batch single-condition list", "Batch comparison list"],
++            mode_options,
++            index=mode_options.index(mode_default),
+             horizontal=True,
+-            key="diff_footprints_mode",
++            key=_config_widget_key("diff_footprints_mode"),
+         )
+         single = _current_single_params("diff-footprints")
+         sample_rows = _current_sample_rows(
+@@ -1227,51 +1461,103 @@ def _render_diff_footprints_page(run_dir: Path) -> None:
+             ],
+         )
+         if mode == "Single condition":
+-            with st.form("diff_footprints_single_form"):
++            with st.form(_config_widget_key("diff_footprints_single_form")):
+                 comparison_axis = st.selectbox(
+                     "Comparison axis",
+                     ["conditions", "regions"],
+                     index=0 if str(single.get("comparison_axis", "conditions")) == "conditions" else 1,
+                     help="Compare conditions, or compare two or more region sets in the same biological sample(s).",
++                    key=_config_widget_key("diff_footprints_comparison_axis"),
+                 )
+                 left, right = st.columns(2)
+                 with left:
+-                    motifs = st.text_input("Motifs", value=str(single.get("motifs", "")))
+-                    motif_db = st.text_input("Motif database", value=str(single.get("motif_db", "jaspar2026_vertebrates")))
+-                    genome = st.text_input("Genome FASTA", value=str(single.get("genome", "")))
+-                    peaks = st.text_input("Peaks BED", value=str(single.get("peaks", "")))
++                    motifs_value = single.get("motifs", "")
++                    if isinstance(motifs_value, list):
++                        motifs_value = _join_multi(motifs_value)
++                    motifs = st.text_area(
++                        "Motifs",
++                        value=str(motifs_value),
++                        height=76,
++                        key=_config_widget_key("diff_footprints_motifs"),
++                    )
++                    motif_db = st.text_input(
++                        "Motif database",
++                        value=str(single.get("motif_db", "jaspar2026_vertebrates")),
++                        key=_config_widget_key("diff_footprints_motif_db"),
++                    )
++                    genome = st.text_input(
++                        "Genome FASTA",
++                        value=str(single.get("genome", "")),
++                        key=_config_widget_key("diff_footprints_genome"),
++                    )
++                    peaks = st.text_input(
++                        "Peaks BED",
++                        value=str(single.get("peaks", "")),
++                        key=_config_widget_key("diff_footprints_peaks"),
++                    )
+                 with right:
+-                    peak_header = st.text_input("Peak header", value=str(single.get("peak_header", "")))
+-                    outdir = st.text_input("Output directory", value=str(single.get("outdir", "")))
+-                    cores = st.number_input("Cores", min_value=1, value=int(single.get("cores", 1)), step=1, key="diff_footprints_single_cores")
+-                    skip_excel = st.checkbox("Skip Excel", value=bool(single.get("skip_excel", False)))
+-                signals = st.text_area("Signals", value=_join_multi(single.get("signals", [])), height=94)
+-                cond_names = st.text_area("Condition names", value=_join_multi(single.get("cond_names", ["Bcell"])), height=76)
++                    peak_header = st.text_input(
++                        "Peak header",
++                        value=str(single.get("peak_header", "")),
++                        key=_config_widget_key("diff_footprints_peak_header"),
++                    )
++                    outdir = st.text_input(
++                        "Output directory",
++                        value=str(single.get("outdir", "")),
++                        key=_config_widget_key("diff_footprints_outdir"),
++                    )
++                    cores = st.number_input(
++                        "Cores",
++                        min_value=1,
++                        value=int(single.get("cores", 1)),
++                        step=1,
++                        key=_config_widget_key("diff_footprints_single_cores"),
++                    )
++                    skip_excel = st.checkbox(
++                        "Skip Excel",
++                        value=bool(single.get("skip_excel", False)),
++                        key=_config_widget_key("diff_footprints_skip_excel"),
++                    )
++                signals = st.text_area(
++                    "Signals",
++                    value=_join_multi(single.get("signals", [])),
++                    height=94,
++                    key=_config_widget_key("diff_footprints_signals"),
++                )
++                cond_names = st.text_area(
++                    "Condition names",
++                    value=_join_multi(single.get("cond_names", ["Bcell"])),
++                    height=76,
++                    key=_config_widget_key("diff_footprints_cond_names"),
++                )
+                 regions = st.text_area(
+                     "Region-set BED files",
+                     value=_join_multi(single.get("regions", [])),
+                     height=76,
+                     help="Required only for region comparisons; one BED path per line.",
++                    key=_config_widget_key("diff_footprints_regions"),
+                 )
+                 region_labels = st.text_input(
+                     "Region labels",
+                     value=",".join(single.get("region_labels", [])),
+                     help="Optional comma-separated labels in the same order as the BED files.",
++                    key=_config_widget_key("diff_footprints_region_labels"),
+                 )
+                 region_strata_column = st.number_input(
+                     "Matching-stratum BED column (0 = none)",
+                     min_value=0,
+                     value=int(single.get("region_strata_column", 0) or 0),
+                     step=1,
++                    key=_config_widget_key("diff_footprints_region_strata_column"),
+                 )
+                 submitted = st.form_submit_button("Update page config")
+             if submitted:
+                 _set_config(
+-                    make_single_config(
++                    _updated_single_config(
+                         "diff-footprints",
+                         {
+                             "comparison_axis": comparison_axis,
+-                            "motifs": motifs,
++                            "motifs": _split_multi(motifs),
+                             "motif_db": motif_db,
+                             "signals": _split_multi(signals),
+                             "genome": genome,
+@@ -1339,7 +1625,15 @@ def _render_plotaggregate_page(run_dir: Path) -> None:
+     form_col, run_col = st.columns([0.64, 0.36], gap="large")
+     with form_col:
+         _render_page_loader("plot-aggregate")
+-        mode = st.radio("Mode", ["Single run", "Batch sample list"], horizontal=True, key="pa_mode")
++        mode_options = ["Single run", "Batch sample list"]
++        mode_default = _config_form_mode("plot-aggregate")
++        mode = st.radio(
++            "Mode",
++            mode_options,
++            index=mode_options.index(mode_default),
++            horizontal=True,
++            key=_config_widget_key("pa_mode"),
++        )
+         single = _current_single_params("plot-aggregate")
+         batch_rows = _current_sample_rows(
+             "plot-aggregate",
+@@ -1356,30 +1650,53 @@ def _render_plotaggregate_page(run_dir: Path) -> None:
+             ],
+         )
+         if mode == "Single run":
+-            with st.form("plotaggregate_single_form"):
++            with st.form(_config_widget_key("plotaggregate_single_form")):
+                 left, right = st.columns(2)
+                 with left:
+-                    tfbs = st.text_area("TFBS paths", value=_join_multi(single.get("TFBS", [])), height=92)
+-                    signals = st.text_area("Signal paths", value=_join_multi(single.get("signals", [])), height=92)
++                    tfbs = st.text_area(
++                        "TFBS paths",
++                        value=_join_multi(single.get("TFBS", [])),
++                        height=92,
++                        key=_config_widget_key("plotaggregate_tfbs"),
++                    )
++                    signals = st.text_area(
++                        "Signal paths",
++                        value=_join_multi(single.get("signals", [])),
++                        height=92,
++                        key=_config_widget_key("plotaggregate_signals"),
++                    )
+                 with right:
+-                    output = st.text_input("Output PDF", value=str(single.get("output", "")))
+-                    grid = st.text_input("Grid (optional, e.g. 2x5)", value=str(single.get("grid", "")))
+-                    score_csv = st.text_input("Aggregated score CSV", value=str(single.get("output_aggregated_scores", "")))
+-                    signal_csv = st.text_input("Aggregated signal CSV", value=str(single.get("output_aggregated_signals", "")))
++                    output = st.text_input(
++                        "Output PDF",
++                        value=str(single.get("output", "")),
++                        key=_config_widget_key("plotaggregate_output"),
++                    )
++                    grid = st.text_input(
++                        "Grid (optional, e.g. 2x5)",
++                        value=str(single.get("grid", "")),
++                        key=_config_widget_key("plotaggregate_grid"),
++                    )
++                    score_csv = st.text_input(
++                        "Aggregated score CSV",
++                        value=str(single.get("output_aggregated_scores", "")),
++                        key=_config_widget_key("plotaggregate_score_csv"),
++                    )
++                    signal_csv = st.text_input(
++                        "Aggregated signal CSV",
++                        value=str(single.get("output_aggregated_signals", "")),
++                        key=_config_widget_key("plotaggregate_signal_csv"),
++                    )
+                 submitted = st.form_submit_button("Update page config")
+             if submitted:
+                 config: dict[str, Any] = {
+                     "TFBS": _split_multi(tfbs),
+                     "signals": _split_multi(signals),
+                     "output": output,
++                    "grid": grid.strip(),
++                    "output_aggregated_scores": score_csv.strip(),
++                    "output_aggregated_signals": signal_csv.strip(),
+                 }
+-                if grid.strip():
+-                    config["grid"] = grid.strip()
+-                if score_csv.strip():
+-                    config["output_aggregated_scores"] = score_csv.strip()
+-                if signal_csv.strip():
+-                    config["output_aggregated_signals"] = signal_csv.strip()
+-                _set_config(make_single_config("plot-aggregate", config, job_id="plotaggregate_run"))
++                _set_config(_updated_single_config("plot-aggregate", config, job_id="plotaggregate_run"))
+         else:
+             rows = _data_editor("plot-aggregate panel list", batch_rows, key="plotaggregate_batch_editor")
+             if st.button("Update page config from panel list", key="plotaggregate_batch_set"):
+@@ -1413,7 +1730,7 @@ def _render_generic_tool_page(run_dir: Path, tool: str) -> None:
+         defaults = GENERIC_TOOL_DEFAULTS.get(tool, {"sample_id": f"{tool.replace('-', '_')}_run"})
+         current = {**_drop_single_meta(defaults), **_current_single_params(tool)}
+         st.caption("This page writes the same YAML config used by run-yaml-workflow and the direct CLI.")
+-        with st.form(f"{tool}_generic_form"):
++        with st.form(_config_widget_key(f"{tool}_generic_form")):
+             edited: dict[str, Any] = {}
+             simple_fields: list[tuple[str, Any]] = []
+             wide_fields: list[tuple[str, Any]] = []
+@@ -1433,13 +1750,29 @@ def _render_generic_tool_page(run_dir: Path, tool: str) -> None:
+             extra_args = st.text_input(
+                 "Extra CLI args",
+                 value=_format_extra_args(current.get("extra_args", [])),
++                key=_config_widget_key(f"{tool}_extra_args"),
+             )
+             submitted = st.form_submit_button("Update page config")
+         if submitted:
+             config = _prepare_generic_params(tool, edited)
+             if extra_args.strip():
+                 config["extra_args"] = _parse_extra_args(extra_args)
+-            _set_config(make_single_config(tool, config, job_id=f"{tool.replace('-', '_')}_run"))
++            elif "extra_args" in current:
++                config["extra_args"] = []
++            rendered_fields = set(edited).union({"extra_args"})
++            merged = dict(current)
++            for key in rendered_fields:
++                if key in config:
++                    merged[key] = config[key]
++                else:
++                    merged.pop(key, None)
++            _set_config(
++                _updated_single_config(
++                    tool,
++                    merged,
++                    job_id=f"{tool.replace('-', '_')}_run",
++                )
++            )
+     with run_col:
+         _render_run_controls(run_dir, label=tool.replace("-", "_"))
+ 
+@@ -1469,7 +1802,7 @@ def _render_config_page(run_dir: Path) -> None:
+             "Current YAML",
+             value=config_to_yaml_text(st.session_state.current_config),
+             height=360,
+-            key="config_yaml_text",
++            key=_config_widget_key("config_yaml_text"),
+         )
+         edit_left, edit_right = st.columns(2)
+         with edit_left:
+@@ -1578,6 +1911,15 @@ def _show_current_summary() -> None:
+ 
+ def _render_sidebar_run_dir_controls() -> None:
+     with st.sidebar.expander("Workspace", expanded=False):
++        current_run_dir = str(Path(st.session_state.gui_run_dir).expanduser())
++        st.markdown(
++            f"""
++            <div class="fp-workspace-meta">fp-tools v{escape(__version__)}</div>
++            <div class="fp-workspace-meta">Current run directory</div>
++            <div class="fp-workspace-path">{escape(current_run_dir)}</div>
++            """,
++            unsafe_allow_html=True,
++        )
+         run_dir_input = st.text_input("GUI run dir", value=str(st.session_state.gui_run_dir), key="sidebar_run_dir")
+         if st.button("Apply run dir", key="sidebar_apply_run_dir", width="stretch"):
+             path = Path(run_dir_input).expanduser()
+@@ -1686,26 +2028,47 @@ def _render_generic_field(tool: str, key: str, default_value: Any) -> Any:
+     if isinstance(value, list):
+         value = _join_multi(value)
+     if isinstance(value, bool):
+-        return st.checkbox(_human_label(key), value=value, help=help_text)
++        return st.checkbox(
++            _human_label(key),
++            value=value,
++            key=_config_widget_key(f"{tool}_{key}"),
++            help=help_text,
++        )
+     choices = GUI_ENUM_CHOICES.get(tool, {}).get(key)
+     if choices:
+         selected = str(value or choices[0])
+         index = choices.index(selected) if selected in choices else 0
+         return st.selectbox(
+-            _human_label(key), choices, index=index, key=f"{tool}_{key}", help=help_text
++            _human_label(key),
++            choices,
++            index=index,
++            key=_config_widget_key(f"{tool}_{key}"),
++            help=help_text,
+         )
+     if key in LIST_TEXT_FIELDS:
+         return st.text_area(
+-            _human_label(key), value=str(value or ""), height=88, key=f"{tool}_{key}", help=help_text
++            _human_label(key),
++            value=str(value or ""),
++            height=88,
++            key=_config_widget_key(f"{tool}_{key}"),
++            help=help_text,
+         )
+     if isinstance(value, int):
+         return int(
+             st.number_input(
+-                _human_label(key), min_value=0, value=int(value), step=1, key=f"{tool}_{key}", help=help_text
++                _human_label(key),
++                min_value=0,
++                value=int(value),
++                step=1,
++                key=_config_widget_key(f"{tool}_{key}"),
++                help=help_text,
+             )
+         )
+     return st.text_input(
+-        _human_label(key), value=str(value or ""), key=f"{tool}_{key}", help=help_text
++        _human_label(key),
++        value=str(value or ""),
++        key=_config_widget_key(f"{tool}_{key}"),
++        help=help_text,
+     )
+ 
+ 
+@@ -1713,15 +2076,29 @@ def _human_label(key: str) -> str:
+     return key.replace("_", " ").replace("tfbs", "TFBS").title()
+ 
+ 
+-def _set_config(config: dict[str, Any]) -> None:
++def _set_config(
++    config: dict[str, Any],
++    *,
++    rerun: bool = True,
++    notify: bool = True,
++) -> None:
+     st.session_state.current_config = normalize_config(config)
+-    st.success("Current config updated.")
++    st.session_state.config_revision = int(st.session_state.get("config_revision", 0)) + 1
++    if notify:
++        st.session_state.config_update_notice = "Current config updated."
++    if rerun:
++        st.rerun()
+ 
+ 
+ def _data_editor(title: str, default_rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+     st.subheader(title)
+     df = pd.DataFrame(default_rows)
+-    edited = st.data_editor(df, num_rows="dynamic", width="stretch", key=key)
++    edited = st.data_editor(
++        df,
++        num_rows="dynamic",
++        width="stretch",
++        key=_config_widget_key(key),
++    )
+     cleaned = edited.fillna("").to_dict(orient="records")
+     return [row for row in cleaned if any(str(value).strip() for value in row.values())]
+ 
+@@ -1730,6 +2107,42 @@ def _current_config() -> dict[str, Any]:
+     return normalize_config(st.session_state.current_config)
+ 
+ 
++def _config_form_mode(tool: str) -> str:
++    tool = canonical_tool_name(tool)
++    config = _current_config()
++    if tool == "diff-footprints":
++        if config["comparisons"]:
++            return "Batch comparison list"
++        if config["run_mode"] == "batch" or len(config["samples"]) > 1:
++            return "Batch single-condition list"
++        return "Single condition"
++    if config["run_mode"] == "batch" or len(config["samples"]) > 1:
++        return "Batch sample list"
++    return "Single run"
++
++
++def _updated_single_config(
++    tool: str,
++    params: dict[str, Any],
++    *,
++    job_id: str,
++) -> dict[str, Any]:
++    tool = canonical_tool_name(tool)
++    config = _current_config()
++    if not config["comparisons"] and len(config["samples"]) == 1:
++        item = dict(config["samples"][0])
++        if canonical_tool_name(str(item.get("tool", ""))) == tool:
++            item.update(params)
++            item["tool"] = tool
++            return {
++                **config,
++                "run_mode": "single",
++                "samples": [item],
++                "comparisons": [],
++            }
++    return make_single_config(tool, params, job_id=job_id)
++
++
+ def _current_single_params(tool: str) -> dict[str, Any]:
+     tool = canonical_tool_name(tool)
+     config = _current_config()
+@@ -1738,20 +2151,28 @@ def _current_single_params(tool: str) -> dict[str, Any]:
+     matching = [item for item in config["samples"] if canonical_tool_name(str(item.get("tool", ""))) == tool]
+     if len(matching) != 1:
+         return {}
+-    return _drop_single_meta(matching[0])
++    return _drop_single_meta({**config["defaults"], **matching[0]})
+ 
+ 
+ def _current_sample_rows(tool: str, default_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+     tool = canonical_tool_name(tool)
+     config = _current_config()
+-    matching = [_prepare_row_for_editor(item) for item in config["samples"] if canonical_tool_name(str(item.get("tool", ""))) == tool]
++    matching = [
++        _prepare_row_for_editor({**config["defaults"], **item})
++        for item in config["samples"]
++        if canonical_tool_name(str(item.get("tool", ""))) == tool
++    ]
+     return matching or default_rows
+ 
+ 
+ def _current_comparison_rows(tool: str, default_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+     tool = canonical_tool_name(tool)
+     config = _current_config()
+-    matching = [_prepare_row_for_editor(item) for item in config["comparisons"] if canonical_tool_name(str(item.get("tool", ""))) == tool]
++    matching = [
++        _prepare_row_for_editor({**config["defaults"], **item})
++        for item in config["comparisons"]
++        if canonical_tool_name(str(item.get("tool", ""))) == tool
++    ]
+     return matching or default_rows
+ 
+ 
+diff --git a/src/fp_tools/resources/runtime_manifest.json b/src/fp_tools/resources/runtime_manifest.json
+index e659b656..99a67045 100644
+--- a/src/fp_tools/resources/runtime_manifest.json
++++ b/src/fp_tools/resources/runtime_manifest.json
+@@ -1,7 +1,7 @@
+ {
+   "schema": 1,
+-  "runtime_version": "0.2.0rc12",
+-  "release_base_url": "https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc12",
++  "runtime_version": "0.2.0rc13",
++  "release_base_url": "https://github.com/oncologylab/fp-tools/releases/download/v0.2.0rc13",
+   "components": {
+     "core": {
+       "commands": [
+@@ -37,23 +37,23 @@
+   },
+   "artifacts": {
+     "linux-x86_64": {
+-      "core": {"filename": "fp-tools-runtime-core-0.2.0rc12-linux-x86_64.tar.gz"},
+-      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc12-linux-x86_64.tar.gz"},
+-      "homer": {"filename": "fp-tools-runtime-homer-0.2.0rc12-linux-x86_64.tar.gz"}
++      "core": {"filename": "fp-tools-runtime-core-0.2.0rc13-linux-x86_64.tar.gz"},
++      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc13-linux-x86_64.tar.gz"},
++      "homer": {"filename": "fp-tools-runtime-homer-0.2.0rc13-linux-x86_64.tar.gz"}
+     },
+     "linux-arm64": {
+-      "core": {"filename": "fp-tools-runtime-core-0.2.0rc12-linux-arm64.tar.gz"},
+-      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc12-linux-arm64.tar.gz"},
+-      "homer": {"filename": "fp-tools-runtime-homer-0.2.0rc12-linux-arm64.tar.gz"}
++      "core": {"filename": "fp-tools-runtime-core-0.2.0rc13-linux-arm64.tar.gz"},
++      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc13-linux-arm64.tar.gz"},
++      "homer": {"filename": "fp-tools-runtime-homer-0.2.0rc13-linux-arm64.tar.gz"}
+     },
+     "macos-x86_64": {
+-      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc12-macos-x86_64.tar.gz"}
++      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc13-macos-x86_64.tar.gz"}
+     },
+     "macos-arm64": {
+-      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc12-macos-arm64.tar.gz"}
++      "meme": {"filename": "fp-tools-runtime-meme-0.2.0rc13-macos-arm64.tar.gz"}
+     },
+     "windows-x86_64": {
+-      "meme": {"filename": "fp-tools-runtime-wsl-meme-0.2.0rc12-linux-x86_64.tar.gz"}
++      "meme": {"filename": "fp-tools-runtime-wsl-meme-0.2.0rc13-linux-x86_64.tar.gz"}
+     }
+   }
+ }
+diff --git a/tests/test_gui_launcher.py b/tests/test_gui_launcher.py
+index d4a87bfc..bed9c341 100644
+--- a/tests/test_gui_launcher.py
++++ b/tests/test_gui_launcher.py
+@@ -16,8 +16,12 @@
+ from fp_tools.gui_app import (
+     GENERIC_TOOL_DEFAULTS,
+     _all_example_files,
++    _config_form_mode,
++    _config_widget_key,
+     _format_extra_args,
+     _parse_extra_args,
++    _set_config,
++    _updated_single_config,
+     _validation_errors_markup,
+ )
+ from fp_tools.cli_gui import _access_urls, _startup_messages
+@@ -29,6 +33,16 @@
+ 
+ 
+ class GuiLauncherTests(unittest.TestCase):
++    class _SessionState(dict):
++        def __getattr__(self, name):
++            try:
++                return self[name]
++            except KeyError as exc:
++                raise AttributeError(name) from exc
++
++        def __setattr__(self, name, value):
++            self[name] = value
++
+     def test_desktop_default_opens_native_window(self):
+         with patch("fp_tools.desktop_window.launch_native_gui", return_value=0) as launch:
+             self.assertEqual(desktop_main(["--run-dir", "runs"]), 0)
+@@ -79,6 +93,118 @@ def test_validation_error_markup_wraps_paths_and_escapes_html(self):
+         self.assertIn("overflow-wrap: anywhere !important", style)
+         self.assertIn("word-break: break-all !important", style)
+ 
++    def test_mobile_navigation_and_compact_sidebar_styles_are_present(self):
++        fake_streamlit = MagicMock()
++        with patch.object(gui_app, "st", fake_streamlit):
++            gui_app._apply_page_style()
++        style = fake_streamlit.markdown.call_args.args[0]
++        self.assertIn('[data-testid="stExpandSidebarButton"]', style)
++        self.assertIn('content: "Open navigation"', style)
++        self.assertIn('content: "Close navigation"', style)
++        self.assertIn(".fp-workspace-path", style)
++        self.assertIn('[data-testid="stMain"] [data-testid="stWidgetLabel"]', style)
++        self.assertIn("-webkit-text-fill-color: var(--fp-text) !important", style)
++        self.assertIn("flex-direction: column !important", style)
++        self.assertIn(
++            '[data-testid="stHorizontalBlock"] > [data-testid="stColumn"]',
++            style,
++        )
++        self.assertNotIn(".fp-sidebar-brand-subtitle", style)
++        self.assertNotIn(".fp-run-dir-pill", style)
++
++    def test_set_config_advances_widget_revision_and_reruns(self):
++        state = self._SessionState(config_revision=3)
++        fake_streamlit = MagicMock(session_state=state)
++        config = {
++            "version": 1,
++            "run_mode": "single",
++            "defaults": {},
++            "samples": [{"sample_id": "loaded", "tool": "bulk-footprinting"}],
++            "comparisons": [],
++        }
++        with patch.object(gui_app, "st", fake_streamlit):
++            _set_config(config)
++            self.assertEqual(_config_widget_key("sample_table"), "cfg_4_sample_table")
++        self.assertEqual(state["current_config"]["samples"], config["samples"])
++        self.assertIsNone(state["current_config"]["run_root"])
++        self.assertEqual(state["config_revision"], 4)
++        self.assertEqual(state["config_update_notice"], "Current config updated.")
++        fake_streamlit.rerun.assert_called_once_with()
++
++    def test_config_update_notice_uses_streamlit_default_icon(self):
++        state = self._SessionState(config_update_notice="Current config updated.")
++        fake_streamlit = MagicMock(session_state=state)
++        with patch.object(gui_app, "st", fake_streamlit):
++            gui_app._render_config_update_notice()
++        fake_streamlit.toast.assert_called_once_with("Current config updated.")
++        self.assertNotIn("config_update_notice", state)
++
++    def test_query_page_overrides_stale_session_navigation(self):
++        state = self._SessionState(gui_page="bulk-footprinting")
++        fake_streamlit = MagicMock(
++            session_state=state,
++            query_params={"page": "normalize-bigwig"},
++        )
++        with patch.object(gui_app, "st", fake_streamlit):
++            page = gui_app._current_page_from_query()
++        self.assertEqual(page, "normalize-bigwig")
++        self.assertEqual(state["gui_page"], "normalize-bigwig")
++
++    def test_loaded_single_config_preserves_metadata_defaults_and_hidden_fields(self):
++        state = self._SessionState(
++            config_revision=2,
++            current_config={
++                "version": 1,
++                "run_mode": "single",
++                "run_root": "runs",
++                "defaults": {"cores": 2, "normalization": "sample-quantile"},
++                "samples": [
++                    {
++                        "sample_id": "loaded_bulk",
++                        "tool": "bulk-footprinting",
++                        "sample_table": r"C:\\project path\\samples.tsv",
++                        "hidden_future_option": "keep-me",
++                    }
++                ],
++                "comparisons": [],
++            },
++        )
++        fake_streamlit = MagicMock(session_state=state)
++        with patch.object(gui_app, "st", fake_streamlit):
++            self.assertEqual(_config_form_mode("bulk-footprinting"), "Single run")
++            self.assertEqual(gui_app._current_single_params("bulk-footprinting")["cores"], 2)
++            updated = _updated_single_config(
++                "bulk-footprinting",
++                {"outdir": r"C:\\project path\\changed", "cores": 6},
++                job_id="fallback",
++            )
++        item = updated["samples"][0]
++        self.assertEqual(item["sample_id"], "loaded_bulk")
++        self.assertEqual(item["hidden_future_option"], "keep-me")
++        self.assertEqual(item["outdir"], r"C:\\project path\\changed")
++        self.assertEqual(updated["run_root"], "runs")
++        self.assertEqual(updated["defaults"]["normalization"], "sample-quantile")
++
++    def test_loaded_batch_config_selects_matching_editor_mode(self):
++        fake_streamlit = MagicMock(
++            session_state=self._SessionState(
++                current_config={
++                    "version": 1,
++                    "run_mode": "batch",
++                    "defaults": {},
++                    "samples": [],
++                    "comparisons": [
++                        {"comparison_id": "a_vs_b", "tool": "diff-footprints"}
++                    ],
++                }
++            )
++        )
++        with patch.object(gui_app, "st", fake_streamlit):
++            self.assertEqual(
++                _config_form_mode("diff-footprints"),
++                "Batch comparison list",
++            )
++
+     def test_run_control_state_tracks_validation_and_keeps_launch_guard(self):
+         normalized = {
+             "version": 1,

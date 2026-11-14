@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/nanoporetech__tombo-176"
+description = "Made dump_per_read_statistics an executable script"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "tombo",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nanoporetech/tombo"
+ref = "25c72796effae262b30d4be77e073631b6702a92"
+reference = "https://github.com/nanoporetech/tombo/pull/176"
+source_access = "auto"
+built_at = "2026-11-14T07:14:51.301067+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:043b71760be8a052d785dc5cc659bc0f28a1a9ce6fe7e1d75e25559a76046229"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-05-09T04:22:54Z"
+diff_format = "unified"
+context_files = [
+    "scripts/dump_per_read_statistics.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 59
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

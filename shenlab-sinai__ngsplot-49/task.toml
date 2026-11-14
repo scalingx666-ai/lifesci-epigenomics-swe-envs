@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/shenlab-sinai__ngsplot-49"
+description = "Update coverage.r"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "ngsplot",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "shenlab-sinai/ngsplot"
+ref = "40da62d47a1a2e79841e95ad6c6dc630c2440c38"
+reference = "https://github.com/shenlab-sinai/ngsplot/pull/49"
+source_access = "auto"
+built_at = "2026-11-14T07:14:19.476326+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:6e90c7404621d330634ff27646e17e3ce8b3f91db9bfb5a2c4a406ba44ecbaec"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2015-10-02T20:43:29Z"
+diff_format = "unified"
+context_files = [
+    "lib/coverage.r",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

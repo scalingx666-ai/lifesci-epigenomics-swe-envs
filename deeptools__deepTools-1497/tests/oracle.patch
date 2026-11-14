@@ -1,0 +1,61 @@
+diff --git a/.github/workflows/test_docs.yml b/.github/workflows/test_docs.yml
+index f8203946e7..205c0ab97b 100644
+--- a/.github/workflows/test_docs.yml
++++ b/.github/workflows/test_docs.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
++            - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+               with:
+                   environments: default
+             - name: build docs
+diff --git a/.github/workflows/test_essenv.yml b/.github/workflows/test_essenv.yml
+index f79bd43654..2ca6a20b32 100644
+--- a/.github/workflows/test_essenv.yml
++++ b/.github/workflows/test_essenv.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
++            - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+               with:
+                   environments: ess
+             - name: ess.py --dry-run
+diff --git a/.github/workflows/test_pytest.yml b/.github/workflows/test_pytest.yml
+index 47442c5086..fd3c0e738e 100644
+--- a/.github/workflows/test_pytest.yml
++++ b/.github/workflows/test_pytest.yml
+@@ -40,7 +40,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
++            - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+               with:
+                   environments: ${{ matrix.pixi-env }}
+             - name: build deeptools
+@@ -62,7 +62,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
++            - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+               with:
+                   environments: ${{ matrix.pixi-env }}
+             - name: build deeptools
+diff --git a/.github/workflows/test_ruff.yml b/.github/workflows/test_ruff.yml
+index bc113e05eb..424dc6571d 100644
+--- a/.github/workflows/test_ruff.yml
++++ b/.github/workflows/test_ruff.yml
+@@ -12,7 +12,7 @@ jobs:
+             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+               with:
+                 persist-credentials: false
+-            - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
++            - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+               with:
+                   environments: default
+             - name: ruff check

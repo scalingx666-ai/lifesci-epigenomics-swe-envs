@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/oncologylab__fp-tools-53"
+description = "Fix GUI rendering, responsive navigation, and config synchronization"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "fp-tools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "oncologylab/fp-tools"
+ref = "4cbdebeaf07a24baefb78787cc1b0eb6df878157"
+reference = "https://github.com/oncologylab/fp-tools/pull/53"
+source_access = "auto"
+built_at = "2026-11-14T06:57:36.467140+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:59f9b34594b14ff271f4c1e619f0679a27e541ee29df9d111c49bea2b5dc2831"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-21T22:01:13Z"
+diff_format = "unified"
+context_files = [
+    "CITATION.cff",
+    "DEV_PLAN.md",
+    "docs/demos/gui/fp-tools-gui-static-demo.html",
+    "docs/get-started/installation.md",
+    "examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh",
+    "packaging/desktop/Info.plist",
+    "pyproject.toml",
+    "scripts/audit_desktop_gui.py",
+    "src/fp_tools/__init__.py",
+    "src/fp_tools/gui_app.py",
+    "src/fp_tools/resources/runtime_manifest.json",
+    "tests/test_gui_launcher.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1369
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

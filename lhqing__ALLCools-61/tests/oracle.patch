@@ -1,0 +1,228 @@
+diff --git a/ALLCools/utilities.py b/ALLCools/utilities.py
+index 381b16e..5d2daad 100644
+--- a/ALLCools/utilities.py
++++ b/ALLCools/utilities.py
+@@ -76,6 +76,8 @@ def parse_mc_pattern(pattern: str) -> set:
+         except KeyError:
+             raise KeyError(f"Base {base} is not in IUPAC table.")
+     context_set = {"".join(i) for i in itertools.product(*all_pos_list)}
++    if pattern = 'CH':
++        context_set.add('CH')
+     return context_set
+ 
+ 
+diff --git a/docs/CONDUCT.md b/docs/CONDUCT.md
+index 8484972..228e69d 100644
+--- a/docs/CONDUCT.md
++++ b/docs/CONDUCT.md
+@@ -8,19 +8,19 @@ In the interest of fostering an open and welcoming environment, we as contributo
+ 
+ Examples of behavior that contributes to creating a positive environment include:
+ 
+--   Using welcoming and inclusive language
+--   Being respectful of differing viewpoints and experiences
+--   Gracefully accepting constructive criticism
+--   Focusing on what is best for the community
+--   Showing empathy towards other community members
++- Using welcoming and inclusive language
++- Being respectful of differing viewpoints and experiences
++- Gracefully accepting constructive criticism
++- Focusing on what is best for the community
++- Showing empathy towards other community members
+ 
+ Examples of unacceptable behavior by participants include:
+ 
+--   The use of sexualized language or imagery and unwelcome sexual attention or advances
+--   Trolling, insulting/derogatory comments, and personal or political attacks
+--   Public or private harassment
+--   Publishing others' private information, such as a physical or electronic address, without explicit permission
+--   Other conduct which could reasonably be considered inappropriate in a professional setting
++- The use of sexualized language or imagery and unwelcome sexual attention or advances
++- Trolling, insulting/derogatory comments, and personal or political attacks
++- Public or private harassment
++- Publishing others' private information, such as a physical or electronic address, without explicit permission
++- Other conduct which could reasonably be considered inappropriate in a professional setting
+ 
+ ## Our Responsibilities
+ 
+diff --git a/docs/CONTRIBUTING.md b/docs/CONTRIBUTING.md
+index 08a910d..61b3ccf 100644
+--- a/docs/CONTRIBUTING.md
++++ b/docs/CONTRIBUTING.md
+@@ -9,9 +9,9 @@ Report bugs using GitHub issues.
+ 
+ If you are reporting a bug, please include:
+ 
+--   Your operating system name and version.
+--   Any details about your local setup that might be helpful in troubleshooting.
+--   Detailed steps to reproduce the bug.
++- Your operating system name and version.
++- Any details about your local setup that might be helpful in troubleshooting.
++- Detailed steps to reproduce the bug.
+ 
+ ## Fix Bugs
+ 
+@@ -35,10 +35,10 @@ The best way to send feedback is to file an issue on GitHub.
+ 
+ If you are proposing a feature:
+ 
+--   Explain in detail how it would work.
+--   Keep the scope as narrow as possible, to make it easier to implement.
+--   Remember that this is a volunteer-driven project, and that contributions
+-    are welcome :)
++- Explain in detail how it would work.
++- Keep the scope as narrow as possible, to make it easier to implement.
++- Remember that this is a volunteer-driven project, and that contributions
++  are welcome :)
+ 
+ ## Get Started
+ 
+diff --git a/docs/README.md b/docs/README.md
+index ab756c6..05f60e7 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -8,10 +8,10 @@ ALLCools documentation
+ 
+ If you'd like to develop on and build the ALLCools book, you should:
+ 
+--   Clone this repository and run
+--   Run `pip install -r requirements.txt` (it is recommended you do this within a virtual environment)
+--   (Recommended) Remove the existing `ALLCools/_build/` directory
+--   Run `jupyter-book build ALLCools/`
++- Clone this repository and run
++- Run `pip install -r requirements.txt` (it is recommended you do this within a virtual environment)
++- (Recommended) Remove the existing `ALLCools/_build/` directory
++- Run `jupyter-book build ALLCools/`
+ 
+ A fully-rendered HTML version of the book will be built in `ALLCools/_build/html/`.
+ 
+@@ -21,8 +21,8 @@ The html version of the book is hosted on the `gh-pages` branch of this repo. A
+ 
+ If you wish to disable this automation, you may remove the GitHub actions workflow and build the book manually by:
+ 
+--   Navigating to your local build; and running,
+--   `ghp-import -n -p -f ALLCools/_build/html`
++- Navigating to your local build; and running,
++- `ghp-import -n -p -f ALLCools/_build/html`
+ 
+ This will automatically push your build to the `gh-pages` branch. More information on this hosting process can be found [here](https://jupyterbook.org/publish/gh-pages.html#manually-host-your-book-with-github-pages).
+ 
+diff --git a/docs/allcools/cell_level/basic/intro_basic_clustering.md b/docs/allcools/cell_level/basic/intro_basic_clustering.md
+index 87eb2c2..7a93ac0 100644
+--- a/docs/allcools/cell_level/basic/intro_basic_clustering.md
++++ b/docs/allcools/cell_level/basic/intro_basic_clustering.md
+@@ -14,9 +14,9 @@ The dataset we used for 100Kb clustering documentation comes from the hippocampu
+ 
+ #### Download Input Files
+ 
+--   Cell metadata: ADD DOWNLOAD URL
+--   single-cell ALLC files: ADD DOWNLOAD URL
+--   MCDS files: ADD DOWNLOAD URL
++- Cell metadata: ADD DOWNLOAD URL
++- single-cell ALLC files: ADD DOWNLOAD URL
++- MCDS files: ADD DOWNLOAD URL
+ 
+ ### For 5Kb bins clustering
+ 
+@@ -24,9 +24,9 @@ The dataset we used for 5Kb clustering documentation comes from human PBMC (ADD
+ 
+ #### Download Input Files
+ 
+--   Cell metadata: ADD DOWNLOAD URL
+--   single-cell ALLC files: ADD DOWNLOAD URL
+--   MCDS files: ADD DOWNLOAD URL
++- Cell metadata: ADD DOWNLOAD URL
++- single-cell ALLC files: ADD DOWNLOAD URL
++- MCDS files: ADD DOWNLOAD URL
+ 
+ ## Prepare your own datasets
+ 
+diff --git a/docs/allcools/intro.md b/docs/allcools/intro.md
+index 7030fd0..4478fa5 100644
+--- a/docs/allcools/intro.md
++++ b/docs/allcools/intro.md
+@@ -21,10 +21,10 @@ ALLCools documentation organization.
+ 
+ ## Authors
+ 
+--   Hanqing Liu, developer, initial conception
+--   Jingtian Zhou, developer, 5kb clustering algorithms
+--   Wei Tian
+--   Jiaying Xu
++- Hanqing Liu, developer, initial conception
++- Jingtian Zhou, developer, 5kb clustering algorithms
++- Wei Tian
++- Jiaying Xu
+ 
+ ## Support
+ 
+@@ -37,10 +37,10 @@ figclass: margin
+ Click on this to create a page specific issue.
+ ```
+ 
+--   The source code is on [github](https://github.com/lhqing/ALLCools);
+--   For releases and changelog, please check out the [github releases page](https://github.com/lhqing/ALLCools/releases);
+--   For bugs and feature requests, please use the [issue tracker](https://github.com/lhqing/ALLCools/issues).
+--   For page-specific issues, please use the "open issue" button on the top-right toggle.
++- The source code is on [github](https://github.com/lhqing/ALLCools);
++- For releases and changelog, please check out the [github releases page](https://github.com/lhqing/ALLCools/releases);
++- For bugs and feature requests, please use the [issue tracker](https://github.com/lhqing/ALLCools/issues).
++- For page-specific issues, please use the "open issue" button on the top-right toggle.
+ 
+ ## Citing ALLCools
+ 
+diff --git a/docs/allcools/start/analysis_steps.md b/docs/allcools/start/analysis_steps.md
+index 5ffe367..cadf6b0 100644
+--- a/docs/allcools/start/analysis_steps.md
++++ b/docs/allcools/start/analysis_steps.md
+@@ -20,11 +20,11 @@ In general, the **cellular analysis** is focused on individual cells' overall di
+ 
+ ### Sections
+ 
+--   [Basic walk-through of the clustering analysis](../cell_level/basic/intro_basic_clustering.md).
+--   [Step-by-step description of the clustering analysis](../cell_level/step_by_step/intro_step_by_step_clustering.md).
+--   [Identification of Differentially Methylated Genes clusters](../cell_level/dmg/intro_dmg.md).
+--   [Cell-level data integration](../cell_level/integration/intro_integration.md).
+--   [Potential cell doublets identification](../cell_level/doublets/intro_doublets.md).
++- [Basic walk-through of the clustering analysis](../cell_level/basic/intro_basic_clustering.md).
++- [Step-by-step description of the clustering analysis](../cell_level/step_by_step/intro_step_by_step_clustering.md).
++- [Identification of Differentially Methylated Genes clusters](../cell_level/dmg/intro_dmg.md).
++- [Cell-level data integration](../cell_level/integration/intro_integration.md).
++- [Potential cell doublets identification](../cell_level/doublets/intro_doublets.md).
+ 
+ ### Input
+ 
+@@ -49,12 +49,12 @@ Specifically, this strategy starts from a cell-by-5kb-bin hypo-methylation score
+ 
+ ### Sections
+ 
+--   [Prepare pseudo-bulk ALLC files](../cluster_level/intro.md)
+--   [Call Differentially Methylated Region (DMR)](../cluster_level/RegionDS/01a.call_dmr)
+--   [DMR annotation](../cluster_level/RegionDS/02.annotation.ipynb)
+--   [DMR motif analysis (finding upstream regulators of DMRs)](../cluster_level/RegionDS/intro_motif.md)
+--   [DMR - Gene correlation analysis (finding downstream targets of DMRs)](../cluster_level/Correlation/intro_corr)
+--   [Enhancer prediction with REPTILE algorithm](../cluster_level/REPTILE/intro_reptile.md)
++- [Prepare pseudo-bulk ALLC files](../cluster_level/intro.md)
++- [Call Differentially Methylated Region (DMR)](../cluster_level/RegionDS/01a.call_dmr)
++- [DMR annotation](../cluster_level/RegionDS/02.annotation.ipynb)
++- [DMR motif analysis (finding upstream regulators of DMRs)](../cluster_level/RegionDS/intro_motif.md)
++- [DMR - Gene correlation analysis (finding downstream targets of DMRs)](../cluster_level/Correlation/intro_corr)
++- [Enhancer prediction with REPTILE algorithm](../cluster_level/REPTILE/intro_reptile.md)
+ 
+ ### Basic process of genomic analysis
+ 
+diff --git a/docs/allcools/start/installation.md b/docs/allcools/start/installation.md
+index 30a6c68..cf0a987 100644
+--- a/docs/allcools/start/installation.md
++++ b/docs/allcools/start/installation.md
+@@ -123,8 +123,8 @@ conda deactivate
+ 
+ Here are some optional packages which might be hard to install on some old systems.
+ 
+--   `rpy2` (R and the R package pvclust) is used for the cluster dendrogram.
+--   `tpot` is used in REPTILE model.
++- `rpy2` (R and the R package pvclust) is used for the cluster dendrogram.
++- `tpot` is used in REPTILE model.
+ 
+ ```shell
+ mamba install -n allcools rpy2

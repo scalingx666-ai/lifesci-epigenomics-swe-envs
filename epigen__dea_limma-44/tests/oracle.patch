@@ -1,0 +1,181 @@
+diff --git a/README.md b/README.md
+index a857a3e..6f11c63 100644
+--- a/README.md
++++ b/README.md
+@@ -44,7 +44,7 @@ This is a template for the Methods section of a scientific publication and is in
+ 
+ __Differential Expression Analysis (DEA).__ DEA was performed on the quality-controlled filtered [raw/normalized] counts using the _limma_ (ver) [ref] workflow for fitting a linear model [formula] to identify features (genes/regions) that statistically significantly change with [comparisons] compared to the control group [reference levels] (intercept). Briefly, we determined normalization factors with edgeR::calcNormFactors (optional) using method [X], then applied voom (optional) to estimate the mean-variance relationship of the log-counts. We used blocking on (optional) variable [X] to account for repeated measurements, lmFit to fit the model to the data, and finally eBayes (optional) with the robust (and trend flag – optional for normalized data) flag to compute (moderated/ordinary) t-statistics. For each comparison we used topTable to extract feature-wise average expression, effect sizes (log2 fold change) and their statistical significance as adjusted p-values, determined using the Benjamini-Hochberg method. Furthermore, we calculated feature scores, for each feature in all comparisons, using the formula [score_formula] for downstream ranked enrichment analyses. Next, these results were filtered for relevant features based on the following criteria: statistical significance (adjusted p-value < [X]), effect size (absolute log2 fold change > [X]), and expression (average expression > [X]). Finally, we performed hierarchical clustering on the effect sizes (log2 fold changes) of the union of all relevant features and comparison groups.
+ 
+-__One-vs-All (Ova) DEA (optional).__ To identify group-specific signatures, we performed one-vs-all analyses, where each group is compared against all others combined to identify uniquely regulated features relative to the rest. For terms modelled as means model, we took the difference of the absolute effect of the level of interest minus the average of the effects of all other levels of that term [ref](https://doi.org/10.12688/f1000research.27893.1). For other terms, including interaction terms, we took the same approach as above but using the difference of the relative effects (i.e., without the intercept, since this is part of the absolute effects of all levels and thus cancels out). For example, for an interaction term `term1:term2`, where `term1` has levels `A (reference)` and `B`, and `term2` has levels `X (reference)` and `Y`, the relative effect of `term1levelB:term2levelY` is the sum of the main effects plus the interaction effect: `term1levelB + term2levelY + term1levelB:term2levelY`. The reference levels for each term influence which terms are implicitly included in the model, so that for example the relative effect of `term1levelB:term2levelX` is `term1levelB` and the relative effect of `term1levelA:term2levelX` is `0`. 
++__One-vs-All (Ova) DEA (optional).__ To identify group-specific signatures, we performed one-vs-all analyses, where each group is compared against all others combined. For terms modeled as means model, we took the difference of the absolute effect of the level of interest minus the average of the effects of all other levels of that term [ref](https://doi.org/10.12688/f1000research.27893.1). For other terms, we took the same approach as above but using the difference of the relative effects (i.e., without the intercept, since this is part of the absolute effects of all levels and thus cancels out).
+ 
+ Actual differences were calculated using the contrasts functionality of _limma_ (ver) [ref]. [all other downstream steps can be taken from above]
+ 
+@@ -73,7 +73,7 @@ The workflow performs the following steps that produce the outlined results:
+     - If your features represent identifiers of genomic regions (e.g., from ATAC-seq or ChIP-seq), they must be converted to the `BED` format for use in downstream analysis like genomic region enrichment analysis. We provide a convenient helper script for this in our [enrichment analysis module](https://github.com/epigen/enrichment_analysis). For instructions, see: [How to convert feature lists to BED files](https://github.com/epigen/enrichment_analysis?tab=readme-ov-file#-how-to-convert-feature-lists-to-bed-files).
+   - (optional) save feature score tables (with two columns: "feature" and "score") per comparison group using score_formula for downstream analyses (e.g., pre-ranked enrichment analysis) (`{analysis}/feature_lists/{group}_featureScores.csv`).
+     - (optional) annotated feature scores tables (with two columns: "feature_name" and "score") with suffix "_annot" (`{analysis}/feature_lists/{group}_featureScores_annot.csv`).
+-  - (optional) One-vs-all (OvA) analysis on modeled and specified covariates using contrasts, enabling automated comparison of each group against all others for a given term (e.g., cell types). This is implemented to work for all terms in a model, including interactions, but not numerical covariates (not possible). A separate result folder `{name}_OvA_{variable}` is generated per `variable` (i.e., term).
++  - (optional) One-vs-all (OvA) analysis on modeled and specified covariates using contrasts, enabling automated comparison of each group against all others for a given term (e.g., cell types). This is implemented to work for all terms in a model, but not for numerical covariates or interaction terms. OvA results depend on settings in some cases, see [./config/README.md](./config/README.md). A separate result folder `{name}_OvA_{variable}` is generated per `variable` (i.e., term).
+     - example use-case: You have RNA-seq samples of multiple cell types and want to find a signature of genes that is up- or downregulated per cell type compared to the average of all other cell types, while controling for covariates like batch or donor.
+ - DEA result statistics: total number of statistically significant features and split by positive (up) and negative (down) change (CSV).
+ - DEA result filtering of features (e.g., genes) by 
+diff --git a/config/README.md b/config/README.md
+index 4db4bc8..143b487 100644
+--- a/config/README.md
++++ b/config/README.md
+@@ -14,7 +14,7 @@ You need one configuration file and one annotation file to run the complete work
+     -  voom: Flag to indicate if voom function should be used (1) or not (0). Note: Should be 0 if data is already log-normalized and/or limma-trend will be used.
+     -  eBayes: Flag to indicate if eBayes function should be used (1) or not (0). Note: Skipping eBayes (0) will lead to the use of ordinary t-statistic with topTable and is [not recommended by the limma author Gordon Smyth](https://support.bioconductor.org/p/35174/), the B-statistics (log-odds) are still determined using eBayes, assuming they will not be used downstream. Make sure you know what you are doing.
+     -  limma_trend: Flag to indicate if limma-trend should be used (1) (ie sets [limma::eBayes](https://www.rdocumentation.org/packages/limma/versions/3.28.14/topics/ebayes) parameter trend=TRUE), or not (0). Note: Make sure to activate the required eBayes function (=1) and deactivate voom (=0) if you use limma-trend. Using both, voom and limma-trend makes no sense, but is not prohibited by the workflow.
+-    -  OvA (optional): Variable names contained in the formula (and metadata) for which a one-vs-all analysis using contrasts should be performed. Separated by `|` (e.g., `cell_type|batch`). Interaction terms should also be added into the `|`-separated list (e.g., `cell_type|batch|cell_type:batch`). Continuous variables will be ignored. Due to numerical approximations used by limma [dicussed here](https://support.bioconductor.org/p/112788/), the order of terms in a formula affects the p-values slightly (the logFCs are stable). Keep this in mind for the interpretation, i.e., be careful about genes that have high p-values (close to the significance threshold) and low logFCs.
++    -  OvA (optional): Variable names contained in the formula (and metadata) for which a one-vs-all analysis using contrasts should be performed, separated by `|` (e.g., `cell_type|batch`). OvA for interaction terms and continuous variables is not supported and causes an error. Formulas that contain interaction terms are allowed, but should be used with care and only if questions cannot be addressed with simpler models, since they make both main and interaction effects' OvA results change with reference levels. Due to numerical approximations used by limma [dicussed here](https://support.bioconductor.org/p/112788/), p-values change depending on whether a term is modeled as means model (`~ 0 + term1_as_means_model + term2_as_mean_ref_model + term3_as_mean_ref_model`) or as mean-reference model (`~ term1_as_mean_ref_model + term2_as_mean_ref_model + term3_as_mean_ref_model`) - the logFCs are stable. Keep this in mind for the interpretation, i.e., be careful about genes that have p-values close to the significance threshold and low logFCs. Otherwise, the order of terms does not matter.
+ 
+ Set workflow-specific `resources` or command line arguments (CLI) in the workflow profile `workflow/profiles/default.config.yaml`, which supersedes global Snakemake profiles.
+ 
+diff --git a/workflow/scripts/one_vs_all_contrasts.R b/workflow/scripts/one_vs_all_contrasts.R
+index 2cffb37..7f8f574 100644
+--- a/workflow/scripts/one_vs_all_contrasts.R
++++ b/workflow/scripts/one_vs_all_contrasts.R
+@@ -21,6 +21,11 @@ eBayes_flag <- snakemake@params[["eBayes"]]
+ limma_trend <- snakemake@params[["limma_trend"]]
+ formula <- snakemake@params[["formula"]]
+ 
++#### assert that ova_var is not an interaction term
++if (grepl(":", ova_var, fixed=TRUE)) {
++    stop(paste0("One-vs-all contrasts are not supported for interaction terms. '", ova_var, "' is an interaction term."))
++}
++
+ #### load data (model, design, feature_annotation and metadata)
+ fit <- readRDS(lmfit_object_path)
+ design <- data.frame(fread(file.path(model_matrix_path), header=TRUE), row.names=1)
+@@ -59,44 +64,15 @@ print(paste0("Means model term: ", means_model_term))
+ # is the current OvA terms is the one that's modelled as a means model
+ ova_is_means_model <- ova_var == means_model_term
+ 
+-ova_is_interaction <- grepl(":", ova_var, fixed=TRUE)
+-
+ #### identify groups for one-vs-all contrasts using the metadata table, column prefix & design matrix
+ # check if ova_var is numeric, and if yes, cause error since OvA does not make sense for continuous variables
+ # ok to kill the process, since the user should not get to make this wrong choice
+-# split in case this is an interaction term, i.e., contains a colon
+-ova_vars <- unlist(strsplit(ova_var, ':'))
+-for (var in ova_vars){
+-    if (is.numeric(meta[, var])){
+-        stop(paste0("One-vs-all contrasts do not make sense for numeric (non-factor) variable '", var, "'"))
+-    }
++if (is.numeric(meta[, ova_var])){
++    stop(paste0("One-vs-all contrasts do not make sense for numeric (non-factor) variable '", ova_var, "'"))
+ }
+ 
+-if (ova_is_interaction){
+-    # for interaction terms, need to generate all combinations of the levels
+-    # there could be multiple colons in the variable name for high-order interaction terms
+-    # the ova_vars need to be sorted in the order their main effects appear in the formula so that
+-    # the naming is actually in the correct order 
+-    ova_vars <- ova_vars[order(match(ova_vars, all_terms))]
+-    # get the unique levels of each variable in the metadata
+-    individual_group_levels <- lapply(ova_vars, function(var) {
+-        unique(meta[, var])
+-    })
+-    # get combinations of all group levels
+-    level_combinations <- expand.grid(individual_group_levels, stringsAsFactors = FALSE)
+-    # the design matrix is saved with : in the column names for interaction terms, but fread replaces them with .
+-    # this is based on the make.names() function, so use it here as well to make exactly the same names
+-    group_names <- apply(level_combinations, 1, function(row) {
+-        paste(row, collapse = ":")
+-    })
+-    # add prefix to match the design matrix
+-    group_cols <- apply(level_combinations, 1, function(row) {
+-        base::make.names(paste0(ova_vars, row, collapse = ":"))
+-    })
+-} else {
+-    group_names <- unique(meta[,ova_var])
+-    group_cols <- base::make.names(paste0(ova_var, group_names))
+-}
++group_names <- unique(meta[,ova_var])
++group_cols <- base::make.names(paste0(ova_var, group_names))
+ 
+ #### define contrasts
+ contrasts_all <- list()
+@@ -106,13 +82,13 @@ for (i in seq(length(group_names))){
+     group_cols_wo_gr <- group_cols[group_cols != group_col]
+ 
+     # see https://github.com/epigen/dea_limma/issues/34 for a more detailed explanation of what is happening here
+-    if (ova_is_means_model && !ova_is_interaction){
++    if (ova_is_means_model){
+         # for a means model, simply subtract the mean of all other groups from the current group
+         contrasts_all[[group_name]] <- paste0(
+             group_col, " - (", paste(group_cols_wo_gr, collapse=" + "), ") / ", length(group_cols_wo_gr)
+         )
+     
+-    } else if (!ova_is_means_model && !ova_is_interaction) {
++    } else {
+         # each actual effect of the levels contains the intercept, so in the when subtracting the average of all other
+         # groups from the current group the intercept cancels out. Thus, we compare relative effects (relative to the 
+         # reference group), where the relative effect for the reference group itself is 0 (in the contrast formula just
+@@ -149,57 +125,10 @@ for (i in seq(length(group_names))){
+             )
+             contrasts_all[[group_name]] <- paste0(self_relative_effect, " - ", other_group_average)        
+         }
+-
+-    } else if (ova_is_interaction) {
+-        # if the current OvA term is an interaction, need to find all the columns that contribute to a group, i.e., 
+-        # the main effects and the interaction effect, and sum them up to the get actual effect to compare
+-        # the intercept column again cancels out and can be ignored
+-        # depending on the model, different main effects will be in design matrix or be represented by the intercept
+-        main_effects <- strsplit(group_col, ".", fixed=TRUE)[[1]]
+-        main_effects <- main_effects[main_effects %in% colnames(design)]
+-        if (length(main_effects) == 0){
+-            contrast_formula <- ""
+-        } else {
+-            contrast_formula <- paste0(main_effects, collapse=" + ")
+-        } 
+-        
+-        # for the interaction term itself, for all but one of the groups, one level is chosen as reference level and
+-        # all interaction terms with that reference level are not in the design matrix and don't need to be added
+-        # add those that are there
+-        if (group_col %in% colnames(design)){
+-            contrast_formula <- paste0(contrast_formula, " + ", group_col)
+-        }
+-        
+-        # find the mean effect of all other groups
+-        other_group_effects <- c()
+-        for (other_group_col in group_cols_wo_gr){
+-            # for the other groups, add the main effects and the interaction term
+-            other_main_effects <- strsplit(other_group_col, ".", fixed=TRUE)[[1]]
+-            other_main_effects <- other_main_effects[other_main_effects %in% colnames(design)]
+-            # check for the interaction term itself, if it is in the design matrix or one of the reference levels
+-            if (other_group_col %in% colnames(design)){
+-                other_main_effects <- c(other_main_effects, other_group_col)
+-            }
+-            
+-            other_group_effects <- c(other_group_effects, other_main_effects)
+-        } 
+-        if (length(other_group_effects) == 0){
+-            contrasts_all[[group_name]] <- contrast_formula
+-        } else {         
+-            # collect the effects of all the other groups and sum then up, to then take the average
+-            other_group_average <- paste0(
+-                "(", paste(other_group_effects, collapse=" + "), ") / ", length(group_cols_wo_gr)
+-            )
+-            contrasts_all[[group_name]] <- paste0(contrast_formula, " - ", other_group_average)
+-        }
+-
+-    } else {
+-        stop(paste0("Term type unknown for '", ova_var, "'"))
+     }
+     
+     print(paste0("Contrast for group '", group_name, "': "))
+     print(contrasts_all[[group_name]])
+-
+ }
+ 
+ # generate contrast matrix based on contrast formulas and design matrix
+@@ -261,4 +190,4 @@ contrast_result <- contrast_result[!is.na(contrast_result$adj.P.Val),]
+ 
+ #### save results
+ contrast_result$group <- gsub("\\.", "__", contrast_result$group)
+-fwrite(as.data.frame(contrast_result), file=file.path(contrast_result_path), row.names=FALSE)
++fwrite(as.data.frame(contrast_result), file=file.path(contrast_result_path), row.names=FALSE)
+\ No newline at end of file

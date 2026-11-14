@@ -1,0 +1,32 @@
+diff --git a/workflow/rules/dea.smk b/workflow/rules/dea.smk
+index ef0e4f9..b353f2c 100644
+--- a/workflow/rules/dea.smk
++++ b/workflow/rules/dea.smk
+@@ -47,7 +47,6 @@ rule one_vs_all_contrasts:
+         limma_trend = lambda w: annot_dict["{}".format(w.analysis)]["limma_trend"],
+         feature_annotation_col = config["feature_annotation"]["column"],
+         formula = lambda w: annot_dict["{}".format(w.analysis)]["formula"],
+-        reference_levels = config["reference_levels"],
+         original_ova_var = lambda w: ova_analyses[f"{w.analysis}_OvA_{w.ova_var}"]
+     resources:
+         mem_mb=config.get("mem", "16000"),
+diff --git a/workflow/scripts/one_vs_all_contrasts.R b/workflow/scripts/one_vs_all_contrasts.R
+index 1103e6a..2cffb37 100644
+--- a/workflow/scripts/one_vs_all_contrasts.R
++++ b/workflow/scripts/one_vs_all_contrasts.R
+@@ -118,7 +118,7 @@ for (i in seq(length(group_names))){
+         # reference group), where the relative effect for the reference group itself is 0 (in the contrast formula just
+         # falls away, but is counted for the denominator in the mean).
+     
+-        group <- setdiff(group_cols, colnames(design))
++        reference_group <- setdiff(group_cols, colnames(design))
+         if (length(reference_group) != 1) {
+             # something went wrong
+             stop("There should be exactly one reference group in the design matrix.")
+@@ -261,4 +261,4 @@ contrast_result <- contrast_result[!is.na(contrast_result$adj.P.Val),]
+ 
+ #### save results
+ contrast_result$group <- gsub("\\.", "__", contrast_result$group)
+-fwrite(as.data.frame(contrast_result), file=file.path(contrast_result_path), row.names=FALSE)
+\ No newline at end of file
++fwrite(as.data.frame(contrast_result), file=file.path(contrast_result_path), row.names=FALSE)

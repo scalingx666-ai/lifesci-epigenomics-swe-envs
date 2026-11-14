@@ -1,0 +1,15 @@
+diff --git a/enformer_pytorch/data.py b/enformer_pytorch/data.py
+index 4e2a099..6f914fb 100644
+--- a/enformer_pytorch/data.py
++++ b/enformer_pytorch/data.py
+@@ -116,8 +116,8 @@ def __call__(self, chr_name, start, end, return_augs = False):
+             min_shift, max_shift = self.shift_augs
+             max_shift += 1
+ 
+-            min_shift = max(start + min_shift, 0) - start
+-            max_shift = min(end + max_shift, chromosome_length) - end
++            min_shift = min(max(start + min_shift, 0) - start, 0)
++            max_shift = max(min(end + max_shift, chromosome_length) - end, 1)
+ 
+             rand_shift = randrange(min_shift, max_shift)
+             start += rand_shift

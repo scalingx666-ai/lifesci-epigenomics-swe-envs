@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/pinellolab__EPInformer-6"
+description = "Add K562 end-to-end reproduction walkthrough notebook"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "EPInformer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pinellolab/EPInformer"
+ref = "fca6a34363858cfc37b6ff4ef7dd93922bb108fa"
+reference = "https://github.com/pinellolab/EPInformer/pull/6"
+source_access = "auto"
+built_at = "2026-11-14T07:17:39.364823+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:30da41f6d2db8780deaa49e62e0f9391b862a95a9d9f472f8a9523da662ebaa4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-15T12:20:53Z"
+diff_format = "unified"
+context_files = [
+    "K562_walkthrough.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 139
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

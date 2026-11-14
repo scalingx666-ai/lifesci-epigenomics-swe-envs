@@ -1,0 +1,13 @@
+diff --git a/R/RcisTarget.R b/R/RcisTarget.R
+index 148bcc2..5897733 100644
+--- a/R/RcisTarget.R
++++ b/R/RcisTarget.R
+@@ -229,7 +229,7 @@ topicsRcisTarget <- function(
+   }
+   
+   if (length(topicsList) < nCores){
+-    print(paste('The number of cores (', nCores, ') is higher than the number of topics (', topic,').', sep=''))
++    print(paste('The number of cores (', nCores, ') is higher than the number of topics (', length(topicsList),').', sep=''))
+   }
+ 
+   if(nCores > 1){

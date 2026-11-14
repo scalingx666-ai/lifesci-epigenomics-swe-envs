@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/zeehio__parmap-35"
+description = "Fix silent error swallowing and resource cleanup bugs from code review"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "parmap",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zeehio/parmap"
+ref = "8a6369e841244f8b8521aec87e0a807b0fb47284"
+reference = "https://github.com/zeehio/parmap/pull/35"
+source_access = "auto"
+built_at = "2026-11-14T07:16:03.474128+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a12dbd7049f4258cf7c862ff54ab576ffdf936819b17689a4bf82f4d5a543b95"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-07T10:17:57Z"
+diff_format = "unified"
+context_files = [
+    "ChangeLog",
+    "README.rst",
+    "parmap/parmap.py",
+    "test_parmap.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 164
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

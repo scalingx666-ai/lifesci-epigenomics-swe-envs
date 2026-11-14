@@ -1,0 +1,340 @@
+diff --git a/CHANGELOG b/CHANGELOG
+index cfaba6a..de97d8e 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -2,6 +2,14 @@
+ Release History
+ ===============
+ 
++Unreleased
++==========
++
++	- Fix seqlet FASTA export to translate centered input-window coordinates
++	  into full-length sequence arrays and retain the first base of each seqlet.
++	  Preserve inclusive headers and forward-strand output; reject invalid
++	  input shapes, windows and seqlet bounds.
++
+ Version 2.6.0
+ ==============
+ 
+diff --git a/README.md b/README.md
+index 000bc35..1fc9d30 100644
+--- a/README.md
++++ b/README.md
+@@ -82,6 +82,26 @@ neg_patterns/
+ 
+ where `[...]` denotes that data is stored at that attribute. Importantly, the seqlets are all in the correct orientation. If a seqlet has been flipped to be the reverse complement, the sequence, contribution scores, and coordinates have also been flipped. In cases where there are not enough seqlets to consider a metacluster, that attribute (`neg_patterns` or `pos_patterns`) may not appear in the file.
+ 
++## Exporting seqlets as FASTA
++
++```sh
++modisco seqlet-fasta -i modisco_results.h5 -p peaks.bed -s ohe.npz -c '*' -o seqlets.fa
++```
++
++Use a length-last NPZ array (`arr_0`, shape `examples, 4, length`) containing
++the original centered input sequences, or sequences already cropped to the
++input window. Its rows must match the peaks after filtering with `-c`, in the
++same order used for interpretation. The exporter translates crop-relative,
++zero-based half-open seqlet bounds into the supplied sequence array using
++`input_length // 2 - window_size // 2`. The window must fit in that array.
++
++The input window is read from the results' `window_size` attribute. For older
++files without it, supply the original `modisco motifs -w` value using
++`seqlet-fasta -w`; an explicit value overrides metadata. FASTA headers use
++**one-based, inclusive** genomic coordinates centered on each peak's midpoint.
++Sequences are always in **forward genomic orientation**; `dir=-` records the
++seqlet's motif orientation and does not reverse-complement the exported bases.
++
+ ## Generating reports
+ 
+ The TF-MoDISco report can be generated with the following command:
+diff --git a/modiscolite/io.py b/modiscolite/io.py
+index 6795fb2..4fe8834 100644
+--- a/modiscolite/io.py
++++ b/modiscolite/io.py
+@@ -388,7 +388,12 @@ def write_fasta_from_h5(modisco_results_filepath: os.PathLike, peaks_filepath: o
+ 
+ 	The results will look like:
+ 	><chrom>:<start>-<end> <strand> <pattern_name>.<seqlet_id>
+-	FASTA sequence extracted from a fast file
++	FASTA sequence extracted from the one-hot encoded input.
++
++	Headers use one-based, inclusive genomic coordinates. Sequences remain in
++	forward genomic orientation, even when the header's dir field is '-'.
++	Stored seqlet bounds are zero-based, half-open offsets within the centered
++	input window; full-length arrays are translated back to that window here.
+ 
+ 	Parameters
+ 	----------
+@@ -429,6 +434,8 @@ def write_fasta_from_h5(modisco_results_filepath: os.PathLike, peaks_filepath: o
+ 		exit(1)
+ 
+ 	sequences = sequences['arr_0']
++	if sequences.ndim != 3 or sequences.shape[1] != 4:
++		raise ValueError("sequences must have shape (examples, 4, length)")
+ 
+ 	if sequences.shape[0] != len(peak_rows_filtered):
+ 		print(textwrap.dedent(f"""\
+@@ -445,7 +452,16 @@ def write_fasta_from_h5(modisco_results_filepath: os.PathLike, peaks_filepath: o
+ 		if window_size is None:
+ 			if 'window_size' not in grp.attrs:
+ 				raise ValueError("window_size must be specified either in the h5 file or as an argument. Older versions of modisco does not store `window_size` in the h5 file.")
+-			window_size = int(grp.attrs['window_size'])
++			window_size = grp.attrs['window_size']
++		input_length = sequences.shape[2]
++		if (isinstance(window_size, (bool, np.bool_))
++			or not isinstance(window_size, (int, np.integer))
++			or not 0 < window_size <= input_length):
++			raise ValueError("window_size must be a positive integer no larger "
++				"than the sequence length")
++		# Normalize NumPy integer metadata before arithmetic (notably uint64).
++		window_size = int(window_size)
++		crop_start = input_length // 2 - window_size // 2
+ 
+ 		for contribution_dir in ['pos', 'neg']:
+ 
+@@ -464,13 +480,18 @@ def write_fasta_from_h5(modisco_results_filepath: os.PathLike, peaks_filepath: o
+ 					peak_row = peak_rows_filtered[row_num].split('\t')
+ 					chrom = peak_row[0]
+ 
+-					seqlet_start_offset = datasets['seqlets']['start'][idx] + 1
+-					seqlet_end_offset = datasets['seqlets']['end'][idx]
++					seqlet_start_offset = int(datasets['seqlets']['start'][idx])
++					seqlet_end_offset = int(datasets['seqlets']['end'][idx])
++					if not 0 <= seqlet_start_offset < seqlet_end_offset <= window_size:
++						raise ValueError(f"Invalid seqlet bounds for {pattern_name}.{idx}: "
++							f"[{seqlet_start_offset}, {seqlet_end_offset}) "
++							f"outside window_size={window_size}")
+ 
+ 					nucleotide_tracks = sequences[row_num]
+ 					assert nucleotide_tracks.shape[0] == 4
+ 					sequence = []
+-					for pos in range(seqlet_start_offset, seqlet_end_offset):
++					for pos in range(crop_start + seqlet_start_offset,
++						crop_start + seqlet_end_offset):
+ 						bp_track = nucleotide_tracks[:, pos]
+ 						hit = np.argmax(bp_track)
+ 						sequence.append(alphabet[hit])
+@@ -479,7 +500,7 @@ def write_fasta_from_h5(modisco_results_filepath: os.PathLike, peaks_filepath: o
+ 					# Calculate the start and ends.
+ 					absolute_peak_center = (int(peak_row[1]) + int(peak_row[2])) // 2
+ 					window_center_offset = window_size // 2
+-					absolute_seqlet_start = absolute_peak_center - window_center_offset + seqlet_start_offset
++					absolute_seqlet_start = absolute_peak_center - window_center_offset + seqlet_start_offset + 1
+ 					absolute_seqlet_end = absolute_peak_center - window_center_offset + seqlet_end_offset
+ 
+ 					strand_char = '-' if bool(datasets['seqlets']['is_revcomp'][idx]) is True else '+'
+diff --git a/tests/test_fasta_coordinates.py b/tests/test_fasta_coordinates.py
+new file mode 100644
+index 0000000..0b05211
+--- /dev/null
++++ b/tests/test_fasta_coordinates.py
+@@ -0,0 +1,130 @@
++"""Independent, literal sequence oracles for the public FASTA export path."""
++import h5py
++import numpy as np
++import pytest
++from click.testing import CliRunner
++
++from modiscolite.cli import cli
++from modiscolite.io import write_fasta_from_h5
++
++
++def fasta_inputs(tmp_path, sequence, window, start, end, revcomp=False,
++                 metadata=True, category="pos_patterns"):
++    h5 = tmp_path / "results.h5"
++    with h5py.File(h5, "w") as f:
++        if metadata:
++            f.attrs["window_size"] = window
++        seqlets = f.create_group(f"{category}/pattern_0/seqlets")
++        for key, value in dict(start=start, end=end, example_idx=0,
++                               is_revcomp=revcomp).items():
++            seqlets.create_dataset(key, data=[value])
++    peaks = tmp_path / "peaks.bed"
++    # Center at genomic coordinate 1000; independent of NPZ length.
++    peaks.write_text("chr1\t500\t1500\tpeak\t1\t.\n")
++    npz = tmp_path / "sequences.npz"
++    bases = "ACGT"
++    one_hot = np.eye(4, dtype=np.int8)[[bases.index(b) for b in sequence]]
++    np.savez(npz, one_hot.T[None])
++    return h5, peaks, npz, tmp_path / "seqlets.fa"
++
++
++def export(inputs, window=None, chroms="*"):
++    write_fasta_from_h5(*inputs, chroms, window, True)
++    return inputs[3].read_text().splitlines()
++
++
++@pytest.mark.parametrize("revcomp", [False, True])
++def test_fasta_cropped_sequence(tmp_path, revcomp):
++    inputs = fasta_inputs(tmp_path, "A" * 400 + "C" * 200 + "G" * 400,
++                          200, 10, 30, revcomp)
++    header, sequence = export(inputs)
++    print(f"FASTA_SEQUENCE={sequence}; LENGTH={len(sequence)}; HEADER={header}")
++    assert sequence == "C" * 20
++    assert header == f">chr1:911-930 dir={'-' if revcomp else '+'} pattern_0.0"
++
++
++@pytest.mark.parametrize("revcomp", [False, True])
++@pytest.mark.parametrize("start,end,expected,span", [
++    (0, 4, "ACGA", "999-1002"),
++    (0, 1, "A", "999-999"),
++    (3, 4, "A", "1002-1002"),
++])
++def test_fasta_full_window_and_boundaries(tmp_path, revcomp, start, end,
++                                          expected, span):
++    inputs = fasta_inputs(tmp_path, "ACGA", 4, start, end, revcomp)
++    header, sequence = export(inputs)
++    assert sequence == expected  # Forward genomic orientation on both strands.
++    assert header == f">chr1:{span} dir={'-' if revcomp else '+'} pattern_0.0"
++    assert len(sequence) == end - start
++
++
++@pytest.mark.parametrize("sequence,window,expected", [
++    ("AAACGTACCCC", 4, "CGTA"),  # Original length 11, crop starts at index 3.
++    ("AAACGTACCC", 5, "CGTA"),   # CLI's existing odd window extracts four bases.
++    ("AAACGTACCCC", 5, "CGTA"),
++    ("AAACGTACCC", 4, "CGTA"),
++])
++def test_fasta_crop_origin_parity(tmp_path, sequence, window, expected):
++    inputs = fasta_inputs(tmp_path, sequence, window, 0, 4)
++    assert export(inputs) == [">chr1:999-1002 dir=+ pattern_0.0", expected]
++
++
++@pytest.mark.parametrize("metadata", [False, True])
++@pytest.mark.parametrize("window", [np.uint8(200), np.int8(100),
++                                     np.uint64(200), np.int64(100)])
++def test_fasta_numpy_window_types(tmp_path, metadata, window):
++    inputs = fasta_inputs(tmp_path, "A" * 400 + "C" * 200 + "G" * 400,
++                          window, 10, 30, metadata=metadata)
++    assert export(inputs, None if metadata else window)[1] == "C" * 20
++
++
++def test_fasta_explicit_window_overrides_metadata(tmp_path):
++    inputs = fasta_inputs(tmp_path, "AACGTTAA", 8, 0, 4)
++    assert export(inputs, 4) == [">chr1:999-1002 dir=+ pattern_0.0", "CGTT"]
++
++
++def test_fasta_filtered_example_index_and_negative_pattern(tmp_path):
++    inputs = fasta_inputs(tmp_path, "AACGTTAA", 4, 0, 4, True,
++                          category="neg_patterns")
++    inputs[1].write_text("chr2\t0\t100\tother\t1\t.\n"
++                         "chr1\t500\t1500\tpeak\t1\t.\n")
++    # NPZ rows already correspond to selected chromosomes, as the API requires.
++    assert export(inputs, chroms=["chr1"]) == [
++        ">chr1:999-1002 dir=- pattern_0.0", "CGTT"]
++
++
++@pytest.mark.parametrize("metadata", [False, True])
++@pytest.mark.parametrize("window", [0, -1, 9, True, 4.5, "4"])
++def test_fasta_rejects_invalid_window(tmp_path, metadata, window):
++    inputs = fasta_inputs(tmp_path, "AACGTTAA", window, 0, 4,
++                          metadata=metadata)
++    with pytest.raises(ValueError, match="window_size"):
++        export(inputs, None if metadata else window)
++    assert not inputs[3].exists()
++
++
++@pytest.mark.parametrize("start,end", [(-1, 2), (0, 5), (3, 2), (2, 2)])
++def test_fasta_rejects_invalid_seqlet_bounds(tmp_path, start, end):
++    inputs = fasta_inputs(tmp_path, "AACGTTAA", 4, start, end)
++    with pytest.raises(ValueError, match="seqlet.*bounds"):
++        export(inputs)
++    assert not inputs[3].exists()
++
++
++@pytest.mark.parametrize("shape", [(4, 8), (1, 8, 4), (1, 4, 8, 1)])
++def test_fasta_rejects_invalid_input_shape(tmp_path, shape):
++    inputs = fasta_inputs(tmp_path, "AACGTTAA", 4, 0, 4)
++    np.savez(inputs[2], np.zeros(shape))
++    with pytest.raises(ValueError, match="shape"):
++        export(inputs)
++
++
++@pytest.mark.cmd
++def test_fasta_cli_cropped_sequence(tmp_path):
++    h5, peaks, npz, out = fasta_inputs(tmp_path,
++        "A" * 400 + "C" * 200 + "G" * 400, 200, 10, 30, True)
++    result = CliRunner().invoke(cli, ["seqlet-fasta", "-i", str(h5),
++        "-p", str(peaks), "-s", str(npz), "-o", str(out), "-c", "*", "-q"])
++    assert result.exit_code == 0, result.output
++    assert out.read_text().splitlines() == [
++        ">chr1:911-930 dir=- pattern_0.0", "C" * 20]
+diff --git a/tests/test_io.py b/tests/test_io.py
+index 572a049..caffa8f 100644
+--- a/tests/test_io.py
++++ b/tests/test_io.py
+@@ -526,8 +526,8 @@ def test_write_fasta_from_h5_small(small_ts, tmp_path):
+ 	write_fasta_from_h5(h5, peaks, sequences, filename, '*', None, True)
+ 
+ 	bases = numpy.array(list("ACGT"))
+-	seq0 = "".join(bases[small_ts.one_hot[0, 3:12].argmax(axis=1)])
+-	seq1 = "".join(bases[small_ts.one_hot[3, 21:30].argmax(axis=1)])
++	seq0 = "".join(bases[small_ts.one_hot[0, 2:12].argmax(axis=1)])
++	seq1 = "".join(bases[small_ts.one_hot[3, 20:30].argmax(axis=1)])
+ 
+ 	assert open(filename).read() == (">chr1:250-259 dir=+ pattern_0.0\n{}\n"
+ 		">chr1:3268-3277 dir=- pattern_0.1\n{}".format(seq0, seq1))
+@@ -558,7 +558,8 @@ def test_write_fasta_from_h5(modisco_h5, peaks, tmp_path):
+ 
+ 			assert header == ">{}:{}-{} dir={} pattern_0.{}".format(peak[0],
+ 				center - 150 + start + 1, center - 150 + end, strand, i)
+-			assert sequence == "".join(bases[sequences[idx, :, start+1:end]
++			crop_start = sequences.shape[2] // 2 - 150
++			assert sequence == "".join(bases[sequences[idx, :, crop_start+start:crop_start+end]
+ 				.argmax(axis=0)])
+ 
+ 
+@@ -580,7 +581,7 @@ def test_write_fasta_from_h5_forward_strand(modisco_h5, peaks, tmp_path):
+ 			sequence = entries[i][1]
+ 			stored = seqlets["sequence"][i].argmax(axis=1)
+ 			stored = "".join(numpy.array(list("ACGT"))[stored])
+-			assert sequence == stored[::-1].translate(comp)[1:]
++			assert sequence == stored[::-1].translate(comp)
+ 
+ 
+ def test_write_fasta_from_h5_chroms(small_ts, tmp_path):
+@@ -607,7 +608,9 @@ def test_write_fasta_from_h5_window_size(small_h5, small_ts, tmp_path,
+ 	peaks = tmp_path / "peaks.bed"
+ 	write_peaks(peaks, 6)
+ 	sequences = tmp_path / "sequences.npz"
+-	numpy.savez(sequences, small_ts.one_hot.transpose(0, 2, 1))
++	# The explicit window must fit in the supplied full-length input.
++	full_ts = random_track_set(n=6, length=60)
++	numpy.savez(sequences, full_ts.one_hot.transpose(0, 2, 1))
+ 
+ 	filename = tmp_path / "seqlets.fa"
+ 	write_fasta_from_h5(small_h5, peaks, sequences, filename, '*', window_size,
+@@ -677,9 +680,6 @@ def test_write_fasta_from_h5_no_window(small_ts, tmp_path):
+ 		'*', None, True)
+ 
+ 
+-@pytest.mark.skip(reason="bug: write_fasta_from_h5 reads positions "
+-	"start+1 through end-1, one base fewer than the start+1 to end span its "
+-	"header reports")
+ def test_write_fasta_from_h5_length(small_h5, small_ts, tmp_path):
+ 	peaks = tmp_path / "peaks.bed"
+ 	write_peaks(peaks, 6)
+@@ -693,12 +693,8 @@ def test_write_fasta_from_h5_length(small_h5, small_ts, tmp_path):
+ 		assert len(sequence) == int(end) - int(start) + 1
+ 
+ 
+-@pytest.mark.skip(reason="bug: write_fasta_from_h5 indexes the sequences "
+-	"with window-relative seqlet positions, so sequences longer than the "
+-	"window, such as the full-length input given to `modisco motifs`, "
+-	"return bases from the wrong offset")
+ def test_write_fasta_from_h5_long_sequences(small_ts, tmp_path):
+-	pattern = make_pattern(small_ts, [(0, 12, 22, False)])
++	pattern = make_pattern(small_ts, [(0, 2, 12, False)])
+ 	h5 = tmp_path / "results.h5"
+ 	save_hdf5(h5, [pattern], None, window_size=20)
+ 
+@@ -712,7 +708,7 @@ def test_write_fasta_from_h5_long_sequences(small_ts, tmp_path):
+ 
+ 	# The 20 bp window is the center of each 40 bp sequence.
+ 	bases = numpy.array(list("ACGT"))
+-	expected = "".join(bases[small_ts.one_hot[0, 10+13:10+22].argmax(axis=1)])
++	expected = "".join(bases[small_ts.one_hot[0, 12:22].argmax(axis=1)])
+ 	assert open(filename).read().split("\n")[1] == expected
+ 
+ 

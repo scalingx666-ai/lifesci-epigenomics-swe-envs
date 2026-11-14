@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/tidyomics__plyranges-124"
+description = "New slices"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "plyranges",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "tidyomics/plyranges"
+ref = "90094094da5109e7c4551128fc69e0dacfa7f84c"
+reference = "https://github.com/tidyomics/plyranges/pull/124"
+source_access = "auto"
+built_at = "2026-11-14T07:15:44.714816+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c79858ae281a0c2a213b04cb9b7b6d264092d280a958b63472791f84a2b757b7"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-03-31T13:55:39Z"
+diff_format = "unified"
+context_files = [
+    "NAMESPACE",
+    "R/dplyr-slice.R",
+    "man/slice-ranges.Rd",
+    "tests/testthat/test-slice.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 541
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

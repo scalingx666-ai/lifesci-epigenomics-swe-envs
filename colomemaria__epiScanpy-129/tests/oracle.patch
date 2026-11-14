@@ -1,0 +1,13 @@
+diff --git a/episcanpy/api/pl.py b/episcanpy/api/pl.py
+index e497613..74824d0 100644
+--- a/episcanpy/api/pl.py
++++ b/episcanpy/api/pl.py
+@@ -17,7 +17,7 @@
+ 
+ from ..preprocessing._quality_control import cal_var, variability_features
+ from ..preprocessing._tss_enrichment import tss_enrichment_plot as tss_enrichment
+-from ..preprocessing._tss_enrichment import tss_enrichment_score_plot as tss_enrichment_socre
++from ..preprocessing._tss_enrichment import tss_enrichment_score_plot as tss_enrichment_score
+ 
+ 
+ 

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/Teichlab__scg_lib_structs-14"
+description = "Fix pMENTS strand in sci-ATAC-seq"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "scg_lib_structs",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "Teichlab/scg_lib_structs"
+ref = "6c05b8fe0878092e8effba179ac5d1ebecd7e2e6"
+reference = "https://github.com/Teichlab/scg_lib_structs/pull/14"
+source_access = "auto"
+built_at = "2026-11-14T05:45:09.550010+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1666d15db09026ead4252f2b9f17a29a01d0f35da5c33888fdb3e171cb91b06f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2022-03-30T01:42:33Z"
+diff_format = "unified"
+context_files = [
+    "methods_html/sci-ATAC-seq.html",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

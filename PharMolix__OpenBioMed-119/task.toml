@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/PharMolix__OpenBioMed-119"
+description = "[Doc] transfer codefun to codefp & release codefp news"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "OpenBioMed",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "PharMolix/OpenBioMed"
+ref = "0eea7482ce1718ff04a70dec51ec73bb93130036"
+reference = "https://github.com/PharMolix/OpenBioMed/pull/119"
+source_access = "auto"
+built_at = "2026-11-14T05:42:56.194671+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c4b5b946e5d5daf645fae5e31a0580398e705054bfabd9ced6892e98ff80c4e5"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-05-09T07:21:06Z"
+diff_format = "unified"
+context_files = [
+    "README-CN.md",
+    "README.md",
+    "configs/model/codefp.yaml",
+    "open_biomed/models/__init__.py",
+    "open_biomed/models/protein/codefp/codefp.py",
+    "open_biomed/models/protein/codefp/modeling_codefp.py",
+    "open_biomed/scripts/inference.py",
+    "skills/biomed-skill-router/SKILL.md",
+    "skills/functional-protein-design/SKILL.md",
+    "skills/skills_overview.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 102
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

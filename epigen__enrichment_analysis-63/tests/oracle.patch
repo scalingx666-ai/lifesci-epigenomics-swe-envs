@@ -1,0 +1,154 @@
+diff --git a/README.md b/README.md
+index 00baa88..d0f3631 100644
+--- a/README.md
++++ b/README.md
+@@ -141,7 +141,19 @@ The five tools LOLA, GREAT, pycisTarget, RcisTarget and GSEApy (over-representat
+             - in addition to the standard GREAT statistics, the workflow adds two extra columns to the result table:
+                 - `regions`: the associated query regions for a term, written in BED-like coordinate form
+                 - `annotated_genes`: the genes associated to those regions for that term
+-            - these two columns are filled for significant terms (according to configured adjusted p-value threshold), so that interesting hits can be traced back directly to the supporting regions and genes
++             - `great_parameters:map_associated_regions` controls how many top significant terms (ranked by the configured adjusted p-value column) are annotated.
++            Supported values:
++                - 0: do not annotate GREAT terms with associated regions/genes
++                -  positive integer, for example 5: annotate that many top significant terms ranked by the configured adjusted p-value column
++                - -1: annotate all significant terms, restoring the previous behavior
++
++
++                **⚠️ Warning**
++                This annotation can take a long time, substantially increase individual GREAT result file size, and may break Excel usage because Excel limits cell contents to 32,767 characters.
++
++
++        
++        
+             - additional results from the region-gene association provided by GREAT:
+                 - `genes.txt`: list of genes associated with the query regions
+                 - `region_gene_associations.csv`: region-to-gene assignment table
+diff --git a/config/README.md b/config/README.md
+index bdcbe86..5eb4572 100644
+--- a/config/README.md
++++ b/config/README.md
+@@ -18,4 +18,4 @@ For **region-set inputs** (`features_path` or `background_path` ending in `.bed`
+     - a region with `start=0` and `end=100` spans exactly 100 bases: positions `0` to `99`
+ - additionally, the workflow requires at least the first **3 BED columns**: `chrom`, `start`, `end`.
+ 
+-Set workflow-specific `resources` or command line arguments (CLI) in the workflow profile `workflow/profiles/default.config.yaml`, which supersedes global Snakemake profiles.
++Set workflow-specific `resources` or command line arguments (CLI) in the workflow profile `workflow/profiles/default.config.yaml`, which supersedes global Snakemake profiles.
+\ No newline at end of file
+diff --git a/config/config.yaml b/config/config.yaml
+index 2b02f30..3cdca76 100644
+--- a/config/config.yaml
++++ b/config/config.yaml
+@@ -47,6 +47,7 @@ great_parameters:
+     basal_upstream: 5000 # used in 'basalPlusExt' mode
+     basal_downstream: 1000 # used in 'basalPlusExt' mode
+     extension: 1000000
++    map_associated_regions: 1 # number of top significant terms to annotate with regions/genes; 0: none, -1: all, n >=1: n. This is slow, creates large files, and can exceed Excel's 32,767 character cell limit.
+ 
+ ### pycisTarget - region based Transcription Factor Binding Site (TFBS) motif enrichment analysis
+ # https://pycistarget.readthedocs.io/en/latest/index.html
+diff --git a/workflow/rules/enrichment_analysis.smk b/workflow/rules/enrichment_analysis.smk
+index 07b5314..a08ed27 100644
+--- a/workflow/rules/enrichment_analysis.smk
++++ b/workflow/rules/enrichment_analysis.smk
+@@ -25,6 +25,15 @@ rule region_enrichment_analysis_GREAT:
+         database = os.path.join("resources", config["project_name"], module_name, "{database}.gmt"),
+     output:
+         result = os.path.join(result_path,'{region_set}','GREAT','{database}','{region_set}_{database}.csv'),
++    params:
++        min_gene_set_size = config["great_parameters"]["min_gene_set_size"],
++        mode = config["great_parameters"]["mode"],
++        basal_upstream = config["great_parameters"]["basal_upstream"],
++        basal_downstream = config["great_parameters"]["basal_downstream"],
++        extension = config["great_parameters"]["extension"],
++        map_associated_regions = config["great_parameters"].get("map_associated_regions", 1),
++        adjp_col = config["column_names"]["GREAT"]["adj_pvalue"],
++        adjp_th = config["adjp_th"]["GREAT"],
+     threads: config.get("threads", 1)
+     resources:
+         mem_mb=config.get("mem", "16000"),
+diff --git a/workflow/schemas/config.schema.yaml b/workflow/schemas/config.schema.yaml
+index d35ea00..dce7834 100644
+--- a/workflow/schemas/config.schema.yaml
++++ b/workflow/schemas/config.schema.yaml
+@@ -72,6 +72,10 @@ properties:
+       extension:
+         type: integer
+         minimum: 0
++      map_associated_regions:
++        type: integer
++        minimum: -1
++        default: 1
+   pycistarget_parameters:
+     type: object
+     additionalProperties: false
+diff --git a/workflow/scripts/aggregate.py b/workflow/scripts/aggregate.py
+index 68f94a1..0f9f6e1 100644
+--- a/workflow/scripts/aggregate.py
++++ b/workflow/scripts/aggregate.py
+@@ -45,6 +45,8 @@
+         
+ # concatenate all results into one results dataframe
+ result_df = pd.concat(results_list, axis=0)
++if tool == "GREAT":
++    result_df = result_df.drop(columns=["regions", "annotated_genes"], errors="ignore")
+ 
+ # save all enirchment results
+ result_df.to_csv(results_all_path)
+@@ -76,4 +78,4 @@
+     hits_df.to_csv(results_all_path.replace(".csv", ".motif_hits.csv"))
+ 
+     cistrome_df = pd.concat(cistrome_list, axis=0)
+-    cistrome_df.to_csv(results_all_path.replace(".csv", ".cistromes.csv"))
+\ No newline at end of file
++    cistrome_df.to_csv(results_all_path.replace(".csv", ".cistromes.csv"))
+diff --git a/workflow/scripts/region_enrichment_analysis_GREAT.R b/workflow/scripts/region_enrichment_analysis_GREAT.R
+index e7bd683..d4e48f6 100644
+--- a/workflow/scripts/region_enrichment_analysis_GREAT.R
++++ b/workflow/scripts/region_enrichment_analysis_GREAT.R
+@@ -10,9 +10,18 @@ annot_terms_with_features <- function(res, df) {
+   regions <- vector("character", nrow(df))
+   genes <- vector("character", nrow(df))
+ 
+-  needs_annotation <- rep(TRUE, nrow(df))
+-  if ("p_adjust" %in% names(df)) {
+-    needs_annotation <- needs_annotation & (is.na(df$p_adjust) | df$p_adjust <= snakemake@config[["adjp_th"]][["GREAT"]])
++  map_associated_regions <- as.integer(snakemake@params[["map_associated_regions"]])
++  adjp_col <- snakemake@params[["adjp_col"]]
++  adjp_th <- as.numeric(snakemake@params[["adjp_th"]])
++  needs_annotation <- rep(FALSE, nrow(df))
++  if (map_associated_regions != 0 && adjp_col %in% names(df)) {
++    significant <- which(!is.na(df[[adjp_col]]) & df[[adjp_col]] <= adjp_th)
++    if (map_associated_regions == -1) {
++      needs_annotation[significant] <- TRUE
++    } else if (map_associated_regions > 0 && length(significant) > 0) {
++      top_terms <- significant[order(df[[adjp_col]][significant])][seq_len(min(map_associated_regions, length(significant)))]
++      needs_annotation[top_terms] <- TRUE
++    }
+   }
+   
+ 
+@@ -55,7 +64,6 @@ result_path <- snakemake@output[["result"]]
+ 
+ # parameters
+ genome <- snakemake@config[["genome"]]
+-great_params <- snakemake@config[["great_parameters"]]
+ cores_n <- snakemake@threads
+ 
+ # set genome
+@@ -85,11 +93,11 @@ res <- great(gr = regionSet_query,
+       gene_sets = database,
+       tss_source = genome, 
+       biomart_dataset = NULL,
+-      min_gene_set_size = great_params[["min_gene_set_size"]], #default: 5 
+-      mode = great_params[["mode"]],
+-      basal_upstream = great_params[["basal_upstream"]],
+-      basal_downstream = great_params[["basal_downstream"]],
+-      extension = great_params[["extension"]],
++      min_gene_set_size = snakemake@params[["min_gene_set_size"]], #default: 5
++      mode = snakemake@params[["mode"]],
++      basal_upstream = snakemake@params[["basal_upstream"]],
++      basal_downstream = snakemake@params[["basal_downstream"]],
++      extension = snakemake@params[["extension"]],
+       extended_tss = NULL,
+       background = regionSet_background, #default: NULL
+       exclude = "gap",

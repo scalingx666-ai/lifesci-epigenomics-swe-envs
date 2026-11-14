@@ -1,0 +1,484 @@
+diff --git a/.github/CONTRIBUTING.md b/.github/CONTRIBUTING.md
+index 04e05455dd..ead854b9a9 100644
+--- a/.github/CONTRIBUTING.md
++++ b/.github/CONTRIBUTING.md
+@@ -26,8 +26,8 @@ for contributing to the repository :**
+ Releases are managed by [release-please](https://github.com/googleapis/release-please),
+ which computes version bumps and changelog entries from
+ [Conventional Commits](https://www.conventionalcommits.org/). PRs are squash-merged with
+-the commit message set to the PR title + the branch's individual commit messages, so
+-**the PR title itself must follow the Conventional Commits format** — that's the line
++the commit message set to the PR title + the PR description, so
++**the PR title itself must follow the Conventional Commits format**. That's the line
+ release-please actually parses:
+ 
+ ```
+diff --git a/README.md b/README.md
+index aae9531926..070eaeb735 100644
+--- a/README.md
++++ b/README.md
+@@ -19,11 +19,13 @@ For bug reports and feature requests please open an issue [on github](https://gi
+ 
+ ### Citation:
+ 
+-Ramírez F, Ryan DP, Grüning B, Bhardwaj V, Kilpert F, Richter AS, Heyne S, Dündar F, Manke T. [deepTools2: a next generation web server for deep-sequencing data analysis.](https://nar.oxfordjournals.org/content/early/2016/04/12/nar.gkw257.abstract) Nucleic Acids Research. 2016 Apr 13:gkw257.
++Deboutte W, Salatino A, Maier W, Videm P, Navandar M, Erikson G, Momin S, Caballero-Perez J, Rabbani L, Lopez-Delisle L, Grüning B, Manke T. [deepTools4: Faster, Scalable, and Modernized Genomic Data Analysis.](https://doi.org/10.64898/2026.11.11.765524) bioRxiv. 2026 Nov 13. doi:10.64898/2026.11.11.765524
++
++Ramírez F, Ryan DP, Grüning B, Bhardwaj V, Kilpert F, Richter AS, Heyne S, Dündar F, Manke T. [deepTools2: a next generation web server for deep-sequencing data analysis.](https://academic.oup.com/nar/article/44/W1/W160/2499308) NAR. 2016 Apr 13. doi:10.1093/nar/gkw257
+ 
+ ### Documentation:
+ 
+-Our [documentation](https://deeptools.readthedocs.io/) contains more details on the [individual tool scopes and usages](https://deeptools.readthedocs.io/en/latest/content/list_of_tools.html) and an [introduction to our deepTools Galaxy web server](https://deeptools.readthedocs.io/en/latest/content/help_galaxy_intro.html) including [step-by-step protocols](https://deeptools.readthedocs.io/en/latest/content/example_usage.html).
++Our [documentation](https://deeptools.readthedocs.io/) contains more details on the [individual tool scopes and usages](https://deeptools.readthedocs.io/en/latest/content/list_of_tools.html) and an [introduction to using deepTools in Galaxy](https://deeptools.readthedocs.io/en/latest/content/help_galaxy_intro.html) including [step-by-step protocols](https://deeptools.readthedocs.io/en/latest/content/example_usage.html).
+ 
+ >Please see also the [FAQ](https://deeptools.readthedocs.io/en/latest/content/help_faq.html), which we update regularly.
+ Our [Gallery](https://deeptools.readthedocs.io/en/latest/content/example_gallery.html) may give you some more ideas about the scope of deepTools.
+@@ -33,7 +35,7 @@ Our [Gallery](https://deeptools.readthedocs.io/en/latest/content/example_gallery
+ 
+ ### Installation
+ 
+-deepTools are available for:
++deepTools is available for:
+ 
+ * Command line usage (via pip / conda / github)
+ * Integration into Galaxy servers (via toolshed/API/web-browser)
+@@ -72,7 +74,7 @@ for providing that same toolchain yourself; see the ["Building from
+ source"](https://deeptools.readthedocs.io/en/latest/content/installation.html#building-from-source)
+ section of the docs.
+ 
+-<a name="galaxy"/></a>
++<a name="galaxy"></a>
+ ### Galaxy Installation
+ 
+ deepTools can be easily integrated into [Galaxy](https://galaxyproject.org). Please see the [installation instructions in our documentation](https://deeptools.readthedocs.io/en/latest/content/installation.html#galaxy-installation) for further details.
+diff --git a/docs/conf.py b/docs/conf.py
+index fa3534c1a8..205be388c0 100644
+--- a/docs/conf.py
++++ b/docs/conf.py
+@@ -85,11 +85,7 @@
+ def get_version():
+     with open('../pyproject.toml', 'rb') as f:
+         d = tomllib.load(f)
+-    try:
+-        return d['project']['version']
+-    except:
+-        return None
+-
++    return d['project']['version']
+ 
+ version = get_version()
+ # The full version, including alpha/beta/rc tags.
+@@ -98,7 +94,7 @@ def get_version():
+ # An rst epilog to apper at the end of every page
+ rst_epilog = """
+ +----------------------------------------------------------------+-------------------------------------------------------------+
+-| `deepTools Galaxy <http://deeptools.ie-freiburg.mpg.de>`_.     | `code @ github <https://github.com/deeptools/deepTools/>`_. |
++| `deepTools @ usegalaxy.eu <https://usegalaxy.eu/>`_.           | `code @ github <https://github.com/deeptools/deepTools/>`_. |
+ +----------------------------------------------------------------+-------------------------------------------------------------+
+ """
+ 
+diff --git a/docs/content/about.rst b/docs/content/about.rst
+index 130b29928e..cb914f020b 100644
+--- a/docs/content/about.rst
++++ b/docs/content/about.rst
+@@ -3,23 +3,27 @@ About
+ 
+ Please cite deepTools as follows:
+ 
++    Deboutte, Ward, Adrian Salatino, Wolfgang Maier, Pavankumar Videm, Mohit Navandar,
++    Galina Erikson, Saim Momin, Juan Caballero-Perez, Leily Rabbani, Lucille Lopez-Delisle,
++    Björn Grüning, and Thomas Manke. `deepTools4: Faster, Scalable, and Modernized Genomic Data Analysis <https://doi.org/10.64898/2026.11.11.765524>`_.
++    bioRxiv (2026). `doi:10.64898/2026.11.11.765524 <https://doi.org/10.64898/2026.11.11.765524>`_.
++
+     Ramírez, Fidel, Devon P. Ryan, Björn Grüning, Vivek Bhardwaj, Fabian Kilpert,
+     Andreas S. Richter, Steffen Heyne, Friederike Dündar,
+-    and Thomas Manke. `deepTools2: A next Generation Web Server for Deep-Sequencing Data Analysis <http://nar.oxfordjournals.org/content/early/2016/04/12/nar.gkw257.abstract>`_.
+-    Nucleic Acids Research (2016). `doi:10.1093/nar/gkw257 <http://doi.org/10.1093/nar/gkw257>`_.
++    and Thomas Manke. `deepTools2: A next Generation Web Server for Deep-Sequencing Data Analysis <https://academic.oup.com/nar/article/44/W1/W160/2499308>`_.
++    Nucleic Acids Research (2016) 44(W1):W160-5. `doi:10.1093/nar/gkw257 <https://doi.org/10.1093/nar/gkw257>`_.
+ 
+ Where deepTools are used:
+ 
+ * DEEP consortium
+ * public Galaxy server hosted at `<https://usegalaxy.org/>`_.
+-* public Galaxy instance hosted by the Max-Planck-Institute for Immunobiology and Epigenetics: deeptools.ie-freiburg.mpg.de
++* public Galaxy server hosted by the University of Freiburg at `<https://usegalaxy.eu/>`_.
+ * in-house Galaxy instance of the Max-Planck-Institute for Immunobiology and Epigenetics
+-* Galaxy instance of the University of Freiburg, Germany
+ * Galaxy instance of the ICGMB, Strasbourg, France
+ * Galaxy instance of LCSB and HPC @ Uni.lu, Belval, Luxembourg
+ 
+ .. image:: ../images/logo_mpi-ie.jpg
+ 
+-This tool suite is developed by the `Bioinformatics Facility <http://www1.ie-freiburg.mpg.de/bioinformaticsfac>`_ at the
++This tool suite is developed by the `Bioinformatics Facility <https://www.ie-freiburg.mpg.de/bioinformatics>`_ at the
+ `Max Planck Institute for Immunobiology and Epigenetics,
+-Freiburg <http://www1.ie-freiburg.mpg.de/>`_.
++Freiburg <https://www.ie-freiburg.mpg.de/>`_.
+diff --git a/docs/content/example_step_by_step.rst b/docs/content/example_step_by_step.rst
+index a6a9806f1f..27522823c9 100644
+--- a/docs/content/example_step_by_step.rst
++++ b/docs/content/example_step_by_step.rst
+@@ -7,7 +7,7 @@ If you're using the command-line version you can easily follow the given example
+ .. note:: For support or questions please post to `Biostars <http://biostars.org>`__. For bug reports and feature requests please open an issue `<on github <http://github.com/deeptools/deeptools>`__.
+ 
+ 
+-All protocols assume that you have uploaded your files into a Galaxy instance with a deepTools installation, e.g., `deepTools Galaxy <http://deeptools.ie-freiburg.mpg.de>`_. If you need help to get started with Galaxy in general, e.g. to upload your data, see :doc:`help_galaxy_intro` and :doc:`help_galaxy_dataup`.
++All protocols assume that you have uploaded your files into a Galaxy instance with a deepTools installation, e.g., `usegalaxy.eu <https://usegalaxy.eu/>`_. If you need help to get started with Galaxy in general, e.g. to upload your data, see :doc:`help_galaxy_intro` and :doc:`help_galaxy_dataup`.
+ 
+ .. tip:: If you would like to try out the protocols with **sample data**, test data can be downloaded from `Zenodo <https://zenodo.org/records/21529137>`__.
+ 
+@@ -70,7 +70,7 @@ How can I compare the ChIP strength for different ChIP experiments?
+ 
+ .. image:: ../images/GalHow_plotFingerprint.png
+ 
+-.. tip:: For more details on the interpretation of the plot, see :doc:`tools/plotFingerprint` or select the tool within the deepTools Galaxy and scroll down for more information.
++.. tip:: For more details on the interpretation of the plot, see :doc:`tools/plotFingerprint` or select the tool within Galaxy and scroll down for more information.
+ 
+ -----------------------------------------
+ 
+diff --git a/docs/content/help_faq_galaxy.rst b/docs/content/help_faq_galaxy.rst
+index 9d3e2d058a..e8b04e73b3 100644
+--- a/docs/content/help_faq_galaxy.rst
++++ b/docs/content/help_faq_galaxy.rst
+@@ -6,7 +6,7 @@ Galaxy-related FAQ
+ 
+ I've reached my quota - what can I do to save some space?
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-1. make sure that all the data sets you deleted are **permanently** eliminated from our disks: go to the history option button and select "Purge deleted data sets", then hit the "refresh" button on top of your history panel
++1. make sure that all the data sets you deleted are **permanently** eliminated from the server's disks: go to the history option button and select "Purge deleted data sets", then hit the "refresh" button on top of your history panel
+ 2. download all data sets for which you've completed the analysis, then remove the data sets (click on the "x" and then **make sure they're purged** (see above)).
+ 
+ ----------------------------------------------------------------------
+@@ -25,7 +25,7 @@ Once you've copied a data set from one history to another, check two things:
+ How can I use a published workflow?
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 
+-You **must register** if you want to use the workflows within `deepTools Galaxy <http://deeptools.ie-freiburg.mpg.de>`__. ("User" --> "Register" - all you have to supply is an email address). Make sure to read the Terms of Use, though!
++You need an account and must be logged in to your Galaxy server (e.g. `usegalaxy.eu <https://usegalaxy.eu/>`__) to use workflows.
+ 
+ You can find workflows that are public or specifically shared with you by another user via "Shared Data" --> "Published Workflows". Click on the triangle next to the workflow you're interested in and select "import".
+ 
+@@ -38,7 +38,7 @@ A green box should appear, there you select "start using this workflow", which s
+ 
+ ----------------------------------------------------------------------
+ 
+-I would like to use one of your workflows - not in the deepTools Galaxy, but in the local Galaxy instance provided by my institute. Is that possible?
++I would like to use one of your workflows in the local Galaxy instance provided by my institute. Is that possible?
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 
+ Yes, it is possible. The only requirement is that your local Galaxy has a recent installation of deepTools.
+@@ -72,7 +72,7 @@ To display data in IGV, do the following:
+ 2. Unpack the IGV archive and change to the extracted IGV folder
+ 3. Use the ``igv.bat`` (Windows), ``igv.sh`` (Linux) or ``igv.command`` (OSX) to start IGV (for more information please read the included ``readme.txt`` file or the IGV documentation).
+ 4. Choose the genome version of the file(s) you would like to visualize (e.g. dm3) **THIS IS THE MOST IMPORTANT STEP!** IGV will not detect the genome version automatically, i.e. if you select mm9 but your file is based on human data, it will still be displayed without an error message (but with the wrong positions, obviously!)
+-5. Go to your deepTools Galaxy server (http://deeptools.ie-freiburg.mpg.de/) and navigate to your data set of choice
++5. Go to your Galaxy server (e.g. https://usegalaxy.eu/) and navigate to your data set of choice
+ 6. Click on your data set so that you see its details like in the screenshot below (**Keep in mind that not all datasets can be visualized in IGV or UCSC.** We recommend to use :ref:`bigwig` or :ref:`bed` files for visualization.)
+ 
+ .. image:: ../images/Gal_FAQ_IGV_dataset.png
+@@ -92,7 +92,7 @@ For more information, check out the `IGV documentation <http://www.broadinstitut
+ UCSC
+ ~~~~~~~~
+ 
+-There is a direct link from within deepTools Galaxy to stream a data set to UCSC. You can find it in the data set tiles: "display at UCSC", like here:
++There is a direct link from within Galaxy to stream a data set to UCSC. You can find it in the data set tiles: "display at UCSC", like here:
+ 
+ .. image:: ../images/Gal_FAQ_UCSC_dataset.png
+ 
+diff --git a/docs/content/help_galaxy_dataup.rst b/docs/content/help_galaxy_dataup.rst
+index e942d0d042..88fd050b8b 100644
+--- a/docs/content/help_galaxy_dataup.rst
++++ b/docs/content/help_galaxy_dataup.rst
+@@ -1,7 +1,7 @@
+ Data import into Galaxy
+ -------------------------
+ 
+-There are three main ways to populate your Galaxy history with data
++There are two main ways to populate your Galaxy history with data
+ files plus an additional one for sharing data within Galaxy.
+ 
+ .. contents:: 
+@@ -16,43 +16,6 @@ Then select the file via the "Browse" button.
+ 
+ .. image:: ../images/Gal_DataUpload.png
+ 
+-For files **greater than 2GB**, there's the option to upload via an FTP server. If your data is available via an URL that links to an FTP server, you can simply
+-paste the URL in the empty text box.
+-
+-If you do not have access to an FTP server, you can directly upload to
+-our Galaxy's FTP.
+-
+-1. Register with deeptools.ie-freiburg.mpg.de (via “User” ⟶ “register”; registration requires an email address and is free of charge)
+-2. You will also need an FTP client, e.g. `filezilla <https://filezilla-project.org/>`__.
+-3. Then login to the **FTP client** using your **deepTools Galaxy user name and password** (host: deeptools.ie-freiburg.mpg.de). Down below you see a screenshot of what that looks like with filezilla.
+-4. Copy the file you wish to upload to the remote site (in filezilla, you can simply drag the file to the window on the right hand side)
+-5. Go back to `deepTools Galaxy <http://deeptools.ie-freiburg.mpg.de/>`__.
+-6. Click on the tool "Upload file" (⟶ "Files uploaded via FTP") - here, the files you just copied over via filezilla should appear. Select the files you want and hit “execute”. They will be moved from the FTP server to your history (i.e. they will be deleted from the FTP once the upload was successful).
+-
+-.. image:: ../images/Gal_filezilla.png
+-
+-Import data sets from the Galaxy data library
+-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-
+-If you would like to play around with sample data, you can import files
+-that we have saved within the general data storage of the deepTools
+-Galaxy server. Everyone can import them into his or her own history,
+-they will not contribute to the user's disk quota.
+-
+-You can reach the data library via "Shared Data" in the top menu, then
+-select "Data Libraries".
+-
+-Within the Data Library you will find a folder called "Sample Data" that
+-contains data that we downloaded from the `Roadmap
+-project <http://www.roadmapepigenomics.org/data>`__ and
+-`UCSC <http://genome.ucsc.edu/>`__ 
+-More precisely, we donwloaded the [FASTQ][] files of various ChIP-seq samples and the corresponding input and mapped the reads to the human reference genome (version hg19) to obtain the [BAM][] files you see.
+-In addition, you will find bigWig files created using ``bamCoverage`` and some annotation files in BED format as well as RNA-seq data.
+-
+-.. note:: To keep the file size smallish, all files contain data for chromosome 19 and chromosome X only!
+-
+-.. image:: ../images/Gal_DataLib.png
+-
+ Download annotation files from public data bases
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 
+@@ -63,7 +26,7 @@ genome annotation, `UCSC <http://genome.ucsc.edu/>`__ and `BioMart <http://www.b
+ 
+ .. warning:: UCSC and BioMart cater to different ways of genome annotation, i.e. genes defined in UCSC might not correspond to the same regions in a gene file downloaded from BioMart. (For a brief overview over the issues of genome annotation, you can check out `Wikipedia <http://en.wikipedia.org/wiki/Genome_project>`_, if you always wanted to know much more about those issues, `this <http://www.ncbi.nlm.nih.gov/pubmed/22510764>`_ might be a good start.)
+ 
+-You can access the data stored at UCSC or BioMart conveniently through our Galaxy instance which will import the resulting files into your history. Just go to **"Get data"** ⟶ "UCSC" or "BioMart".
++You can access the data stored at UCSC or BioMart conveniently through Galaxy, which will import the resulting files into your history. Just go to **"Get data"** ⟶ "UCSC" or "BioMart".
+ 
+ The majority of annotation files will probably be in [BED][] format, however, you can also find other data sets.
+ UCSC, for example, offers a wide range of data that you can browse via the "group" and "track" menus (for example, you could download the GC content of the genome as a signal file from UCSC via the "group" menu ("Mapping and Sequencing Tracks").
+@@ -85,7 +48,7 @@ And here's how you would do it for the BioMart approach:
+ Copy data sets between histories
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  
+-If you have registered with deepTools Galaxy you can have more than one history.
++If you are logged in to your Galaxy server you can have more than one history.
+ 
+ In order to minimize the disk space you're occupying we strongly suggest to **copy** data sets between histories when you're using the same data set in different histories.
+ 
+@@ -97,12 +60,12 @@ Copying can easily be done via the History panel's ``option`` button ⟶ "Copy d
+ 
+ **More help**
+ 
+-.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** via the Galaxy bug report button and we will get in touch if you indicate your email address.
++.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** to the administrators of your Galaxy server via the Galaxy bug report button.
+ 
+ +--------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `http://wiki.galaxyproject.org/Learn <http://wiki.galaxyproject.org/Learn>`__  | Help for Galaxy usage in general                                |
++| `Galaxy Training Network <https://training.galaxyproject.org/>`__              | Help for Galaxy usage in general                                |
+ +--------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `deepTools Galaxy FAQs <Galaxy-related-FAQs>`__                                | Frequently encountered issues with our specific Galaxy instance |
++| :doc:`help_faq_galaxy`                                                         | Frequently encountered issues with deepTools in Galaxy          |
+ +--------------------------------------------------------------------------------+-----------------------------------------------------------------+
+ | `Biostars <http://biostars.org>`__                                             | For issues not addressed in the FAQs                            |
+ +--------------------------------------------------------------------------------+-----------------------------------------------------------------+
+diff --git a/docs/content/help_galaxy_deeptools.rst b/docs/content/help_galaxy_deeptools.rst
+index 068e8c6023..1c8973126d 100644
+--- a/docs/content/help_galaxy_deeptools.rst
++++ b/docs/content/help_galaxy_deeptools.rst
+@@ -1,9 +1,9 @@
+-Which tools can I find in the deepTools Galaxy?
++Which deepTools tools can I find in Galaxy?
+ -----------------------------------------------
+ 
+ As mentioned before, each Galaxy installation can be tuned to the
+ individual interests.
+-Our goal is to provide a Galaxy that enables you to **quality check, process and normalize and subsequently visualize your data obtained by high-throughput DNA sequencing**.
++The deepTools Galaxy tools enable you to **quality check, process and normalize and subsequently visualize your data obtained by high-throughput DNA sequencing**.
+ 
+ .. tip:: If you do not know the difference between a BAM and a BED file, that's fine. You can read up on them in our :doc:`help_glossary`.
+ 
+@@ -117,12 +117,12 @@ The ``Summary Statistics`` can be used to calculate the sum, mean, standard devi
+ 
+ **More help**
+ 
+-.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** via the Galaxy bug report button and we will get in touch if you indicate your email address.
++.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** to the administrators of your Galaxy server via the Galaxy bug report button.
+ 
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `http://wiki.galaxyproject.org/Learn <http://wiki.galaxyproject.org/Learn>`_  | Help for Galaxy usage in general                                |
++| `Galaxy Training Network <https://training.galaxyproject.org/>`_              | Help for Galaxy usage in general                                |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `deepTools Galaxy FAQs <Galaxy-related-FAQs>`_                                | Frequently encountered issues with our specific Galaxy instance |
++| :doc:`help_faq_galaxy`                                                        | Frequently encountered issues with deepTools in Galaxy          |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+ | `Biostars <http://biostars.org>`__                                            | For issues not addressed in the FAQs                            |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+diff --git a/docs/content/help_galaxy_intro.rst b/docs/content/help_galaxy_intro.rst
+index 7ba1b913d1..376e71ac8e 100644
+--- a/docs/content/help_galaxy_intro.rst
++++ b/docs/content/help_galaxy_intro.rst
+@@ -1,15 +1,13 @@
+-Using deepTools within Galaxy   
++Using deepTools within Galaxy
+ ================================
+ 
+-`Galaxy <http://galaxyproject.org/>`_ is a tremendously useful platform developed by the Galaxy Team at Penn State and the Emory University. This platform is meant to offer access to a large variety of bioinformatics tools that can be used without computer programming experiences. That means, that the basic features of Galaxy will apply to every tool, i.e. every tool provided within a Galaxy framework will look very similar and will follow the concepts of Galaxy.
++`Galaxy <https://usegalaxy.eu/>`_ is a tremendously useful platform developed by the Galaxy Team at Penn State and the Emory University. This platform is meant to offer access to a large variety of bioinformatics tools that can be used without computer programming experiences. That means, that the basic features of Galaxy will apply to every tool, i.e. every tool provided within a Galaxy framework will look very similar and will follow the concepts of Galaxy.
+ 
+-Our publicly available deepTools Galaxy instance can be found here:
+-`deeptools.ie-freiburg.mpg.de <http://deeptools.ie-freiburg.mpg.de/>`_.
+-This server also contains some additional tools that will enable users to analyse and visualize data from high-throughput sequencing experiments, starting from aligned reads. 
++deepTools is available on the public `usegalaxy.eu <https://usegalaxy.eu/>`_ server.
+ 
+ **Table of content**
+ 
+-.. contents:: 
++.. contents::
+     :local:
+ 
+ .. toctree::
+@@ -19,7 +17,7 @@ This server also contains some additional tools that will enable users to analys
+ 
+ .. toctree::
+    :maxdepth: 2
+-   
++
+    help_galaxy_deeptools
+ 
+ 
+@@ -27,16 +25,14 @@ This server also contains some additional tools that will enable users to analys
+ Basic features of Galaxy
+ -------------------------
+ 
+-Galaxy is a web-based platform for data intensive, bioinformatics-dependent research and it is being developed by Penn State and John Hopkins University. The original Galaxy can be found `here <https://galaxyproject.org/>`_.
++Galaxy is a web-based platform for data intensive, bioinformatics-dependent research and it is being developed by Penn State and John Hopkins University. The original Galaxy can be found `here <https://usegalaxy.eu/>`_.
+ 
+ Since it is impossible to meet all bioinformatics needs -- that can range from evolutionary analysis to data from mass spectrometry to high-throughput DNA sequencing (and way beyond) -- with one single web server, many institutes have installed their own versions of the Galaxy platform tuned to their specific needs.
+ 
+-Our `deepTools Galaxy <http://deeptools.ie-freiburg.mpg.de/>`__ is such a specialized server dedicated to the analysis of high-throughput DNA sequencing data. The overall makeup of this web server, however, is the same as for any other Galaxy installation, so if you've used Galaxy before, you will learn to use deepTools in no time!
+-
+ The start site
+ ^^^^^^^^^^^^^^^
+ 
+-Here is a screenshot of what the start site will approximately look like: 
++Here is a screenshot of what the start site will approximately look like:
+ 
+ .. image:: ../images/Gal_startsite.png
+ 
+@@ -88,25 +84,25 @@ Handling failed files
+ 
+          1. click on the center button on the lower left corner of the failed data set ``(i)``: did you chose the **correct data files**?
+          2. if you're sure that you chose the correct files, hit the ``re-run button`` (blue arrow in the lower left corner) - check again whether your files had the **correct file format**. If you suspect that the format might be incorrectly assigned (e.g. a file that should be a BED file is labelled as a tabular file), click the ``edit button`` (the pencil) of the input data file - there you can change the corresponding attributes
+-         3. if you've checked your input data and the error is persisting, click on the ``green bug`` (lower left corner of the failed data set) and send the **bug report** to us. You do not need to indicate a valid email-address unless you would like us to get in touch with you once the issue is solved.
++         3. if you've checked your input data and the error is persisting, click on the ``green bug`` (lower left corner of the failed data set) and send the **bug report** to the administrators of your Galaxy server. You do not need to indicate a valid email-address unless you would like them to get in touch with you once the issue is solved.
+ 
+ Workflows
+ ^^^^^^^^^^
+ 
+ Workflows are Galaxy's equivalent of protocols.
+ This is a very useful feature as it allows users to *share their protocols and bioinformatic analyses* in a very easy and transparent way.
+-This is the graphical representation of a Galaxy workflow that can easily be modified via drag'n'drop within the workflows manual (you must be registered with deepTools Galaxy to be able to generate your own workflows or edit published ones).
++This is the graphical representation of a Galaxy workflow that can easily be modified via drag'n'drop within the workflows manual (you must be logged in to your Galaxy server to be able to generate your own workflows or edit published ones).
+ 
+ .. image:: ../images/Gal_workflow.png
+ 
+ **More help**
+ 
+-.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** via the Galaxy bug report button and we will get in touch if you indicate your email address.
++.. hint:: If you encounter a failing data set (marked in red), please **send a bug report** to the administrators of your Galaxy server via the Galaxy bug report button.
+ 
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `http://wiki.galaxyproject.org/Learn <http://wiki.galaxyproject.org/Learn>`_  | Help for Galaxy usage in general                                |
++| `Galaxy Training Network <https://training.galaxyproject.org/>`_              | Help for Galaxy usage in general                                |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+-| `deepTools Galaxy FAQs <Galaxy-related-FAQs>`_                                | Frequently encountered issues with our specific Galaxy instance |
++| :doc:`help_faq_galaxy`                                                        | Frequently encountered issues with deepTools in Galaxy          |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+ | `Biostars <http://biostars.org>`__                                            | For issues not addressed in the FAQs                            |
+ +-------------------------------------------------------------------------------+-----------------------------------------------------------------+
+diff --git a/docs/content/tools/multiBigwigSummary.rst b/docs/content/tools/multiBigwigSummary.rst
+index 4beb65ca2c..8ac91b993f 100644
+--- a/docs/content/tools/multiBigwigSummary.rst
++++ b/docs/content/tools/multiBigwigSummary.rst
+@@ -68,7 +68,7 @@ The optional output (``--outRawCounts``) is a simple tab-delimited file that can
+ multiBigwigSummary in Galaxy
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+-Below is the screenshot showing how to use multiBigwigSummary on the deeptools galaxy.
++Below is the screenshot showing how to use multiBigwigSummary in Galaxy.
+ 
+ 
+ .. image:: ../../images/bigwiCorr_galaxy.png
+diff --git a/docs/index.rst b/docs/index.rst
+index 4eac3e9ee3..7d77232cac 100644
+--- a/docs/index.rst
++++ b/docs/index.rst
+@@ -9,7 +9,7 @@ efficient analysis of high-throughput sequencing data, such as ChIP-seq, RNA-seq
+ 
+ There are 3 ways for using deepTools:
+ 
+-* **Galaxy usage** --  our public `deepTools Galaxy server <http://deeptools.ie-freiburg.mpg.de>`_ let's you use the deepTools within the familiar Galaxy framework without the need to master the command line
++* **Galaxy usage** --  the public `usegalaxy.eu <https://usegalaxy.eu/>`_ server lets you use deepTools within the familiar Galaxy framework without the need to master the command line
+ * **command line usage** -- simply download and install the tools (see :doc:`content/installation` and :doc:`content/list_of_tools`)
+ * **API** -- make use of your favorite deepTools modules in your own python programs (see :doc:`content/api`)
+ 
+@@ -70,7 +70,11 @@ that fulfills the following criteria:
+ .. tip:: For support or questions please post to `Biostars <http://biostars.org>`__. For bug reports and feature requests please open an issue `on github <https://github.com/deeptools/deepTools/issues>`__.
+ 
+ 
+-Please cite deepTools2 as follows:
++Please cite deepTools as follows:
++
++Deboutte, Ward, Adrian Salatino, Wolfgang Maier, Pavankumar Videm, Mohit Navandar, Galina Erikson,
++Saim Momin, Juan Caballero-Perez, Leily Rabbani, Lucille Lopez-Delisle, Björn Grüning, and Thomas Manke.
++**"deepTools4: Faster, Scalable, and Modernized Genomic Data Analysis." bioRxiv (2026). doi:10.64898/2026.11.11.765524**
+ 
+ Ramírez, Fidel, Devon P. Ryan, Björn Grüning, Vivek Bhardwaj, Fabian Kilpert, Andreas S. Richter,
+ Steffen Heyne, Friederike Dündar, and Thomas Manke.
+diff --git a/galaxy/workflows/readme.rst b/galaxy/workflows/readme.rst
+index 36d9a37d3b..f840555c32 100755
+--- a/galaxy/workflows/readme.rst
++++ b/galaxy/workflows/readme.rst
+@@ -6,7 +6,7 @@ See http://www.galaxyproject.org for information about the Galaxy Project.
+ Sample Data
+ ===========
+ 
+-Sample data can be obtained from http://deeptools.ie-freiburg.mpg.de/library or you
++Sample data can be obtained from https://zenodo.org/records/21529137 or you
+ can use aligned reads in BAM or SAM format.
+ 
+ 
+@@ -18,7 +18,15 @@ If you use this workflow directly, or a derivative of it, or the associated
+ deepTools wrappers for Galaxy, in work leading to a scientific publication,
+ please cite:
+ 
+-{publication under review}
++Deboutte W, Salatino A, Maier W, Videm P, Navandar M, Erikson G, Momin S,
++Caballero-Perez J, Rabbani L, Lopez-Delisle L, Grüning B, Manke T.
++deepTools4: Faster, Scalable, and Modernized Genomic Data Analysis.
++bioRxiv (2026). https://doi.org/10.64898/2026.11.11.765524
++
++Ramírez F, Ryan DP, Grüning B, Bhardwaj V, Kilpert F, Richter AS, Heyne S,
++Dündar F, Manke T. deepTools2: a next generation web server for deep-sequencing
++data analysis. Nucleic Acids Research (2016) 44(W1):W160-5.
++https://doi.org/10.1093/nar/gkw257
+ 
+ 
+ Availability
+diff --git a/galaxy/wrapper/deepTools_macros.xml b/galaxy/wrapper/deepTools_macros.xml
+index 618ee2dde4..2947752866 100755
+--- a/galaxy/wrapper/deepTools_macros.xml
++++ b/galaxy/wrapper/deepTools_macros.xml
+@@ -1102,13 +1102,14 @@ This tool is developed by the `Bioinformatics and Deep-Sequencing Unit`_ at the
+ 
+ .. _Biostars: http://biostars.org
+ .. _on github: http://github.com
+-.. _Bioinformatics and Deep-Sequencing Unit: http://www.ie-freiburg.mpg.de/bioinformaticsfac
+-.. _Max Planck Institute for Immunobiology and Epigenetics: http://www3.ie-freiburg.mpg.de
++.. _Bioinformatics and Deep-Sequencing Unit: https://www.ie-freiburg.mpg.de/bioinformatics
++.. _Max Planck Institute for Immunobiology and Epigenetics: https://www.ie-freiburg.mpg.de/
+ .. _help site: https://deeptools.readthedocs.org/
+ 
+     </token>
+     <xml name="citations">
+         <citations>
++            <citation type="doi">10.64898/2026.11.11.765524</citation>
+             <citation type="doi">10.1093/nar/gkw257</citation>
+             <yield/>
+         </citations>

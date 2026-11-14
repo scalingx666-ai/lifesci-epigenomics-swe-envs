@@ -1,0 +1,13 @@
+diff --git a/src/corigami/inference/utils/model_utils.py b/src/corigami/inference/utils/model_utils.py
+index 3945e71..ae55aa2 100644
+--- a/src/corigami/inference/utils/model_utils.py
++++ b/src/corigami/inference/utils/model_utils.py
+@@ -22,7 +22,7 @@ def load_checkpoint(model, model_path):
+     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+     model.to(device)
+ 
+-    checkpoint = torch.load(model_path, map_location=device)
++    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+     model_weights = checkpoint['state_dict']
+ 
+     # Edit keys

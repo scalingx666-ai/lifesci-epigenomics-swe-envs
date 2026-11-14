@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/lucascamillomd__pyaging-56"
+description = "Preserve metadata columns during EPIC v2 probe aggregation"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pyaging",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lucascamillomd/pyaging"
+ref = "412360cb97eb46ce15f7167f8031f53d7594df2b"
+reference = "https://github.com/lucascamillomd/pyaging/pull/56"
+source_access = "auto"
+built_at = "2026-11-14T07:16:08.298338+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d5d6b6a95c4a19c9a7e598f9f91d6128165a5d9db30d3afd0600b86e702ceb2c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-09T17:36:51Z"
+diff_format = "unified"
+context_files = [
+    "log.txt",
+    "src/pyaging/preprocess/_preprocess.py",
+    "tests/preprocess/test_dataframe.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 142
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

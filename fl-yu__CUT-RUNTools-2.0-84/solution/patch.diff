@@ -1,0 +1,44 @@
+diff --git a/install/environment1.yml b/install/environment1.yml
+index b4654e4..fa2b21f 100644
+--- a/install/environment1.yml
++++ b/install/environment1.yml
+@@ -1,6 +1,8 @@
+ name: cutruntools2.1
+ dependencies:
+ - python=3.6
++- cmake>=3.16
++- openjdk=17.0.3
+ - bioconda::bowtie2
+ - bioconda::samtools
+ - bioinfo:macs2
+diff --git a/install/validate.py b/install/validate.py
+index a99eff3..4b93116 100755
+--- a/install/validate.py
++++ b/install/validate.py
+@@ -122,7 +122,7 @@ def module_exists(module_name):
+ 		sys.exit(1)
+ 
+ 	#valide python packages
+-	if not module_exists("umap-learn"):
++	if not module_exists("umap"):
+     		sys.exit(1)
+ 	if not module_exists("leidenalg"):
+     		sys.exit(1)
+diff --git a/src/bulk/bulk-pipeline.sh b/src/bulk/bulk-pipeline.sh
+index 69652a3..aa9b87d 100755
+--- a/src/bulk/bulk-pipeline.sh
++++ b/src/bulk/bulk-pipeline.sh
+@@ -64,11 +64,11 @@ if [ "$frag_120" == "TRUE" ]
+ then
+     echo "[info] Bowtie2 command: --dovetail --phred33"
+     echo "[info] The dovetail mode is enabled [as parameter frag_120 is on]"
+-    ($bowtie2bin/bowtie2 -p $cores --dovetail --phred33 -x $bt2idx/genome -1 $trimdir2/"$base"_1.paired.fastq.gz -2 $trimdir2/"$base"_2.paired.fastq.gz) 2> $logdir/"$base".bowtie2 | $samtoolsbin/samtools view -bS - > $aligndir/"$base".bam
++    ($bowtie2bin/bowtie2 -p $cores --dovetail --phred33 -x $bt2idx/$organism_build -1 $trimdir2/"$base"_1.paired.fastq.gz -2 $trimdir2/"$base"_2.paired.fastq.gz) 2> $logdir/"$base".bowtie2 | $samtoolsbin/samtools view -bS - > $aligndir/"$base".bam
+ else
+     echo "[info] Bowtie2 command: --very-sensitive-local --phred33 -I 10 -X 700"
+     echo "[info] The dovetail mode is off [as parameter frag_120 is off]"
+-    ($bowtie2bin/bowtie2 -p $cores --very-sensitive-local --phred33 -I 10 -X 700 -x $bt2idx/genome -1 $trimdir2/"$base"_1.paired.fastq.gz -2 $trimdir2/"$base"_2.paired.fastq.gz) 2> $logdir/"$base".bowtie2 | $samtoolsbin/samtools view -bS - > $aligndir/"$base".bam
++    ($bowtie2bin/bowtie2 -p $cores --very-sensitive-local --phred33 -I 10 -X 700 -x $bt2idx/$organism_build -1 $trimdir2/"$base"_1.paired.fastq.gz -2 $trimdir2/"$base"_2.paired.fastq.gz) 2> $logdir/"$base".bowtie2 | $samtoolsbin/samtools view -bS - > $aligndir/"$base".bam
+ fi
+ 
+ spikein_dir=$workdir/

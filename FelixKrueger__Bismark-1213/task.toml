@@ -1,0 +1,70 @@
+version = "1.0"
+
+[task]
+name = "default/FelixKrueger__Bismark-1213"
+description = "aligner: staging and --nucleotide_coverage follow-ups"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Bismark",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "FelixKrueger/Bismark"
+ref = "090054e6d3098dbfbc90e7bc5fd38ccf52974c69"
+reference = "https://github.com/FelixKrueger/Bismark/pull/1213"
+source_access = "auto"
+built_at = "2026-11-14T07:13:47.972407+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:547df80cf5d435454ecd64b080ef9511b1df7a1418b2f54391d3d555ae217926"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T13:43:50Z"
+diff_format = "unified"
+context_files = [
+    "docs/src/content/docs/options/alignment.md",
+    "merge_arbitrary_coverage_files.py",
+    "merge_coverage_files_ARGV.py",
+    "rust/bismark/src/aligner/mod.rs",
+    "rust/bismark/src/aligner/parallel.rs",
+    "rust/bismark/src/aligner/staging.rs",
+    "rust/bismark/src/bam2nuc/mod.rs",
+    "rust/bismark/tests/aligner_cli.rs",
+    "rust/bismark/tests/aligner_five_base_simplex.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 556
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

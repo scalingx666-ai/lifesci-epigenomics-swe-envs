@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/FelixKrueger__Bismark-1215"
+description = "aligner: clear stale stats files before --nucleotide_coverage runs"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Bismark",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "FelixKrueger/Bismark"
+ref = "b0638917856123455e733921b676e8414f2011dc"
+reference = "https://github.com/FelixKrueger/Bismark/pull/1215"
+source_access = "auto"
+built_at = "2026-11-14T07:13:45.487735+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:883b1512b122c095192968316b595965906a273814428ace4bd7b031e671e814"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T16:57:12Z"
+diff_format = "unified"
+context_files = [
+    "docs/src/content/docs/options/alignment.md",
+    "rust/bismark/src/aligner/mod.rs",
+    "rust/bismark/tests/aligner_cli.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 119
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

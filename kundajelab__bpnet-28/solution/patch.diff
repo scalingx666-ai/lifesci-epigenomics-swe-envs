@@ -1,0 +1,248 @@
+diff --git a/bpnet/BPNet.py b/bpnet/BPNet.py
+index aeae82d..36fcb69 100644
+--- a/bpnet/BPNet.py
++++ b/bpnet/BPNet.py
+@@ -299,7 +299,8 @@ def export_bw(self,
+                   contrib_method='grad',
+                   pred_summaries=['profile/wn', 'counts/pre-act'],
+                   batch_size=512,
+-                  scale_contribution=False,
++                  scale_contribution= False,
++                  flip_negative_strand = False,
+                   chromosomes=None):
+         """Export predictions and model contributions to big-wig files
+ 
+@@ -320,6 +321,15 @@ def export_bw(self,
+                                    fasta_file=fasta_file,
+                                    batch_size=batch_size)
+ 
++
++        #Determine how many strands to write in export-bw
++        n_tracks = out[0]['pred'][self.tasks[0]].shape[1]
++        assert n_tracks <= 2, "More than 2 tracks predicted...please evaluate application of exporting bigwig tracks..."
++        if n_tracks == 1:
++            output_feats = ['preds', 'contrib.profile', 'contrib.counts']
++        elif n_tracks == 2:
++            output_feats = ['preds.pos', 'preds.neg', 'contrib.profile', 'contrib.counts']
++
+         logger.info("Setup bigWigs for writing")
+         # Get the genome lengths
+         if fasta_file is None:
+@@ -332,8 +342,6 @@ def export_bw(self,
+             genome = OrderedDict([(c, l) for c, l in zip(fa.references, fa.lengths) if c in chromosomes])
+         fa.close()
+ 
+-        output_feats = ['preds.pos', 'preds.neg', 'contrib.profile', 'contrib.counts']
+-
+         # make sure the regions are in the right order
+         first_chr = list(np.unique(np.array([interval.chrom for interval in regions])))
+         last_chr = [c for c, l in genome.items() if c not in first_chr]
+@@ -403,12 +411,19 @@ def to_1d_contrib(hyp_contrib, seq):
+             for tid, task in enumerate(self.tasks):
+                 # Write predictions
+                 preds = out[i]['pred'][task]
+-                add_entry(bws[task]['preds.pos'], preds[:, 0],
+-                          interval, start_idx)
+-                if preds.shape[1] == 2:
+-                    add_entry(bws[task]['preds.neg'], preds[:, 1],
++                if n_tracks == 1:
++                    add_entry(bws[task]['preds'], preds[:, 0],
+                               interval, start_idx)
+-
++                elif n_tracks == 2:
++                    add_entry(bws[task]['preds.pos'], preds[:, 0],
++                              interval, start_idx)
++                    if flip_negative_strand:
++                        add_entry(bws[task]['preds.neg'], preds[:, 1]*-1,
++                                  interval, start_idx)
++                    else:
++                        add_entry(bws[task]['preds.neg'], preds[:, 1],
++                                  interval, start_idx)
++                        
+                 # Get the contribution scores
+                 seq = out[i]['seq']
+                 hyp_contrib = out[i]['contrib_score']
+diff --git a/bpnet/cli/export_bw.py b/bpnet/cli/export_bw.py
+index 5d86fb6..58f1b50 100644
+--- a/bpnet/cli/export_bw.py
++++ b/bpnet/cli/export_bw.py
+@@ -30,6 +30,8 @@
+      "of prediction heads. Multiple wildcards can be by comma-separating them.")
+ @arg("--scale-contribution",
+      help='if True, multiple the contribution scores by the predicted count value')
++@arg("--flip-negative-strand",
++     help='if True, multiply the negative strand predictions by -1')
+ @arg("--batch-size",
+      help='Batch size for computing the predictions and contribution scores')
+ @arg('--gpu',
+@@ -44,6 +46,7 @@ def bpnet_export_bw(model_dir,
+                     contrib_wildcard='*/profile/wn,*/counts/pre-act',  # specifies which contrib. scores to compute
+                     batch_size=256,
+                     scale_contribution=False,
++                    flip_negative_strand = False,
+                     gpu=0,
+                     memfrac_gpu=0.45):
+     """Export model predictions and contribution scores to big-wig files
+@@ -78,10 +81,10 @@ def bpnet_export_bw(model_dir,
+                  output_prefix=output_prefix,
+                  contrib_method=contrib_method,
+                  fasta_file=fasta_file,
+-                 # TODO - rename pred_summaries
+                  pred_summaries=contrib_wildcard.replace("*/", "").split(","),
+                  batch_size=batch_size,
+                  scale_contribution=scale_contribution,
++                 flip_negative_strand = flip_negative_strand,
+                  chromosomes=None)  # infer chromosomes from the fasta file
+ 
+ 
+diff --git a/bpnet/cli/modisco.py b/bpnet/cli/modisco.py
+index 2ee8d5f..38092f5 100644
+--- a/bpnet/cli/modisco.py
++++ b/bpnet/cli/modisco.py
+@@ -900,12 +900,12 @@ def chip_nexus_analysis(modisco_dir, trim_frac=0.08, num_workers=20, run_cwm_sca
+         cr.write()
+     sync.append("modisco-chip.html")
+ 
+-    if not cr.set_cmd('modisco_table').done():
+-        modisco_table(modisco_dir, contrib_scores, modisco_dir, report_url=None, contribsf=contribsf,
+-                      footprint_width=footprint_width)
++    # Export bed-files and bigwigs
++    # Seqlets
++    if not cr.set_cmd('modisco_export_seqlets').done():
++        modisco_export_seqlets(str(modisco_dir), str(modisco_dir / 'seqlets'), trim_frac=trim_frac)
+         cr.write()
+-    sync.append("footprints.pkl")
+-    sync.append("pattern_table.*")
++    sync.append("seqlets")
+ 
+     if not cr.set_cmd('modisco_export_patterns').done():
+         modisco_export_patterns(modisco_dir,
+@@ -925,14 +925,16 @@ def chip_nexus_analysis(modisco_dir, trim_frac=0.08, num_workers=20, run_cwm_sca
+                      num_workers=num_workers)
+             cr.write()
+ 
+-    # --------------------------------------------
+-    # Export bed-files and bigwigs
+-
+-    # Seqlets
+-    if not cr.set_cmd('modisco_export_seqlets').done():
+-        modisco_export_seqlets(str(modisco_dir), str(modisco_dir / 'seqlets'), trim_frac=trim_frac)
++    if not cr.set_cmd('modisco_table').done():
++        modisco_table(modisco_dir, contrib_scores, modisco_dir, report_url=None, contribsf=contribsf,
++                      footprint_width=footprint_width)
+         cr.write()
+-    sync.append("seqlets")
++    sync.append("footprints.pkl")
++    sync.append("pattern_table.*")
++
++
++
++    # --------------------------------------------
+ 
+     # print the rsync command to run in order to sync the output
+     # directories to the webserver
+diff --git a/bpnet/plot/heatmaps.py b/bpnet/plot/heatmaps.py
+index b51b5e7..7732a75 100644
+--- a/bpnet/plot/heatmaps.py
++++ b/bpnet/plot/heatmaps.py
+@@ -55,8 +55,12 @@ def heatmap_stranded_profile(signal, ax=None, figsize=(5, 20),
+     else:
+         fig = None
+     norm_signal = normalizer(signal)
++
++    #20200706: Added single-channel for ChIP-seq functionality in this plot.
++    #Instead of imposing a second strand, just keep the first feature.
+     ax.imshow(norm_signal[:, :, 0], cmap=plt.cm.Reds, interpolation=interpolation, aspect=aspect)
+-    ax.imshow(norm_signal[:, :, 1], alpha=0.5, cmap=plt.cm.Blues, interpolation=interpolation, aspect=aspect)
++    if norm_signal.shape[2]==2:
++        ax.imshow(norm_signal[:, :, 1], alpha=0.5, cmap=plt.cm.Blues, interpolation=interpolation, aspect=aspect)
+     seq_len = signal.shape[1]
+     ticks = np.arange(0, seq_len + 1 - tick_step, tick_step)
+     ax.set_xticks(ticks)
+diff --git a/bpnet/utils.py b/bpnet/utils.py
+index 920f584..6aa35ec 100644
+--- a/bpnet/utils.py
++++ b/bpnet/utils.py
+@@ -359,9 +359,14 @@ def create_tf_session(visiblegpus, per_process_gpu_memory_fraction=0.45):
+     os.environ['CUDA_VISIBLE_DEVICES'] = str(visiblegpus)
+     session_config = tf.ConfigProto()
+     # session_config.gpu_options.deferred_deletion_bytes = DEFER_DELETE_SIZE
+-    session_config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
++    if per_process_gpu_memory_fraction==1:
++        session_config.gpu_options.allow_growth = True
++    else:
++        session_config.gpu_options.per_process_gpu_memory_fraction = per_process_gpu_memory_fraction
++    session_config.gpu_options.polling_inactive_delay_msecs = 50
+     session = tf.Session(config=session_config)
+     K.set_session(session)
++    #K.backend.set_session(session)
+     return session
+ 
+ 
+diff --git a/conda-gpu_env.yml b/conda-gpu_env.yml
+new file mode 100644
+index 0000000..875a4f4
+--- /dev/null
++++ b/conda-gpu_env.yml
+@@ -0,0 +1,48 @@
++name: bpnet-gpu
++channels:
++- bioconda
++- pytorch
++- conda-forge
++- defaults
++dependencies:
++- python=3.6.13
++
++# genomics
++- pybedtools>=0.7.10
++- bedtools>=2.27.1
++- pybigwig>=0.3.10
++- pysam>=0.14.0
++- genomelake>=0.1.4
++
++- pytorch  # optional for data-loading
++- cython
++- h5py>=2.7.0
++- numpy
++
++- pandas>=0.23.0
++- fastparquet
++- python-snappy
++
++- nb_conda=2.2.1
++- pip
++- pip:
++  - git+https://github.com/kundajelab/DeepExplain.git
++
++  #Synchronized packages for Jupyter Notebooks
++  - ipykernel==5.3.0
++  - ipython==7.15.0
++  - ipywidgets==7.5.1
++  - jupyter_client==6.1.3
++  - jupyter_core==4.6.3
++  - markdown==3.2.2
++  - nbconvert==5.6.1
++  - nbformat==5.0.6
++  - notebook==6.0.3
++  - papermill==2.1.1
++  - nbclient==0.4.0
++
++  # ML & numerics
++  - tensorflow-gpu==1.7 #for gpu
++
++  # bpnet package
++  - .[dev,extras]  # install the local basepair package. All the other required pip packages are specified in the setup.py
+diff --git a/setup.py b/setup.py
+index af5d61f..b469098 100755
+--- a/setup.py
++++ b/setup.py
+@@ -51,6 +51,8 @@
+     # utils
+     "ipython",
+     "tqdm",
++    # "pprint",
++
+ 
+     # Remove
+     "genomelake",

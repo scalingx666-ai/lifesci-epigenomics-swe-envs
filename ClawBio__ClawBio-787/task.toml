@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/ClawBio__ClawBio-787"
+description = "docs(bench): say what the nutrigx-advisor 0.0 baseline measures"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "ClawBio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ClawBio/ClawBio"
+ref = "a4a8c7281c8ddd8a0b84c5cffae5d9a0760f40fe"
+reference = "https://github.com/ClawBio/ClawBio/pull/787"
+source_access = "auto"
+built_at = "2026-11-14T05:42:43.379822+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:bb898a95e7ac344dd16eee7d1e7e4768e7a1e1fa90ce931533e1ffcd266aa5b2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T08:47:45Z"
+diff_format = "unified"
+context_files = [
+    "bench_baseline.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 15
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

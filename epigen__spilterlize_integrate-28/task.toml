@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/epigen__spilterlize_integrate-28"
+description = "Fix passing feature annotation as input"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "spilterlize_integrate",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "epigen/spilterlize_integrate"
+ref = "04c9cb7d1562dbd97ba83291da4ef1f6b1c330e8"
+reference = "https://github.com/epigen/spilterlize_integrate/pull/28"
+source_access = "auto"
+built_at = "2026-11-14T07:17:55.291986+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1c93e4414bbcb7905eaf90cd66e78536f8d1c18cfc3eac374424e1605932e061"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-10T13:35:25Z"
+diff_format = "unified"
+context_files = [
+    "workflow/scripts/norm_edgeR.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

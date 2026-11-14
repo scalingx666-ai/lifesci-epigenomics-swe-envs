@@ -1,0 +1,252 @@
+diff --git a/.github/workflows/test_pytest.yml b/.github/workflows/test_pytest.yml
+index f262d7f48a..47442c5086 100644
+--- a/.github/workflows/test_pytest.yml
++++ b/.github/workflows/test_pytest.yml
+@@ -33,6 +33,7 @@ jobs:
+         name: Test on Linux
+         runs-on: ubuntu-latest
+         strategy:
++            fail-fast: false
+             matrix:
+                 pixi-env: [py312, py313, py314]
+         steps:
+@@ -54,6 +55,7 @@ jobs:
+         name: Test on OSX
+         runs-on: macOS-latest
+         strategy:
++            fail-fast: false
+             matrix:
+                 pixi-env: [py312, py313, py314]
+         steps:
+diff --git a/.github/workflows/wheels-preview.yml b/.github/workflows/wheels-preview.yml
+index 0cde2a656c..a6a039901f 100644
+--- a/.github/workflows/wheels-preview.yml
++++ b/.github/workflows/wheels-preview.yml
+@@ -44,7 +44,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+                   manylinux: 2_28
+                   before-script-linux: |
+                       set -ex
+@@ -101,7 +101,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+                   manylinux: musllinux_1_2
+                   before-script-linux: |
+                       apt-get update
+@@ -149,7 +149,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+             - name: Upload wheels
+               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+               with:
+@@ -194,6 +194,9 @@ jobs:
+         name: Publish preview to TestPyPI
+         runs-on: ubuntu-latest
+         needs: [linux, musllinux, macos, sdist]
++        environment: testpypi
++        permissions:
++            id-token: write
+         steps:
+             - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+               with:
+@@ -204,6 +207,5 @@ jobs:
+               uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+               with:
+                   repository-url: https://test.pypi.org/legacy/
+-                  password: ${{ secrets.TESTPYPI_API_TOKEN }}
+                   packages-dir: dist
+                   skip-existing: true
+diff --git a/.github/workflows/wheels.yml b/.github/workflows/wheels.yml
+index 4fe1d4f526..2eeaf7ba54 100644
+--- a/.github/workflows/wheels.yml
++++ b/.github/workflows/wheels.yml
+@@ -29,8 +29,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
+-                  # sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+                   manylinux: 2_28
+                   before-script-linux: |
+                       set -ex
+@@ -87,8 +86,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
+-                  # sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+                   manylinux: musllinux_1_2
+                   before-script-linux: |
+                       apt-get update
+@@ -122,7 +120,7 @@ jobs:
+               uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+               with:
+                   target: ${{ matrix.platform.target }}
+-                  args: --release --out dist --find-interpreter
++                  args: --release --out dist -i python3.12 python3.13 python3.14
+             - name: Upload wheels
+               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+               with:
+@@ -151,6 +149,7 @@ jobs:
+         runs-on: ubuntu-latest
+         if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+         needs: [linux, musllinux, macos, sdist]
++        environment: pypi
+         permissions:
+             id-token: write
+             contents: write
+@@ -169,6 +168,5 @@ jobs:
+               if: ${{ startsWith(github.ref, 'refs/tags/') }}
+               uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+               with:
+-                  password: ${{ secrets.PYPI_API_TOKEN }}
+                   packages-dir: dist
+                   skip-existing: true
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 178bee8eba..9d14fe8b93 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -6,10 +6,10 @@ repos:
+   - repo: local
+     hooks:
+       - id: check-version-sync
+-        name: check Rust versions (docs - toml) and deeptools versions (toml - galaxy) to stay in sync
++        name: check Rust, Python and deeptools versions to stay in sync
+         entry: python scripts/check_version_sync.py
+         language: system
+-        files: ^(Cargo\.toml|pyproject\.toml|\.readthedocs\.yaml|galaxy/wrapper/deepTools_macros\.xml)$
++        files: ^(Cargo\.toml|pyproject\.toml|\.readthedocs\.yaml|galaxy/wrapper/deepTools_macros\.xml|\.github/workflows/(test_pytest|test_planemo|wheels|wheels-preview)\.yml|scripts/check_version_sync\.py)$
+         pass_filenames: false
+   - repo: local
+     hooks:
+diff --git a/pixi.lock b/pixi.lock
+index 9b232d2fa6..7c36f4bf6e 100644
+--- a/pixi.lock
++++ b/pixi.lock
+@@ -1,8 +1,21 @@
+ version: 7
+ platforms:
+ - name: linux-64
++  virtual-packages:
++  - __unix=0=0
++  - __linux=4.18
++  - __glibc=2.28
++  - __archspec=0=x86_64
+ - name: osx-64
++  virtual-packages:
++  - __unix=0=0
++  - __osx=13.0
++  - __archspec=0=x86_64
+ - name: osx-arm64
++  virtual-packages:
++  - __unix=0=0
++  - __osx=13.0
++  - __archspec=0=m1
+ environments:
+   default:
+     channels:
+diff --git a/pyproject.toml b/pyproject.toml
+index 56d35d64d7..b66b43d00c 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -49,7 +49,11 @@ description = "Useful tools for exploring deep sequencing data."
+ license = {file = "LICENSE.txt"}
+ classifiers = [
+     "Intended Audience :: Science/Research",
+-    "Topic :: Scientific/Engineering :: Bio-Informatics"
++    "Topic :: Scientific/Engineering :: Bio-Informatics",
++    # Supported Python versions:
++    "Programming Language :: Python :: 3.12",
++    "Programming Language :: Python :: 3.13",
++    "Programming Language :: Python :: 3.14"
+ ]
+ readme = "README.md"
+ [project.optional-dependencies]
+@@ -75,9 +79,6 @@ repository = "https://github.com/deeptools/deepTools"
+ [tool.setuptools]
+ packages = ["deeptools"]
+ 
+-[tool.ruff]
+-target-version = "py312"
+-
+ [tool.ruff.lint]
+ ignore = [
+     "N999", #invalid module name
+diff --git a/scripts/check_version_sync.py b/scripts/check_version_sync.py
+index 5ff64a70d2..59e835e4d0 100644
+--- a/scripts/check_version_sync.py
++++ b/scripts/check_version_sync.py
+@@ -99,9 +99,49 @@ def galaxy_tool_version() -> str:
+     return match.group(1)
+ 
+ 
++def _grep(path: str, pattern: str) -> list[str]:
++    return re.findall(pattern, (REPO_ROOT / path).read_text(), re.MULTILINE)
++
++
++def python_version_mismatches() -> dict[str, tuple[object, object]]:
++    """Check every hardcoded Python version against the pyproject.toml classifiers."""
++    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
++    classifiers = project["project"]["classifiers"]
++    versions = [c.rsplit(" ", 1)[1] for c in classifiers
++                if re.fullmatch(r"Programming Language :: Python :: 3\.\d+", c)]
++    if not versions:
++        sys.exit("pyproject.toml: no 'Programming Language :: Python :: 3.X' classifiers found")
++    if any(c.startswith("Programming Language :: Python :: Free Threading") for c in classifiers):
++        versions += [f"{v}t" for v in versions if _version_tuple(v) >= (3, 14)]
++    envs = [f"py{v.replace('.', '')}" for v in versions]
++    interpreters = [f"python{v}" for v in versions]
++
++    pixi_envs = [name for name in project["tool"]["pixi"]["environments"] if name.startswith("py3")]
++    rtd = _grep(".readthedocs.yaml", r'^\s*python:\s*"([\d.]+)"')
++    checks = {
++        "pyproject.toml requires-python": (f">= {versions[0]}", project["project"]["requires-python"]),
++        "pyproject.toml pixi environments": (envs, pixi_envs),
++        "test_planemo.yml python-version (lowest)": (
++            [versions[0]],
++            _grep(".github/workflows/test_planemo.yml", r'python-version:\s*"([\d.]+)"'),
++        ),
++        ".readthedocs.yaml python (any supported)": (True, bool(rtd) and rtd[0] in versions),
++    }
++    # Files with several matrices / build steps: every one of them must match.
++    matrices = [[e.strip() for e in m.split(",")]
++                for m in _grep(".github/workflows/test_pytest.yml", r"pixi-env:\s*\[([^\]]*)\]")]
++    checks["test_pytest.yml pixi-env matrices"] = ([envs] * max(len(matrices), 1), matrices)
++    for workflow in ("wheels.yml", "wheels-preview.yml"):
++        # a wheel build without `-i` (e.g. --find-interpreter) yields an empty list
++        builds = [args.split() for args in
++                  _grep(f".github/workflows/{workflow}", r"^\s*args:\s*--release(?:.*?\s-i\s+(.*))?.*$")]
++        checks[f"{workflow} maturin -i"] = ([interpreters] * max(len(builds), 1), builds)
++    return {name: pair for name, pair in checks.items() if pair[0] != pair[1]}
++
++
+ def main() -> None:
+     cargo_version = cargo_rust_version()
+-    mismatches: dict[str, tuple[str, str]] = {}
++    mismatches: dict[str, tuple[object, object]] = {}
+ 
+     pixi_version = pixi_rust_version()
+     if pixi_version != cargo_version:
+@@ -117,6 +157,10 @@ def main() -> None:
+     elif rtd_version != "latest" and _version_tuple(rtd_version) < _version_tuple(cargo_version):
+         mismatches["rust: .readthedocs.yaml build.tools.rust"] = (f">= {cargo_version}", rtd_version)
+ 
++    mismatches.update(
++        {f"python: {name}": pair for name, pair in python_version_mismatches().items()}
++    )
++
+     pkg_version = deeptools_version()
+     galaxy_version = galaxy_tool_version()
+     if galaxy_version != pkg_version:

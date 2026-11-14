@@ -1,0 +1,98 @@
+diff --git a/.circleci/config.yml b/.circleci/config.yml
+index 8853f190..f587deaa 100644
+--- a/.circleci/config.yml
++++ b/.circleci/config.yml
+@@ -66,7 +66,7 @@ jobs:
+           name: build image
+           command: |
+             source ${BASH_ENV}
+-            export DOCKER_CACHE_TAG=v2.1.0
++            export DOCKER_CACHE_TAG="WRN-503_ccd006dd-a484-4337-9754-fdf3d5b6d7b9"
+             echo "pulling ${DOCKER_CACHE_TAG}!"
+             docker pull encodedcc/chip-seq-pipeline:${DOCKER_CACHE_TAG}
+             docker login -u=${DOCKERHUB_USER} -p=${DOCKERHUB_PASS}
+diff --git a/chip.wdl b/chip.wdl
+index f9eb0b3e..083184c7 100644
+--- a/chip.wdl
++++ b/chip.wdl
+@@ -7,10 +7,10 @@ struct RuntimeEnvironment {
+ }
+ 
+ workflow chip {
+-    String pipeline_ver = 'v2.2.1'
++    String pipeline_ver = 'v2.2.2'
+ 
+     meta {
+-        version: 'v2.2.1'
++        version: 'v2.2.2'
+ 
+         author: 'Jin wook Lee'
+         email: 'leepc12@gmail.com'
+@@ -19,8 +19,8 @@ workflow chip {
+ 
+         specification_document: 'https://docs.google.com/document/d/1lG_Rd7fnYgRpSIqrIfuVlAz2dW1VaSQThzk836Db99c/edit?usp=sharing'
+ 
+-        default_docker: 'encodedcc/chip-seq-pipeline:v2.2.1'
+-        default_singularity: 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.1.sif'
++        default_docker: 'encodedcc/chip-seq-pipeline:v2.2.2'
++        default_singularity: 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.2.sif'
+         croo_out_def: 'https://storage.googleapis.com/encode-pipeline-output-definition/chip.croo.v5.json'
+ 
+         parameter_group: {
+@@ -71,8 +71,8 @@ workflow chip {
+     }
+     input {
+         # group: runtime_environment
+-        String docker = 'encodedcc/chip-seq-pipeline:v2.2.1'
+-        String singularity = 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.1.sif'
++        String docker = 'encodedcc/chip-seq-pipeline:v2.2.2'
++        String singularity = 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.2.sif'
+         String conda = 'encd-chip'
+         String conda_macs2 = 'encd-chip-macs2'
+         String conda_spp = 'encd-chip-spp'
+diff --git a/dev/docker_image/Dockerfile b/dev/docker_image/Dockerfile
+index d0af374c..041ba8a7 100644
+--- a/dev/docker_image/Dockerfile
++++ b/dev/docker_image/Dockerfile
+@@ -30,7 +30,7 @@ ENV PATH="/software:${PATH}"
+ RUN wget https://github.com/openssl/openssl/archive/OpenSSL_1_0_2t.tar.gz && tar zxvf OpenSSL_1_0_2t.tar.gz && cd openssl-OpenSSL_1_0_2t/ && ./config && make && make install && cd ../ && rm -rf openssl-OpenSSL_1_0_2t* && rm /usr/bin/openssl && ln -s /usr/local/ssl/bin/openssl /usr/bin/openssl
+ 
+ # Install system/math python packages (python3)
+-RUN pip3 install --no-cache-dir jsondiff==1.1.1 common python-dateutil cython pandas==0.25.1 jinja2==2.10.1 matplotlib==3.1.1
++RUN pip3 install --no-cache-dir jsondiff==1.1.1 common python-dateutil pandas==0.25.1 jinja2==2.10.1 matplotlib==3.1.1
+ 
+ # Install genomic python package (python3)
+ RUN pip3 install --no-cache-dir pyBigwig==0.3.13 cutadapt==2.5 pyfaidx==0.5.5.2 pybedtools==0.8.0 pysam==0.15.3 deeptools==3.3.1
+@@ -40,9 +40,10 @@ RUN echo "r <- getOption('repos'); r['CRAN'] <- 'http://cran.r-project.org'; opt
+     Rscript -e "install.packages('snow')" && \
+     Rscript -e "install.packages('snowfall')" && \
+     Rscript -e "install.packages('bitops')" && \
+-    Rscript -e "install.packages('caTools')" && \
+     Rscript -e "install.packages('Rcpp')"
+ 
++RUN wget "https://cran.r-project.org/src/contrib/Archive/caTools/caTools_1.17.1.4.tar.gz" && R CMD INSTALL caTools_1.17.1.4.tar.gz && rm -f caTools_1.17.1.4.tar.gz
++
+ # Install bioconductor and Rsamtools which is required by spp package
+ RUN Rscript -e "source('http://bioconductor.org/biocLite.R'); biocLite('Rsamtools')"
+ 
+@@ -94,13 +95,16 @@ RUN git clone --branch 2.0.4.2 --single-branch https://github.com/kundajelab/idr
+ RUN pip2 install --no-cache-dir numpy scipy matplotlib==2.2.4 bx-python==0.8.2 biopython==1.76
+ RUN pip3 install --no-cache-dir biopython==1.76
+ 
+-# Install genomic python packages (python2)
+-RUN pip2 install --no-cache-dir metaseq==0.5.6
+-
+ # Install MACS2 (python3)
+-RUN pip3 install --no-cache-dir Cython
++RUN pip3 install --no-cache-dir Cython==0.29.0
+ RUN pip3 install --no-cache-dir macs2==2.2.4
+ 
++# Install genomic python packages (python2)
++RUN pip2 install --no-cache-dir Cython==0.29.0 versioneer setuptools==44.1.1
++RUN pip2 install --no-cache-dir pybedtools==0.6.9
++RUN pip2 install --no-cache-dir metaseq==0.5.6
++RUN pip2 install --no-cache-dir gffutils==0.10.1
++
+ # Install UCSC tools (v377)
+ RUN git clone https://github.com/ENCODE-DCC/kentUtils_bin_v377
+ ENV PATH=${PATH}:/software/kentUtils_bin_v377/bin

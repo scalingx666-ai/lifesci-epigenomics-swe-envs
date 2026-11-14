@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/open2c__cooler-536"
+description = "build(deps): bump pyfaidx from 0.9.2.1 to 0.9.2.2"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "cooler",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "open2c/cooler"
+ref = "069b715f753fc5643b6b40979b38c5316e9b6906"
+reference = "https://github.com/open2c/cooler/pull/536"
+source_access = "auto"
+built_at = "2026-11-14T07:14:41.763033+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:ac149a8f60b4c836adb56bd709b8968786d1e1f85d14d2cdad269e1612f466c8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T15:18:03Z"
+diff_format = "unified"
+context_files = [
+    "uv.lock",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 6
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/aertslab__pycisTopic-222"
+description = "Add function to get intersection size to genomic ranges."
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "pycisTopic",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aertslab/pycisTopic"
+ref = "083cd1bd430be71c2deaad3067499f453f69ef12"
+reference = "https://github.com/aertslab/pycisTopic/pull/222"
+source_access = "auto"
+built_at = "2026-11-14T07:16:51.929877+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d9a5c3d6ae34ca45f03bf8ec962ac920fc102823bcd76e63c6d902f8566636ae"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-01-30T15:26:55Z"
+diff_format = "unified"
+context_files = [
+    "src/pycisTopic/genomic_ranges.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 108
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

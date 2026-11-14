@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/dpryan79__MethylDackel-181"
+description = "Fix #174, use XR/XG if it's there for strand determination"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "MethylDackel",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dpryan79/MethylDackel"
+ref = "a264a0d5b46d1ac434893e055d9151539b4f0432"
+reference = "https://github.com/dpryan79/MethylDackel/pull/181"
+source_access = "auto"
+built_at = "2026-11-14T07:15:25.152775+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3d7e832890274c9511b40f9a785f08a1406679496bdddca8288ebae7b535b320"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-20T12:28:24Z"
+diff_format = "unified"
+context_files = [
+    "common.c",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 48
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

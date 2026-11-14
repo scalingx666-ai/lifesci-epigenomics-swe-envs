@@ -1,0 +1,38 @@
+diff --git a/src/nanopolish_index.cpp b/src/nanopolish_index.cpp
+index fab8349a..9975981f 100644
+--- a/src/nanopolish_index.cpp
++++ b/src/nanopolish_index.cpp
+@@ -34,12 +34,13 @@ SUBPROGRAM " Version " PACKAGE_VERSION "\n"
+ 
+ static const char *INDEX_USAGE_MESSAGE =
+ "Usage: " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] -d nanopore_raw_file_directory reads.fastq\n"
++"       " PACKAGE_NAME " " SUBPROGRAM " [OPTIONS] --slow5 reads.blow5 reads.fastq\n"
+ "Build an index mapping from basecalled reads to the signals measured by the sequencer\n"
+ "\n"
+ "      --help                           display this help and exit\n"
+ "      --version                        display version\n"
+ "  -v, --verbose                        display verbose output\n"
+-"      --slow5 FILE                     slow5 file\n"
++"      --slow5 FILE                     s/blow5 file (-d, -s, -f options below are only for fast5)\n"
+ "  -d, --directory                      path to the directory containing the raw ONT signal files. This option can be given multiple times.\n"
+ "  -s, --sequencing-summary             the sequencing summary file from albacore, providing this option will make indexing much faster\n"
+ "  -f, --summary-fofn                   file containing the paths to the sequencing summary files (one per line)\n"
+diff --git a/src/nanopolish_squiggle_read.cpp b/src/nanopolish_squiggle_read.cpp
+index e15b14dc..e6a53eaa 100644
+--- a/src/nanopolish_squiggle_read.cpp
++++ b/src/nanopolish_squiggle_read.cpp
+@@ -85,6 +85,14 @@ SquiggleRead::SquiggleRead(const std::string& name, const ReadDB& read_db, const
+             exit(EXIT_FAILURE);
+         }
+         data = Fast5Loader::load_read(slow5_file, name);
++        if(!data.is_valid) {
++            fprintf(stderr, "[warning] Read %s not found in slow5 file and will be skipped\n", name.c_str());
++            g_bad_fast5_file += 1;
++        }
++        else{
++            this->fast5_path = "slow5"; //needed for polya
++        }
++
+     } else {
+         this->fast5_path = read_db.get_signal_path(name);
+         if(this->fast5_path == "") {

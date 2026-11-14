@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/vanheeringen-lab__seq2science-1034"
+description = "v1.2.5"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "seq2science",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "vanheeringen-lab/seq2science"
+ref = "0fade189e0ba960b88209264fb578a0ab0fa8206"
+reference = "https://github.com/vanheeringen-lab/seq2science/pull/1034"
+source_access = "auto"
+built_at = "2026-11-14T07:15:38.728548+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fcb63297a9b66d504ad22ab78e67efa49431db8bcd09681bed5501fd65a12326"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-24T16:14:33Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "requirements.yaml",
+    "seq2science/__init__.py",
+    "seq2science/envs/assembly_stats.yaml",
+    "seq2science/envs/multiqc.yaml",
+    "seq2science/envs/pytxi.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 15
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

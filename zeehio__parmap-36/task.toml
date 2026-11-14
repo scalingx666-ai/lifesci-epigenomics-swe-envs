@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/zeehio__parmap-36"
+description = "Fix silent error-handling bugs, add regression tests, extend CI to Python 3.12/3.13"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "parmap",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zeehio/parmap"
+ref = "32d254f318ec2cd9266a4b04e23ff1e50864f829"
+reference = "https://github.com/zeehio/parmap/pull/36"
+source_access = "auto"
+built_at = "2026-11-14T07:16:01.327571+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1aba54e08cda3d1c78c90552af7713a51924816f6a11ee9194bfbded1324d168"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-07T12:08:01Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test.yml",
+    "ChangeLog",
+    "pyproject.toml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

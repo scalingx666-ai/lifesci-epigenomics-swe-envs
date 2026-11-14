@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/pinellolab__EPInformer-1"
+description = "Correct running errors while reproducing the paper results"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "EPInformer",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pinellolab/EPInformer"
+ref = "43b0fd07cbbd3b12cbf65bed5e0ef08ab76c8955"
+reference = "https://github.com/pinellolab/EPInformer/pull/1"
+source_access = "auto"
+built_at = "2026-11-14T07:17:43.249557+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:2590f5cf03ccaf78e14962539b20dfd6b714291a57f93405f66520f0e9cf4f43"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-09-15T07:48:08Z"
+diff_format = "unified"
+context_files = [
+    "1_predict_gene_expression.ipynb",
+    "scripts/utils_forTraining.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,610 @@
+diff --git a/.github/workflows/pythonapp.yml b/.github/workflows/pythonapp.yml
+index 3f7c284..f8e21f2 100644
+--- a/.github/workflows/pythonapp.yml
++++ b/.github/workflows/pythonapp.yml
+@@ -1,34 +1,39 @@
+-name: Run pytest 
++name: Tests
+ 
+-on: [push]
++on:
++  push:
++    branches: [master]
++  pull_request:
++    branches: [master]
+ 
+ jobs:
+-  build:
++  test:
++    runs-on: ${{ matrix.os }}
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest]
++        python-version: ["3.10", "3.11", "3.12", "3.13"]
+ 
+-    runs-on: ubuntu-latest
+     steps:
+-      - uses: actions/checkout@v2
+-      - name: Set up Python 3.12
+-        uses: actions/setup-python@v1
+-        with:
+-          python-version: 3.12
+-      - uses: s-weigand/setup-conda@v1
++      - uses: actions/checkout@v4
++
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: actions/setup-python@v5
+         with:
+-          python-version: 3.12
+-          activate-conda: true
+-      - run: conda --version
+-      - run: which python
+-      - run: pwd 
+-      - run: ls -la
+-      - name: Install dependencies
++          python-version: ${{ matrix.python-version }}
++          cache: 'pip'
++
++      - name: Install build dependencies
+         run: |
+-          sudo apt-get install build-essential          
+-          conda install pip 
+-          pip install openmm
+-          pip install cython
+-          pip install -r requirements.txt 
+-          pip install -e . 
+-          conda install -c conda-forge libstdcxx-ng=12
+-      - name: Test with pytest
+-        run: |          
+-          pytest
++          python -m pip install --upgrade pip
++          pip install build
++
++      - name: Install OpenMM
++        run: pip install openmm
++
++      - name: Install package
++        run: pip install -e .[dev]
++
++      - name: Run tests
++        run: pytest -v
+diff --git a/.gitignore b/.gitignore
+index fd6da0e..08d690f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -8,3 +8,4 @@ polychrom/_polymer_math.cpp
+ *.dat
+ .idea
+ dist
++polychrom/*.so
+diff --git a/docs/conf.py b/docs/conf.py
+index 13e767d..023b045 100644
+--- a/docs/conf.py
++++ b/docs/conf.py
+@@ -63,7 +63,6 @@ def setup(app):
+     "simtk.unit",
+     "simtk.unit.nanometer",
+     "simtk.openmm",
+-    "joblib",
+     "scipy.interpolate.fitpack2",
+ ]
+ for mod_name in MOCK_MODULES:
+diff --git a/docs/index.rst b/docs/index.rst
+index f25018f..26adc0f 100644
+--- a/docs/index.rst
++++ b/docs/index.rst
+@@ -17,7 +17,7 @@ Polychrom requires OpenMM, which can be installed through conda: ``conda install
+ 
+ CUDA is the fastest GPU-assisted backend to OpenMM. You would need to have the required version of CUDA, or install OpenMM compiled for your version of CUDA. 
+ 
+-Other dependencies are simple, and are listed in requirements.txt. All but joblib are installable from either conda/pip, and joblib installs well with pip.
++Other dependencies are simple, and are listed in requirements.txt. All are installable through pip or conda.
+ 
+ Installation errors and possible fixes
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+diff --git a/polychrom/__init__.py b/polychrom/__init__.py
+index 485f44a..5e7b8c2 100644
+--- a/polychrom/__init__.py
++++ b/polychrom/__init__.py
+@@ -1 +1,19 @@
+ __version__ = "0.1.1"
++
++# Check for OpenMM installation
++try:
++    import openmm
++except ImportError:
++    import warnings
++    warnings.warn(
++        "\n"
++        "OpenMM is not installed. Polychrom requires OpenMM for molecular dynamics simulations.\n"
++        "\n"
++        "Please install OpenMM with the appropriate backend for your system:\n"
++        "  - For CUDA: pip install openmm[cuda13]\n"
++        "  - For CPU:  pip install openmm\n"
++        "\n"
++        "Visit https://openmm.org for more information.",
++        ImportWarning,
++        stacklevel=2
++    )
+diff --git a/polychrom/__polymer_math.cpp b/polychrom/__polymer_math.cpp
+index c2d3542..2f1cf58 100644
+--- a/polychrom/__polymer_math.cpp
++++ b/polychrom/__polymer_math.cpp
+@@ -6,7 +6,6 @@
+ #include <cmath>
+ #include <vector>
+ #include <ctime>
+-#include <omp.h>
+ 
+ using namespace std;
+ 
+diff --git a/polychrom/cli/show b/polychrom/cli/show
+index fdb85d9..40009af 100755
+--- a/polychrom/cli/show
++++ b/polychrom/cli/show
+@@ -5,7 +5,6 @@ import os
+ import sys
+ import tempfile
+ 
+-import joblib
+ import numpy as np
+ 
+ usage = """
+@@ -43,7 +42,7 @@ start, end, step will basically select data[start:end:step]
+ 
+ 
+ if len(sys.argv) < 2:
+-    print(useage)
++    print(usage)
+     exit()
+ 
+ 
+diff --git a/polychrom/cli/xyz b/polychrom/cli/xyz
+index 6f79cdf..fca7075 100755
+--- a/polychrom/cli/xyz
++++ b/polychrom/cli/xyz
+@@ -6,7 +6,6 @@ import sys
+ import tempfile
+ import textwrap
+ 
+-import joblib
+ import numpy as np
+ 
+ usage = """
+diff --git a/polychrom/legacy/polymerutils.py b/polychrom/legacy/polymerutils.py
+new file mode 100644
+index 0000000..de9ab53
+--- /dev/null
++++ b/polychrom/legacy/polymerutils.py
+@@ -0,0 +1 @@
++from polychrom.polymerutils import *  # noqa: F403
+\ No newline at end of file
+diff --git a/polychrom/polymer_analyses.py b/polychrom/polymer_analyses.py
+index 70a18b1..77ffa2e 100644
+--- a/polychrom/polymer_analyses.py
++++ b/polychrom/polymer_analyses.py
+@@ -11,7 +11,7 @@
+ ------------------------------
+ 
+ The main function calculating contacts is: :py:func:`polychrom.polymer_analyses.calculate_contacts`
+-Right now it is a simple wrapper around scipy.cKDTree.
++Right now it is a simple wrapper around scipy.KDTree.
+ 
+ Another function :py:func:`polychrom.polymer_analyses.smart_contacts` was added recently to help build contact maps
+ with a large contact radius. It randomly sub-samples the monomers; by default selecting N/cutoff monomers. It then
+@@ -37,7 +37,7 @@
+ 
+ import numpy as np
+ import pandas as pd
+-from scipy.spatial import cKDTree
++from scipy.spatial import KDTree
+ from scipy.ndimage import gaussian_filter1d
+ 
+ try:
+@@ -66,7 +66,7 @@ def calculate_contacts(data, cutoff=1.7):
+     if np.isnan(data).any():
+         raise RuntimeError("Data contains NANs")
+ 
+-    tree = cKDTree(data)
++    tree = KDTree(data)
+     pairs = tree.query_pairs(cutoff, output_type="ndarray")
+     return pairs
+ 
+@@ -573,7 +573,7 @@ def calculate_cistrans(data, chains, chain_id=0, cutoff=5, pbc_box=False, box_si
+     chain_end = chains[chain_id][1]
+ 
+     # all contact pairs available in the scaled data
+-    tree = cKDTree(data_scaled, boxsize=box_size)
++    tree = KDTree(data_scaled, boxsize=box_size)
+     pairs = tree.query_pairs(cutoff, output_type="ndarray")
+ 
+     # total number of contacts of the marked chain:
+@@ -582,7 +582,7 @@ def calculate_cistrans(data, chains, chain_id=0, cutoff=5, pbc_box=False, box_si
+     all_signal = len(pairs[pairs < chain_end]) - len(pairs[pairs < chain_start])
+ 
+     # contact pairs of the marked chain with itself
+-    tree = cKDTree(data[chain_start:chain_end], boxsize=None)
++    tree = KDTree(data[chain_start:chain_end], boxsize=None)
+     pairs = tree.query_pairs(cutoff, output_type="ndarray")
+ 
+     # doubled number of contacts of the marked chain with itself (i.e. cis signal)
+@@ -593,3 +593,12 @@ def calculate_cistrans(data, chains, chain_id=0, cutoff=5, pbc_box=False, box_si
+     trans_signal = all_signal - cis_signal
+ 
+     return cis_signal, trans_signal
++
++
++def rotation_matrix(rotate):
++    """Calculates rotation matrix based on three rotation angles"""
++    tx, ty, tz = rotate
++    Rx = np.array([[1, 0, 0], [0, np.cos(tx), -np.sin(tx)], [0, np.sin(tx), np.cos(tx)]])
++    Ry = np.array([[np.cos(ty), 0, -np.sin(ty)], [0, 1, 0], [np.sin(ty), 0, np.cos(ty)]])
++    Rz = np.array([[np.cos(tz), -np.sin(tz), 0], [np.sin(tz), np.cos(tz), 0], [0, 0, 1]])
++    return np.dot(Rx, np.dot(Ry, Rz))
+\ No newline at end of file
+diff --git a/polychrom/polymerutils.py b/polychrom/polymerutils.py
+index cc5953c..3543dad 100644
+--- a/polychrom/polymerutils.py
++++ b/polychrom/polymerutils.py
+@@ -24,16 +24,13 @@
+         xyz = data["pos"]
+ """
+ 
+-
+ from __future__ import absolute_import, division, print_function, unicode_literals
+ 
+ import glob
+-import io
+ import os
++import warnings
+ 
+-import joblib
+ import numpy as np
+-import six
+ 
+ from polychrom.hdf5_format import load_URI
+ 
+@@ -41,16 +38,9 @@
+ 
+ 
+ def load(filename):
+-    """Universal load function for any type of data file It always returns just XYZ
+-    positions - use fetch_block or hdf5_format.load_URI for loading the whole metadata
+-
+-    Accepted file types
+-    -------------------
+-
+-    New-style URIs (HDF5 based storage)
+-
+-    Text files in openmm-polymer format
+-    joblib files in openmm-polymer format
++    """
++    A function to load a single conformation from a URI. Deprecated.
++    Use load_URI from hdf5_format instead.
+ 
+     Parameters
+     ----------
+@@ -59,37 +49,18 @@ def load(filename):
+         filename to load or a URI
+ 
+     """
++    warnings.warn("polymerutils.load is deprecated. Use hdf5_format.load_URI instead.", DeprecationWarning)
++
+     if "::" in filename:
+         return hdf5_format.load_URI(filename)["pos"]
+ 
+-    if not os.path.exists(filename):
+-        raise IOError("File not found :( \n %s" % filename)
+-
+-    try:  # loading from a joblib file here
+-        return dict(joblib.load(filename)).pop("data")
+-    except Exception:  # checking for a text file
+-        data_file = open(filename)
+-        line0 = data_file.readline()
+-        try:
+-            N = int(line0)
+-        except (ValueError, UnicodeDecodeError):
+-            raise TypeError("Could not read the file. Not text or joblib.")
+-        data = [list(map(float, i.split())) for i in data_file.readlines()]
+-
+-        if len(data) != N:
+-            raise ValueError("N does not correspond to the number of lines!")
+-        return np.array(data)
++    raise ValueError("Only URIs are supported in this version of polychrom")
+ 
+ 
+ def fetch_block(folder, ind, full_output=False):
+     """
+-    A more generic function to fetch block number "ind" from a trajectory in a folder
+-
+-
+-    This function is useful both if you want to load both "old style" trajectories (block1.dat),
+-    and "new style" trajectories ("blocks_1-50.h5")
+-
+-    It will be used in files "show"
++    A function to fetch a single block from a folder with a new-style trajectory.
++    Old-style trajectories are deprecated.
+ 
+     Parameters
+     ----------
+@@ -109,12 +80,14 @@ def fetch_block(folder, ind, full_output=False):
+ 
+         if full_output==True, then dict with data and metadata; XYZ is under key "pos"
+     """
++    warnings.warn(
++        "fetch_block is deprecated. Use hdf5_format.list_uris followed by hdf5_format.load_URI instead.",
++        DeprecationWarning,
++    )
++
+     blocksh5 = glob.glob(os.path.join(folder, "blocks*.h5"))
+-    blocksdat = glob.glob(os.path.join(folder, "block*.dat"))
+     ind = int(ind)
+-    if (len(blocksh5) > 0) and (len(blocksdat) > 0):
+-        raise ValueError("both .h5 and .dat files found in folder - exiting")
+-    if (len(blocksh5) == 0) and (len(blocksdat) == 0):
++    if len(blocksh5) == 0:
+         raise ValueError("no blocks found")
+ 
+     if len(blocksh5) > 0:
+@@ -129,45 +102,21 @@ def fetch_block(folder, ind, full_output=False):
+         pos = exists.index(True)
+         block = load_URI(blocksh5[pos] + f"::{ind}")
+         if not full_output:
+-            block = block["pos"]
++            return block["pos"]
++        return block
+ 
+-    if len(blocksdat) > 0:
+-        block = load(os.path.join(folder, f"block{ind}.dat"))
+-    return block
++    raise ValueError(f"Cannot find the block {ind} in the folder {folder}")
+ 
+ 
+ def save(data, filename, mode="txt", pdbGroups=None):
+     """
+-    Basically unchanged polymerutils.save function from openmm-polymer
+-
+-    It can save into txt or joblib formats used by old openmm-polymer
+-
+-    It is also very useful for saving files to PDB format to make them compatible
+-    with nglview, pymol_show and others
++    A legacy function, currently only kept for compatibility with PDB saving that is rarely used.
+     """
+-    data = np.asarray(data, dtype=np.float32)
++    warnings.warn("polymerutils.save is deprecated. Will be moved to legacy", DeprecationWarning)
+ 
+-    if mode.lower() == "joblib":
+-        joblib.dump({"data": data}, filename=filename, compress=9)
+-        return
+-
+-    if mode.lower() == "txt":
+-        lines = [str(len(data)) + "\n"]
+-
+-        for particle in data:
+-            lines.append("{0:.3f} {1:.3f} {2:.3f}\n".format(*particle))
+-        if filename is None:
+-            return lines
+-
+-        elif isinstance(filename, six.string_types):
+-            with open(filename, "w") as myfile:
+-                myfile.writelines(lines)
+-        elif hasattr(filename, "writelines"):
+-            filename.writelines(lines)
+-        else:
+-            raise ValueError("Not sure what to do with filename {0}".format(filename))
++    data = np.asarray(data, dtype=np.float32)
+ 
+-    elif mode == "pdb":
++    if mode == "pdb":
+         data = data - np.minimum(np.min(data, axis=0), np.zeros(3, float) - 100)[None, :]
+         retret = ""
+ 
+@@ -212,13 +161,10 @@ def add(st, n):
+                 filename.write("C {0} {1} {2}".format(*i))
+ 
+     else:
+-        raise ValueError("Unknown mode : %s, use h5dict, joblib, txt or pdb" % mode)
++        raise ValueError(f"Unknown mode {mode}. Only 'pdb' and 'pyxyz' are supported.")
+ 
+ 
+ def rotation_matrix(rotate):
+-    """Calculates rotation matrix based on three rotation angles"""
+-    tx, ty, tz = rotate
+-    Rx = np.array([[1, 0, 0], [0, np.cos(tx), -np.sin(tx)], [0, np.sin(tx), np.cos(tx)]])
+-    Ry = np.array([[np.cos(ty), 0, -np.sin(ty)], [0, 1, 0], [np.sin(ty), 0, np.cos(ty)]])
+-    Rz = np.array([[np.cos(tz), -np.sin(tz), 0], [np.sin(tz), np.cos(tz), 0], [0, 0, 1]])
+-    return np.dot(Rx, np.dot(Ry, Rz))
++    warnings.warn("rotation_matrix will be moved to polymer_analyses", DeprecationWarning, stacklevel=2)
++    from polychrom.polymer_analyses import rotation_matrix as rm
++    return rm(rotate)
+diff --git a/pyproject.toml b/pyproject.toml
+index 4711469..175d7e3 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,9 +1,56 @@
++[build-system]
++requires = ["setuptools>=45", "wheel", "cython>=0.29", "numpy>=1.9"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "polychrom"
++version = "0.1.1"
++description = "A library for polymer simulations and their analyses."
++readme = "README.md"
++requires-python = ">=3.10"
++license = "MIT"
++authors = [
++    {name = "Mirny Lab", email = "espresso@mit.edu"}
++]
++keywords = ["genomics", "polymer", "Hi-C", "molecular dynamics", "chromosomes"]
++classifiers = [
++    "Development Status :: 4 - Beta",
++    "Intended Audience :: Science/Research",
++    "Programming Language :: Python :: 3",
++    "Programming Language :: Python :: 3.10",
++    "Programming Language :: Python :: 3.11",
++    "Programming Language :: Python :: 3.12",
++    "Programming Language :: Python :: 3.13",
++]
++
++dependencies = [
++    "cython>=0.29",
++    "numpy>=1.9",
++    "scipy>=0.16",
++    "h5py>=2.5",
++    "pandas>=0.19",
++]
++
++[project.optional-dependencies]
++dev = [
++    "pytest",
++    "black",
++    "isort",
++]
++
++[project.urls]
++Homepage = "https://github.com/open2c/polychrom"
++Repository = "https://github.com/open2c/polychrom"
++
++[project.scripts]
++polychrom = "polychrom.cli:cli"
++
++[tool.setuptools.packages.find]
++include = ["polychrom*"]
++exclude = ["utilities*", "build*", "docs*", "examples*"]
++
+ [tool.black]
+ line-length = 120
+ 
+ [tool.isort]
+ profile = "black"
+-
+-[build-system]
+-requires = ["setuptools", "setuptools-scm", "cython"]
+-build-backend = "setuptools.build_meta"
+diff --git a/requirements.txt b/requirements.txt
+index e7419b1..d9c4665 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,9 +1,6 @@
+-six
+ cython
+ numpy>=1.9
+ scipy>=0.16
+ h5py>=2.5
+ pandas>=0.19
+-joblib
+-pyknotid
+ pytest
+diff --git a/setup.py b/setup.py
+old mode 100755
+new mode 100644
+index 6bd1fa1..6300814
+--- a/setup.py
++++ b/setup.py
+@@ -1,70 +1,16 @@
+-import io
+-import os
+-import re
++from setuptools import setup, Extension
+ from Cython.Build import cythonize
+-from Cython.Distutils import build_ext
+-from setuptools import find_packages
+-from distutils.core import setup
+-from distutils.extension import Extension
+-
+-cmdclass = {}
+-
+-
+-def _read(*parts, **kwargs):
+-    filepath = os.path.join(os.path.dirname(__file__), *parts)
+-    encoding = kwargs.pop("encoding", "utf-8")
+-    with io.open(filepath, encoding=encoding) as fh:
+-        text = fh.read()
+-    return text
+-
+-
+-def get_version():
+-    version = re.search(
+-        r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
+-        _read("polychrom", "__init__.py"),
+-        re.MULTILINE,
+-    ).group(1)
+-    return version
+-
+-
+-def get_long_description():
+-    return _read("README.md")
+-
+-
+-def get_requirements(path):
+-    content = _read(path)
+-    return [req for req in content.split("\n") if req != "" and not req.startswith("#")]
+-
+-
+-cmdclass.update({"build_ext": build_ext})
+-
+-ext_modules = cythonize(
+-    [
+-        Extension(
+-            "polychrom._polymer_math",
+-            ["polychrom/_polymer_math.pyx", "polychrom/__polymer_math.cpp"],
+-        )
+-    ]
+-)
++import numpy
+ 
++# Define Cython extensions
++ext_modules = [
++    Extension(
++        "polychrom._polymer_math",
++        ["polychrom/_polymer_math.pyx", "polychrom/__polymer_math.cpp"],
++        include_dirs=[numpy.get_include()],
++    )
++]
+ 
+ setup(
+-    name="polychrom",
+-    author="Mirny Lab",
+-    author_email="espresso@mit.edu",
+-    version=get_version(),
+-    url="http://github.com/mirnylab/polychrom",
+-    description=("A library for polymer simulations and their analyses."),
+-    long_description=get_long_description(),
+-    long_description_content_type="text/markdown",
+-    keywords=["genomics", "polymer", "Hi-C", "molecular dynamics", "chromosomes"],
+-    ext_modules=ext_modules,
+-    cmdclass=cmdclass,
+-    packages=find_packages(),
+-    setup_requires=["cython"],
+-    entry_points={
+-        "console_scripts": [
+-            "polychrom = polychrom.cli:cli",
+-        ]
+-    },
++    ext_modules=cythonize(ext_modules, language_level="3"),
+ )
+diff --git a/utilities/showChainWithRasmol.py b/utilities/showChainWithRasmol.py
+index 6dc0dc3..95d1084 100644
+--- a/utilities/showChainWithRasmol.py
++++ b/utilities/showChainWithRasmol.py
+@@ -3,8 +3,7 @@
+ import sys
+ import tempfile
+ import textwrap
+-
+-import joblib
++import polychrom.polymerutils as polymerutils
+ import numpy as np
+ 
+ if len(sys.argv) < 2:
+@@ -100,8 +99,6 @@ def convertData(data, colors):
+ 
+ 
+ def load(filename):
+-    from openmmlib import polymerutils
+-
+     return polymerutils.load(filename)
+ 
+ 

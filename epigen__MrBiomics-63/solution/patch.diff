@@ -1,0 +1,3625 @@
+diff --git a/.gitignore b/.gitignore
+index 9a517b7..125b276 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -156,6 +156,14 @@ metadata/
+ */.snakemake/*
+ .snakemake/
+ 
++paper
++
+ # macOS specific files
+ *DS_Store*
+-._*
+\ No newline at end of file
++._*
++
++# vscode
++settings.json
++
++# just a helper, don't want to sync this
++rsync_input_files_to_local.sh
+\ No newline at end of file
+diff --git a/config/config.yaml b/config/config.yaml
+index b2602f2..9aa24ae 100644
+--- a/config/config.yaml
++++ b/config/config.yaml
+@@ -8,8 +8,8 @@ project_name: "MrBiomics"
+ 
+ #### Datasets and Workflows to include ###
+ workflows:
+-    quickstart:
+-        enrichment_analysis: "config/quickstart/quickstart_enrichment_analysis_config.yaml"
++    # quickstart:
++    #     enrichment_analysis: "config/quickstart/quickstart_enrichment_analysis_config.yaml"
+     digits:
+         unsupervised_analysis: "config/digits/digits_unsupervised_analysis_config.yaml"
+     CorcesRNA:
+diff --git a/workflow/Snakefile b/workflow/Snakefile
+index e7898cb..3701671 100644
+--- a/workflow/Snakefile
++++ b/workflow/Snakefile
+@@ -38,7 +38,7 @@ include: os.path.join("rules", "CorcesATAC.smk")
+ include: os.path.join("rules", "CorcesINT.smk")
+ include: os.path.join("rules", "Papalexi2021scCRISPR.smk")
+ include: os.path.join("rules", "docs.smk")
+-
++include: os.path.join("rules", "figures.smk")
+ 
+ #### Target Rule ####
+ rule all:
+@@ -81,10 +81,15 @@ rule all:
+         rules.Papalexi2021scCRISPR_enrichment_analysis_all.input,
+         rules.Papalexi2021scCRISPR_functional_similarity.output, # custom rule
+         #### Custom rules used only for docs/wiki (keep commented) ####
+-        rules.CorcesRNA_plots.output,
+-        rules.CorcesATAC_plots.output,
+-        # rules.Papalexi2021scCRISPR_plots.output,
++        # rules.CorcesRNA_plots.output,
++        # rules.CorcesATAC_plots.output,
+         # rules.CorcesINT_plots.output,
++        # rules.Papalexi2021scCRISPR_plots.output,
++        #### Figures ####
++        rules.CorcesRNA_figures.output,
++        rules.CorcesATAC_figures.output,
++        rules.CorcesINT_figures.output,
++        rules.Papalexi_figures.output,
+     default_target: True # important for module usage
+     threads: 1
+     resources:
+diff --git a/workflow/envs/ggplot.yaml b/workflow/envs/ggplot.yaml
+index ff8fe01..861a346 100644
+--- a/workflow/envs/ggplot.yaml
++++ b/workflow/envs/ggplot.yaml
+@@ -1,30 +1,34 @@
++name: ggplot
+ channels:
+   - conda-forge
+   - bioconda
+   - nodefaults
+ dependencies:
+-  - r-ggplot2
+-  - r-tidyr
+-  - r-tibble
+-  - r-patchwork
+-  - r-scales
+-  - r-dplyr
+-  - r-reshape2
+-  - r-pheatmap
+-  - r-ggrepel
+-  - r-stringr
+-  - r-gridGraphics
+-  - r-ggplotify
+-  - r-directlabels
+-  - r-data.table
+-  - r-svglite
+-  - r-sna
+-  - r-RColorBrewer
+-  - r-Hmisc
+-  - r-cairo
+-  - cairo
+-  - pango
+-  - libpng
+-  - libjpeg-turbo
+-  - libtiff
+-  - gtk2
+\ No newline at end of file
++  - r-ggplot2=3.5
++  - r-ggdendro=0.2
++  - r-ggrepel=0.9
++  - r-ggrastr=1.0
++  - r-dendsort=0.3
++  - r-tidyr=1.3
++  - r-tibble=3.3
++  - r-patchwork=1.3
++  - r-scales=1.4
++  - r-dplyr=1.1
++  - r-reshape2=1.4
++  - r-stringr=1.5
++  - r-gridgraphics=0.5
++  - r-ggplotify=0.1
++  - r-directlabels=2025.6
++  - r-data.table=1.17
++  - r-svglite=2.1
++  - r-sna=2.8
++  - r-rcolorbrewer=1.1
++  - r-hmisc=5.2
++  - r-cairo=1.6
++  - cairo=1.18
++  - pango=1.56
++  - libpng=1.6
++  - libjpeg-turbo=3.1
++  - libtiff=4.7
++  - gtk2=2.24
++  - r-ggtext=0.1
+\ No newline at end of file
+diff --git a/workflow/rules/figures.smk b/workflow/rules/figures.smk
+index 5e340b8..99d3974 100644
+--- a/workflow/rules/figures.smk
++++ b/workflow/rules/figures.smk
+@@ -1,18 +1,26 @@
+ # Snakemake file for creating the figure for the manuscript
+-
+-# TODO: think of sensible place to put plots? maybe MrBiomics/docs/figure1 or MrBiomics/results/figures?
+-
+-#### CorcesRNA - Figures (custom rule) ####
++#### CorcesRNA - Figure panels (custom rule) ####
+ rule CorcesRNA_figures:
+     input:
++        umap_coords = os.path.join("results/CorcesRNA/unsupervised_analysis/normCQN_integrated/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
++        dea_ova = os.path.join("results/CorcesRNA/dea_limma/normCQN_OvA_cell_type/results.csv"),
+         enrichment_results = os.path.join("results/CorcesRNA/enrichment_analysis/cell_types/preranked_GSEApy/Azimuth_2023/cell_types_Azimuth_2023_all.csv"),
+         crossprediction_adj_mtx = os.path.join("results/CorcesRNA/special_analyses/crossprediction/adjacency_matrix.csv"),
+     output:
+-        enrichment_plot = os.path.join("docs/CorcesRNA/enrichment_analysis.pdf"),
+-        crossprediction_plot = os.path.join("docs/CorcesRNA/crossprediction_plot.pdf"),
++        umap_plot = os.path.join("paper/CorcesRNA/umap.pdf"),
++        dea_heatmap_plot = os.path.join("paper/CorcesRNA/differential_heatmap.pdf"),
++        enrichment_plot = os.path.join("paper/CorcesRNA/enrichment.pdf"),
++        crossprediction_plot = os.path.join("paper/CorcesRNA/crossprediction.pdf"),
++        crossprediction_coordinates = os.path.join("paper/CorcesRNA/crossprediction_coordinates.csv"),
+     params:
+         figure_theme_path = workflow.source_path("../scripts/figure_theme.R"),
+-        adj_p = 0.05, # unused
++        figure_utils_path = workflow.source_path("../scripts/figure_utils.R"),
++        # enrichment analysis
++        fdr_threshold = 0.05,
++        log2FC_threshold = 3,
++        # lineage reconstructions
++        lineage_tree_cut_off = 0.07,
++        hierarchy_coordinates = True
+     resources:
+         mem_mb=config.get("mem", "16000"),
+     threads: config.get("threads", 1)
+@@ -22,3 +30,113 @@ rule CorcesRNA_figures:
+         os.path.join("logs","rules","CorcesRNA_figures.log"),
+     script:
+         "../scripts/CorcesRNA_figures.R"
++
++#### CorcesATAC - Figure panels (custom rule) ####
++rule CorcesATAC_figures:
++    input:
++        umap_coords = os.path.join("results/CorcesATAC/unsupervised_analysis/normCQN_integrated/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
++        dea_ova = os.path.join("results/CorcesATAC/dea_limma/normCQN_OvA_cell_type/results.csv"),
++        enrichment_results = os.path.join("results/CorcesATAC/enrichment_analysis/cell_types_up/GREAT/Azimuth_2023/cell_types_up_Azimuth_2023_all.csv"),
++        crossprediction_adj_mtx = os.path.join("results/CorcesATAC/special_analyses/crossprediction/adjacency_matrix.csv"),
++    output:
++        umap_plot = os.path.join("paper/CorcesATAC/umap.pdf"),
++        dea_heatmap_plot = os.path.join("paper/CorcesATAC/differential_heatmap.pdf"),
++        enrichment_plot = os.path.join("paper/CorcesATAC/enrichment.pdf"),
++        crossprediction_plot = os.path.join("paper/CorcesATAC/crossprediction.pdf"),
++        crossprediction_coordinates = os.path.join("paper/CorcesATAC/crossprediction_coordinates.csv"),
++    params:
++        figure_theme_path = workflow.source_path("../scripts/figure_theme.R"),
++        figure_utils_path = workflow.source_path("../scripts/figure_utils.R"),
++        fdr_threshold = 0.05,
++        log2FC_threshold = 3,
++        lineage_tree_cut_off = 0.2,
++        hierarchy_coordinates = True
++    resources:
++        mem_mb=config.get("mem", "16000"),
++    threads: config.get("threads", 1)
++    conda:
++        "../envs/ggplot.yaml"
++    log:
++        os.path.join("logs","rules","CorcesATAC_figures.log"),
++    script:
++        "../scripts/CorcesATAC_figures.R"
++
++# #### CorcesINT - Figure panels (custom rule) ####
++rule CorcesINT_figures:
++    input:
++        unintegrated_umap_coords = os.path.join("results/CorcesINT/unsupervised_analysis/normupperquartile/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
++        integrated_umap_coords = os.path.join("results/CorcesINT/unsupervised_analysis/normupperquartile_integrated/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
++        unintegrated_cfa = os.path.join("results/CorcesINT/spilterlize_integrate/all/normupperquartile_CFA.csv"),
++        integrated_cfa = os.path.join("results/CorcesINT/spilterlize_integrate/all/normupperquartile_integrated_CFA.csv"),
++        norm_counts = os.path.join("results/CorcesINT/spilterlize_integrate/all/normupperquartile_integrated.csv"),
++        metadata = os.path.join("results/CorcesINT/spilterlize_integrate/all/annotation.csv"),
++        dea_results = os.path.join("results/CorcesINT/dea_limma/normupperquartile_integrated/results.csv"),
++        gene_annotation = os.path.join("results/CorcesRNA/rnaseq_pipeline/counts/gene_annotation.csv"),
++        GO_enrichment_results = os.path.join("results/CorcesINT/enrichment_analysis/cell_types/preranked_GSEApy/GO_Biological_Process_2025/cell_types_GO_Biological_Process_2025_all.csv"),
++        Reactome_enrichment_results = os.path.join("results/CorcesINT/enrichment_analysis/cell_types/preranked_GSEApy/ReactomePathways/cell_types_ReactomePathways_all.csv"),
++        Mono_TF_EP = os.path.join("results/CorcesINT/enrichment_analysis/Mono_EP/RcisTarget/hg38_500bp_up_100bp_down_v10clust/Mono_EP_hg38_500bp_up_100bp_down_v10clust.csv"),
++        Mono_TF_TA = os.path.join("results/CorcesINT/enrichment_analysis/Mono_TA/RcisTarget/hg38_500bp_up_100bp_down_v10clust/Mono_TA_hg38_500bp_up_100bp_down_v10clust.csv"),
++        HSC_TF_EP = os.path.join("results/CorcesINT/enrichment_analysis/HSC_EP/RcisTarget/hg38_500bp_up_100bp_down_v10clust/HSC_EP_hg38_500bp_up_100bp_down_v10clust.csv"),
++        HSC_TF_TA = os.path.join("results/CorcesINT/enrichment_analysis/HSC_TA/RcisTarget/hg38_500bp_up_100bp_down_v10clust/HSC_TA_hg38_500bp_up_100bp_down_v10clust.csv"),
++    output:
++        unintegrated_cfa_plot = os.path.join("paper/CorcesINT/unintegrated_cfa.pdf"),
++        integrated_cfa_plot = os.path.join("paper/CorcesINT/integrated_cfa.pdf"),
++        integrated_umap_plot = os.path.join("paper/CorcesINT/integrated_umap.pdf"),
++        unintegrated_umap_plot = os.path.join("paper/CorcesINT/unintegrated_umap.pdf"),
++        epigenetic_scatter_dir = directory(os.path.join("paper/CorcesINT/correlation_plots")),
++        GO_enrichment_plot = os.path.join("paper/CorcesINT/GO_enrichment.pdf"),
++        Reactome_enrichment_plot = os.path.join("paper/CorcesINT/Reactome_enrichment.pdf"),
++        TF_plot = os.path.join("paper/CorcesINT/TF_lollipop.pdf"),
++    params:
++        figure_theme_path = workflow.source_path("../scripts/figure_theme.R"),
++        figure_utils_path = workflow.source_path("../scripts/figure_utils.R"),
++        # thresholds for EP/TA categorization
++        adjp_th = 0.05,
++        fdr_threshold = 0.05,
++        lfc_th = 1,
++        ave_expr_th = 0,
++        max_genes_tf_plot = 25
++    resources:
++        mem_mb=config.get("mem", "16000"),
++    threads: config.get("threads", 1)
++    conda:
++        "../envs/ggplot.yaml"
++    log:
++        os.path.join("logs","rules","CorcesINT_figures.log"),
++    script:
++        "../scripts/CorcesINT_figures.R"
++
++#### Papalexi - Figure panels (custom rule) ####
++rule Papalexi_figures:
++    input:
++        CORRECTED_umap_coords = os.path.join("results/Papalexi2021scCRISPR/unsupervised_analysis/merged_CORRECTED/UMAP/UMAP_correlation_10_0.1_2_data.csv"),
++        CORRECTED_metadata = os.path.join("results/Papalexi2021scCRISPR/scrnaseq_processing_seurat/merged/CORRECTED/metadata.csv"),
++        MIXSCAPE_umap_coords = os.path.join("results/Papalexi2021scCRISPR/unsupervised_analysis/merged_MIXSCAPE_LDA/UMAP/UMAP_correlation_10_0.1_2_data.csv"),
++        MIXSCAPE_metadata = os.path.join("results/Papalexi2021scCRISPR/mixscape_seurat/merged/FILTERED_metadata.csv"),
++        KO_crossprediction_adj_mtx = os.path.join("results/Papalexi2021scCRISPR/special_analyses/crossprediction/adjacency_matrix.csv"),
++        SPI1_TA_results = os.path.join("results/Papalexi2021scCRISPR/enrichment_analysis/SPI1/preranked_GSEApy/Corces_TA_signatures/SPI1_Corces_TA_signatures.csv"),
++        KO_DEA_results = os.path.join("results/Papalexi2021scCRISPR/dea_seurat/KO_mixscape/results.csv"),
++        KO_enrichment_results_GOBP = os.path.join("results/Papalexi2021scCRISPR/enrichment_analysis/KO/preranked_GSEApy/GO_Biological_Process_2025/KO_GO_Biological_Process_2025_all.csv"),
++        KO_enrichment_results_Reactome = os.path.join("results/Papalexi2021scCRISPR/enrichment_analysis/KO/preranked_GSEApy/ReactomePathways/KO_ReactomePathways_all.csv"),
++    output:
++        umap_corrected_fig = os.path.join("paper/Papalexi/umap_CORRECTED.pdf"),
++        umap_lda_fig = os.path.join("paper/Papalexi/umap_LDA.pdf"),
++        crossprediction_fig = os.path.join("paper/Papalexi/crossprediction.pdf"),
++        spi1_ta_lollipop_fig = os.path.join("paper/Papalexi/SPI1_TA_lollipop.pdf"),
++        ko_DEA_heatmap_fig = os.path.join("paper/Papalexi/KO_DEA_heatmap.pdf"),
++        ko_enrichment_GOBP_fig = os.path.join("paper/Papalexi/KO_enrichment_GOBP_bubbleplot.pdf"),
++    params:
++        figure_theme_path = workflow.source_path("../scripts/figure_theme.R"),
++        figure_utils_path = workflow.source_path("../scripts/figure_utils.R"),
++        ko_column = "gene",
++        phase_column = "Phase",
++        fdr_threshold = 0.05
++    resources:
++        mem_mb=config.get("mem", "16000"),
++    threads: config.get("threads", 1)
++    conda:
++        "../envs/ggplot.yaml"
++    log:
++        os.path.join("logs","rules","Papalexi_figures.log"),
++    script:
++        "../scripts/Papalexi_figures.R"
+diff --git a/workflow/scripts/CorcesATAC_figures.R b/workflow/scripts/CorcesATAC_figures.R
+new file mode 100644
+index 0000000..68ae14a
+--- /dev/null
++++ b/workflow/scripts/CorcesATAC_figures.R
+@@ -0,0 +1,101 @@
++# set correct working directory -> project/repo folder (only for dev, not prod)
++# getwd()
++# setwd('..')
++# getwd()
++
++#### libraries
++# source this for libraries, MrBiomics theme and utility functions
++source(snakemake@params[["figure_theme_path"]])
++source(snakemake@params[["figure_utils_path"]])
++
++# FIXME snakemakeify
++# ## libraries are loaded in the source files
++# source(snakemake@params[["figure_theme_path"]])
++# ## input
++# enrichment_results_path <- snakemake@input[["enrichment_results"]]
++# ## output
++# enrichment_plot_path <- snakemake@output[["enrichment_plot"]]
++# ## params
++# fdr_threshold <- snakemake@params[["fdr_threshold"]]
++
++# inputs
++CorcesATAC_umap_coords_path <- snakemake@input[["umap_coords"]]
++CorcesATAC_dea_OvA_path <- snakemake@input[["dea_ova"]]
++CorcesATAC_enrichment_results_path <- snakemake@input[["enrichment_results"]]
++CorcesATAC_crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
++
++# outputs
++atac_umap_path <- snakemake@output[["umap_plot"]]
++atac_dea_heatmap_path <- snakemake@output[["dea_heatmap_plot"]]
++atac_enrichment_path <- snakemake@output[["enrichment_plot"]]
++atac_crossprediction_path <- snakemake@output[["crossprediction_plot"]]
++atac_crossprediction_coordinates_path <- snakemake@output[["crossprediction_coordinates"]]
++
++# params
++fdr_threshold <- snakemake@params[["fdr_threshold"]]
++log2FC_threshold <- snakemake@params[["log2FC_threshold"]]
++lineage_tree_cut_off <- snakemake@params[["lineage_tree_cut_off"]]
++hierarchy_coordinates <- snakemake@params[["hierarchy_coordinates"]]
++######### UMAPs (from unsupervised analysis) ############
++# Create UMAP plots
++atac_umap_plot <- umap_plot(CorcesATAC_umap_coords_path, atac_umap_path, title = "ATAC")
++
++
++######### DEA HEATMAP ############
++atac_dea_heatmap_plot <- plot_differential_features_heatmap(
++    dea_results_path = CorcesATAC_dea_OvA_path,
++    fig_path = atac_dea_heatmap_path,
++    fdr_threshold = fdr_threshold,
++    log2FC_threshold = log2FC_threshold,
++    title = "ATAC",
++    feature = 'Regions',
++    ct_clst_dist = "euclidean",
++    ct_clst_method = "ward.D2",
++    feature_clst_dist = "maximum",
++    feature_clst_method = "ward.D2",
++    q_mask = 0.025,
++    label_box_size_factor = 1
++)
++
++
++######### ENRICHMENT HEATMAP ############
++create_atac_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0.05) {
++    # Load enrichment analysis result
++    df <- data.frame(fread(file.path(enrichment_results_path), header=TRUE))
++    
++    # Adapt for ATAC data
++    df_formatted <- df %>%
++        rename(Term = description, statistic = p_adjust, score = fold_enrichment) %>%
++        mutate(name = sub("_up$", "", name),
++                score = ifelse(is.infinite(log2(score)), NaN, log2(score))) %>%
++        mutate(name = recode(name, !!!DATA_TO_CELL_TYPE_COLORS_MAPPING))
++    
++    return(df_formatted)
++}
++
++atac_df_formatted <- create_atac_enrichment_df(CorcesATAC_enrichment_results_path, fdr_threshold)
++atac_heatmap_df <- prepare_for_heatmap(df_formatted = atac_df_formatted,
++                                      fdr_threshold = fdr_threshold,
++                                      tissues_to_keep = c("PBMC", "Bone Marrow"))
++atac_enrichment_plot <- plot_enrichment_heatmap(
++    heatmap_df = atac_heatmap_df, 
++    fig_path = atac_enrichment_path,
++    fill_lab = "log2(FE)",
++    size_lab = "-log10(p-adj.)",
++    title = "ATAC",
++    ylabel = "Enrichment term\n(GREAT, Azimuth 2023)"
++)
++
++
++######### Lineage reconstruction using crossprediction ############
++# plot adapted from: https://gist.github.com/dsparks/4331058
++
++
++atac_crosspred_p <- plot_crossprediction_from_adjacency(
++    adjacency_matrix_path = CorcesATAC_crossprediction_adj_mtx_path,
++    fig_path = atac_crossprediction_path,
++    coordinates_out_path = atac_crossprediction_coordinates_path,
++    lineage_tree_cut_off = lineage_tree_cut_off,
++    hierarchy_coordinates = hierarchy_coordinates,
++    modality_label = "ATAC",
++)
+\ No newline at end of file
+diff --git a/workflow/scripts/CorcesINT_figures.R b/workflow/scripts/CorcesINT_figures.R
+new file mode 100644
+index 0000000..1ae5185
+--- /dev/null
++++ b/workflow/scripts/CorcesINT_figures.R
+@@ -0,0 +1,607 @@
++source(snakemake@params[["figure_theme_path"]])
++source(snakemake@params[["figure_utils_path"]])
++
++#### snakemake inputs ####
++unintegrated_umap_coords_path <- snakemake@input[["unintegrated_umap_coords"]]
++integrated_umap_coords_path <- snakemake@input[["integrated_umap_coords"]]
++unintegrated_cfa_path <- snakemake@input[["unintegrated_cfa"]]
++integrated_cfa_path <- snakemake@input[["integrated_cfa"]]
++norm_counts_path <- snakemake@input[["norm_counts"]]
++metadata_path <- snakemake@input[["metadata"]]
++dea_results_path <- snakemake@input[["dea_results"]]
++gene_annotation_path <- snakemake@input[["gene_annotation"]]
++GO_enrichment_results_path <- snakemake@input[["GO_enrichment_results"]]
++Reactome_enrichment_results_path <- snakemake@input[["Reactome_enrichment_results"]]
++Mono_TF_EP_path <- snakemake@input[["Mono_TF_EP"]]
++Mono_TF_TA_path <- snakemake@input[["Mono_TF_TA"]]
++HSC_TF_EP_path  <- snakemake@input[["HSC_TF_EP"]]
++HSC_TF_TA_path  <- snakemake@input[["HSC_TF_TA"]]
++
++# parameters
++adjp_th <- snakemake@params[["adjp_th"]]
++fdr_threshold <- snakemake@params[["fdr_threshold"]]
++lfc_th <- snakemake@params[["lfc_th"]]
++ave_expr_th <- snakemake@params[["ave_expr_th"]]
++max_genes_tf_plot <- snakemake@params[["max_genes_tf_plot"]]
++TFs_in_papalexi <- c(
++  "ATF2", "BRD4", "CAV1", "CD86", "CMTM6", "CUL3", "ETV7", "IFNGR1", "IFNGR2", "IRF1", "IRF7", "JAK2", "CMIR", "MARCH8",
++  "MYC", "NFKB1A", "PDCD1LG2", "POU2F2", "SMAD4", "SPI1", "STAT1", "STAT2", "STAT3", "STAT5A", "TNFRSF14", "UBE2L6"
++)
++# outputs
++unintegrated_cfa_plot_path <- snakemake@output[["unintegrated_cfa_plot"]]
++integrated_cfa_plot_path <- snakemake@output[["integrated_cfa_plot"]]
++integrated_umap_plot_path <- snakemake@output[["integrated_umap_plot"]]
++unintegrated_umap_plot_path <- snakemake@output[["unintegrated_umap_plot"]]
++epigenetic_scatter_dir <- snakemake@output[["epigenetic_scatter_dir"]]
++GO_enrichment_path <- snakemake@output[["GO_enrichment_plot"]]
++Reactome_enrichment_path <- snakemake@output[["Reactome_enrichment_plot"]]
++TF_plot_path <- snakemake@output[["TF_plot"]]
++########################################################################################################################
++### LOAD DATA ##########################################################################################################
++########################################################################################################################
++V1_to_rowname <- function(df) {
++    rownames(df) <- df$V1
++    df <- df[,-1]
++    return(df)
++}
++
++unintegrated_umap_coords <- data.frame(fread(file.path(unintegrated_umap_coords_path), header=TRUE))
++integrated_umap_coords <- data.frame(fread(file.path(integrated_umap_coords_path), header=TRUE))
++norm_counts <- data.frame(fread(file.path(norm_counts_path), header=TRUE), row.names=1)
++metadata <- data.frame(fread(file.path(metadata_path), header=TRUE), row.names=1)
++dea_results <- data.frame(fread(file.path(dea_results_path), header=TRUE))
++gene_annotation <- data.frame(fread(file.path(gene_annotation_path), header=TRUE))
++unintegrated_cfa_data <- V1_to_rowname(data.frame(fread(file.path(unintegrated_cfa_path), header=TRUE)))
++integrated_cfa_data <- V1_to_rowname(data.frame(fread(file.path(integrated_cfa_path), header=TRUE)))
++
++########################################################################################################################
++### UMAP PLOT ##########################################################################################################
++########################################################################################################################
++unintegrated_umap_plot <- umap_plot(unintegrated_umap_coords_path, unintegrated_umap_plot_path, title = "Unintegrated",
++                                    modality_by_shape = TRUE)
++integrated_umap_plot <- umap_plot(integrated_umap_coords_path, integrated_umap_plot_path, title = "Integrated",
++                                    modality_by_shape = TRUE)
++
++########################################################################################################################
++### CFA PLOT ##########################################################################################################
++########################################################################################################################
++plot_cfa_heatmap <- function(cfa_mat, title, path, var_max=NULL, nPCs=10, 
++                             metadata_rows=c('cell_type', 'modality', 'donor')
++                             ){
++  var_explained_df <- t(cfa_mat['var_explained', 1:nPCs]) %>%
++      as.data.frame() %>%
++      rownames_to_column(var = 'PC') %>%
++      mutate(PC = factor(PC, levels = rev(colnames(cfa_mat))))
++  cfa_mat <- cfa_mat[metadata_rows, 1:nPCs]
++
++  if (is.null(var_max)) {
++      x_max <- max(var_explained_df$var_explained, na.rm = TRUE)
++  } else {
++      x_max <- var_max
++  }
++
++  # unstack cfa_mat, remembering rownames and colnames
++  cfa_mat_long <- cfa_mat %>%
++      rownames_to_column(var = "metadata_type") %>%
++      pivot_longer(cols = -metadata_type, names_to = "PC", values_to = "stat") %>%
++      mutate(PC = factor(PC, levels = rev(colnames(cfa_mat))),
++              metadata_type = factor(metadata_type, levels = metadata_rows),
++              text_color = ifelse(stat > (min(stat) + 0.75 * (max(stat) - min(stat))), "white", "black"),
++              text_fontface = ifelse(stat > (min(stat) + 0.75 * (max(stat) - min(stat))), "bold", "plain")
++              )
++
++  # barplot of var_explained
++  var_explained_plot <- ggplot(var_explained_df, aes(y = PC, x = var_explained)) +
++      geom_bar(stat = "identity", fill = 'grey80') +
++      MrBiomics_theme() +
++      scale_x_continuous(limits = c(0, x_max), breaks = c(0, x_max/2, x_max),
++                          labels = function(x) format(x, digits = 2)) +
++      theme(
++          axis.text.y = element_blank(),
++          axis.title.y = element_blank(),
++          panel.grid.minor = element_blank(),
++          panel.grid.major.y = element_blank(),
++          panel.grid.major.x = element_line(),
++          panel.border = element_blank(),
++          plot.margin = margin(5.5, 5.5, 5.5, 5.5)
++      ) +
++      labs(title = NULL, x = "Variance explained", y = NULL)
++
++  cfa_heatmap <- ggplot(cfa_mat_long, aes(x = metadata_type, y = PC, fill = stat)) +
++      geom_tile(linewidth = 0) +
++      geom_text(aes(label = round(stat, 1), color = text_color, fontface = text_fontface)) +
++      scale_fill_gradient(low = "white", high = as.character(RdBu_extremes["up"]), name='-log10(p-adj.)\nfor association\nof PC &\nmetadata') +
++      scale_color_identity(guide = "none") +
++      scale_x_discrete(labels = function(x) tools::toTitleCase(gsub("_", " ", x)), expand = c(0, 0)) +
++      scale_y_discrete(expand = c(0, 0)) +
++      MrBiomics_theme() +
++      theme(
++          panel.grid.major = element_blank(),
++          panel.grid.minor = element_blank(),
++          axis.text.y = element_blank(),
++          axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
++          plot.title = element_text(hjust = 0.5),
++          legend.position = "right",
++          plot.margin = margin(5.5, 5.5, 5.5, 5.5)
++      ) +
++      coord_fixed() +
++      labs(title = title, y = paste0("PC(1-", ncol(cfa_mat), ")"), x = NULL)
++
++  cfa_plot <- cfa_heatmap + var_explained_plot + plot_spacer() + guide_area() +
++      plot_layout(ncol = 4, widths = c(2, 2, 0.2, 1.4), guides = "collect") +
++      plot_annotation(theme = theme(plot.margin = margin(10, 20, 10, 10))) &
++      theme(plot.margin = margin(5.5, 5.5, 5.5, 5.5), legend.box.margin = margin(5.5, 5.5, 5.5, 10),
++              legend.margin = margin(5.5, 5.5, 5.5, 5.5))
++
++  ggsave_all_formats(path = path,
++                      plot = cfa_plot,
++                      width = PLOT_SIZE_3_PER_ROW-0.5,
++                      height = PLOT_SIZE_3_PER_ROW)
++  return(cfa_plot)
++}
++
++var_max <- max(unintegrated_cfa_data['var_explained',], integrated_cfa_data['var_explained',])
++
++unintegrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=unintegrated_cfa_data, title='Unintegrated',
++     path=unintegrated_cfa_plot_path, var_max=var_max, nPCs=10)
++integrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=integrated_cfa_data, title='Integrated',
++     path=integrated_cfa_plot_path, var_max=var_max, nPCs=10)
++
++
++
++########################################################################################################################
++### EPIGENETIC POTENTIAL PLOT ##########################################################################################
++########################################################################################################################
++# transform norm_counts for plotting (for each group)
++dea <- dea_results |> mutate(cell_type = sub("cell_type(.*?)__.*", "\\1", group))
++
++for(ct in unique(metadata$cell_type)){
++
++    ## ---------- summarise mean signal per gene ----------
++    atac <- rownames(metadata)[metadata$cell_type == ct & metadata$modality == "ATAC"]
++    rna  <- rownames(metadata)[metadata$cell_type == ct & metadata$modality == "RNA" ]
++    
++    df <- data.frame(
++    feature = rownames(norm_counts),
++    ATAC = rowMeans(norm_counts[ , atac, drop = FALSE]),
++    RNA  = rowMeans(norm_counts[ , rna , drop = FALSE])
++    )
++    
++    ## ---------- add category EP or TA ----------
++    stat <- dea |>
++    filter(cell_type == ct) |>
++    select(feature, logFC, adj.P.Val, AveExpr)
++    
++    df <- df |>
++    left_join(stat, by = "feature") |>
++    mutate(category = case_when(
++      adj.P.Val > adjp_th | abs(logFC) < lfc_th | AveExpr < ave_expr_th ~ "Convergent",
++      adj.P.Val <= adjp_th & logFC >= lfc_th & AveExpr >= ave_expr_th ~ "Epigenetic potential",
++      adj.P.Val <= adjp_th & logFC  <= -lfc_th & AveExpr >= ave_expr_th ~ "Transcriptional abundance"
++    ))
++    
++    ## ---------- labels with counts and stats ----------
++    counts <- table(df$category)
++    
++    # prepare statistics
++    r_val <- cor(df$ATAC, df$RNA, method = "pearson", use = "complete.obs")
++
++    df$log10_adjp <- -log10(df$adj.P.Val)
++    df$gene_symbol <- gene_annotation$external_gene_name[match(df$feature, gene_annotation$ensembl_gene_id)]
++
++    # prepare HAEMATOPOIESIS_MARKERS for annotation (divergent only)
++    df$markers <- ifelse(
++      !is.na(df$gene_symbol) & (df$gene_symbol %in% HAEMATOPOIESIS_MARKERS) & (df$category != "Convergent"),
++      df$gene_symbol,
++      ""
++    )
++
++    # split norm_counts for plotting
++    df_conv <-  df %>% filter(category == "Convergent")
++    df_div  <-  df %>% filter(category != "Convergent")
++
++    # prepare annotations instead of legend
++    cat_cols <- c("Convergent"             = "grey50",
++              "Epigenetic potential"   = as.character(RdBu_extremes["up"]),
++              "Transcriptional abundance"= as.character(RdBu_extremes["down"]))
++
++    # annotation labels
++    max_x <- max(df$ATAC)
++    min_x <- min(df$ATAC)
++    max_y <- max(df$RNA)
++    min_y <- min(df$RNA)
++    ann_df <- data.frame(
++        category = c("Transcriptional abundance", "Convergent", "Epigenetic potential"),
++        x = c(min_x,  min_x,  max_x),   # TL, BL, BR
++        y = c( max_y, min_y, min_y),
++        hjust = c(0, 0, 1),        # keep text inside panel
++        vjust = c(1, 0, 0),
++        lab = c(
++            paste0("Transcriptional\nabundance\n(", counts["Transcriptional abundance"],")"),
++            paste0("Convergent\n(", counts["Convergent"],")"),
++            paste0("Epigenetic\npotential\n(", counts["Epigenetic potential"],")")
++            )
++        )
++    
++    # breaks for size legend based on original -log10(adjusted p)
++    size_breaks <- pretty(range(df_div$log10_adjp, na.rm = TRUE), n = 4)
++
++    ## ---------- plot ----------
++    p <- ggplot(df, aes(x = ATAC, y = RNA, label = markers)) +
++    # plot convergent first (small, faint – background)
++    rasterise(geom_point(data = df_conv,
++             aes(colour = category),
++             size  = 0.5,
++             alpha = 0.1,
++             stroke = 0,
++             show.legend = FALSE)) +
++    # overlay divergent classes (larger, more opaque – foreground)
++    rasterise(geom_point(data = df_div %>% filter(markers == ""),
++             aes(colour = category, size = log10_adjp),
++             alpha = 0.5,
++             stroke = 0)) +
++    # colour palette 
++    scale_colour_manual(
++    values = cat_cols,
++    name   = NULL, 
++    guide = "none"
++    ) +
++    # size legend using original -log10(adjusted p) values
++    scale_size_continuous(
++      name = "-log10(p-adj.)",
++      range = c(0.1, 2),
++      breaks = size_breaks,
++      labels = function(x) format(x, digits = 2)
++    ) +
++    # annotation boxes with counts, also serving as legend
++    geom_text(
++    data = ann_df,
++    inherit.aes = FALSE,
++    aes(x = x, y = y, label = lab, color = category, hjust = hjust, vjust = vjust),
++    size = FONT_SIZE_NORMAL / .pt
++    ) +
++    # annotate divergent HAEMATOPOIESIS_MARKERS
++    geom_text_repel(
++        color = "black",
++        box.padding = 0.15,
++        min.segment.length = 0,
++        max.overlaps = Inf,
++        seed = 42,
++        show.legend = FALSE
++    ) +
++    # # redraw labeled points on top so labels don't occlude points
++    # geom_point(
++    #     data = df %>% filter(markers != ""),
++    #     aes(colour = category, size = log10_adjp),
++    #     alpha = 0.5,
++    #     stroke = 0
++    # ) +
++    # axis titles
++    labs(
++    title = paste0(ct,"\n",sprintf("Pearson's R = %.2f", r_val)),
++    x = "Chromatin accessibility\n(normalized & integrated)",
++    y = "Gene expression\n(normalized & integrated)"
++    ) +
++    MrBiomics_theme() + 
++    theme(aspect.ratio = 1)
++
++    # print(p)
++    
++  ## ---------- save plot ----------
++  ggsave_all_formats(file.path(epigenetic_scatter_dir,paste0(ct,"_correlation.png")), p,
++                    width = PLOT_SIZE_3_PER_ROW+1,
++                    height = PLOT_SIZE_3_PER_ROW
++                    )
++}
++
++########################################################################################################################
++### ENRICHMENT HEATMAP #################################################################################################
++########################################################################################################################
++create_int_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0.05) {
++    # Load enrichment analysis result
++    df <- data.frame(fread(file.path(enrichment_results_path), header=TRUE))
++    df_formatted <- df %>%
++        rename(statistic = FDR_q_val, score = NES) %>%
++        mutate(name = recode(name, !!!DATA_TO_CELL_TYPE_COLORS_MAPPING))
++    return(df_formatted)
++}
++
++GO_df_formatted <- create_int_enrichment_df(GO_enrichment_results_path, fdr_threshold)
++GO_heatmap_df <- prepare_for_heatmap(df_formatted = GO_df_formatted, fdr_threshold = fdr_threshold, top_n_per_name = 3)
++GO_enrichment_plot <- plot_clustered_enrichment_heatmap(
++    heatmap_df = GO_heatmap_df,
++    fig_path = GO_enrichment_path,
++    fill_lab = "NES",
++    size_lab = "-log10(q-adj.)",
++    title = "",
++    ylabel = "Enrichment term\n(preranked GSEA,\nGOBP 2025)",
++    ct_clst_dist = "euclidean",
++    ct_clst_method = "ward.D2",
++    term_clst_dist = "euclidean",
++    term_clst_method = "ward.D2",
++    n_clusters = 25,
++    width = PLOT_SIZE_2_PER_ROW
++)
++
++Reactome_df_formatted <- create_int_enrichment_df(Reactome_enrichment_results_path, fdr_threshold)
++Reactome_heatmap_df <- prepare_for_heatmap(df_formatted = Reactome_df_formatted, fdr_threshold = fdr_threshold,
++                                           top_n_per_name = 2)
++Reactome_enrichment_plot <- plot_clustered_enrichment_heatmap(
++    heatmap_df = Reactome_heatmap_df,
++    fig_path = Reactome_enrichment_path,
++    fill_lab = "NES",
++    size_lab = "-log10(q-adj.)",
++    title = "",
++    ylabel = "Enrichment term\n(preranked GSEA, Reactome)",
++    ct_clst_dist = "euclidean",
++    ct_clst_method = "ward.D2",
++    term_clst_dist = "euclidean",
++    term_clst_method = "ward.D2",
++    n_clusters = 25,
++    width = PLOT_SIZE_2_PER_ROW
++)
++
++dir.create(file.path(dirname(GO_enrichment_path), "tmp"), showWarnings = FALSE)
++Reactome_heatmap_df %>% filter(statistic < 0.05) %>% as.data.frame() %>% write.csv(file.path(dirname(GO_enrichment_path), "tmp/Reactome_enrichment_sig.csv"), row.names = FALSE)
++GO_heatmap_df %>% filter(statistic < 0.05) %>% as.data.frame() %>% write.csv(file.path(dirname(GO_enrichment_path), "tmp/GO_enrichment_sig.csv"), row.names = FALSE)
++
++
++########################################################################################################################
++### TF PLOT ############################################################################################################
++########################################################################################################################
++# helper: load and preprocess TF enrichment CSV (Mono/HSC)
++load_prepare_tf <- function(csv_path) {
++  df <- data.frame(fread(file.path(csv_path), header=TRUE))
++  df <- df %>%
++    mutate(.row_id = row_number()) %>%
++    select(.row_id, NES, nEnrGenes, TF_highConf) %>%
++    mutate(
++      TF_highConf = coalesce(TF_highConf, ""),
++      TF_highConf = str_remove_all(TF_highConf, "\\([^)]*\\)"),   # drop (directAnnotation) etc.
++      TF_highConf = str_replace_all(TF_highConf, ",", " "),       # remove stray commas
++      TF_highConf = str_squish(TF_highConf)
++    ) %>%
++    # split TFs on semicolons or periods used as separators
++    separate_rows(TF_highConf, sep = ";|\\.") %>%
++    mutate(
++      TF = str_squish(TF_highConf),
++      TF = str_remove(TF, "\\.$")   # drop trailing dots if any remain
++    ) %>%
++    filter(TF != "") %>%
++    distinct(.row_id, TF, .keep_all = TRUE) %>%
++    select(TF, NES, nEnrGenes) %>%
++    filter(nEnrGenes >= 30) %>%
++    as.data.frame()
++  return(df)
++}
++
++# helper: order TFs by max NES (ascending) with tiebreaker by sum(NES)
++order_by_max_nes <- function(df) {
++  tf_order <- df %>%
++    group_by(TF) %>%
++    summarise(
++      max_NES = max(NES, na.rm = TRUE),
++      sum_NES = sum(NES, na.rm = TRUE)
++    ) %>%
++    arrange(max_NES, sum_NES) %>%
++    pull(TF)
++  df$TF <- factor(df$TF, levels = tf_order)
++  return(df)
++}
++
++# load & prepare Mono EP and TA
++Mono_TF_EP_df <- load_prepare_tf(Mono_TF_EP_path)
++Mono_TF_TA_df <- load_prepare_tf(Mono_TF_TA_path)
++
++# load & prepare HSC EP and TA
++HSC_TF_EP_df <- load_prepare_tf(HSC_TF_EP_path)
++HSC_TF_TA_df <- load_prepare_tf(HSC_TF_TA_path)
++
++# save all the dfs as csv right next to the plot path
++Mono_TF_EP_df %>% write.csv(file.path(str_replace(TF_plot_path, "\\.pdf$", "__Mono_TF_EP_df.csv")), row.names = FALSE)
++Mono_TF_TA_df %>% write.csv(file.path(str_replace(TF_plot_path, "\\.pdf$", "__Mono_TF_TA_df.csv")), row.names = FALSE)
++HSC_TF_EP_df %>% write.csv(file.path(str_replace(TF_plot_path, "\\.pdf$", "__HSC_TF_EP_df.csv")), row.names = FALSE)
++HSC_TF_TA_df %>% write.csv(file.path(str_replace(TF_plot_path, "\\.pdf$", "__HSC_TF_TA_df.csv")), row.names = FALSE)
++
++# balance TF counts within each cell type by trimming the dataset with more TFs (lowest NES removed first)
++# Mono
++n_EP <- n_distinct(Mono_TF_EP_df$TF)
++n_TA <- n_distinct(Mono_TF_TA_df$TF)
++if (n_EP > n_TA) {
++  keep_ep <- Mono_TF_EP_df %>%
++    group_by(TF) %>%
++    summarise(max_NES = max(NES, na.rm = TRUE)) %>%
++    slice_max(order_by = max_NES, n = n_TA, with_ties = FALSE) %>%
++    pull(TF)
++  Mono_TF_EP_df <- Mono_TF_EP_df %>% filter(TF %in% keep_ep)
++} else if (n_TA > n_EP) {
++  keep_ta <- Mono_TF_TA_df %>%
++    group_by(TF) %>%
++    summarise(max_NES = max(NES, na.rm = TRUE)) %>%
++    slice_max(order_by = max_NES, n = n_EP, with_ties = FALSE) %>%
++    pull(TF)
++  Mono_TF_TA_df <- Mono_TF_TA_df %>% filter(TF %in% keep_ta)
++}
++
++# HSC
++n_EP_h <- n_distinct(HSC_TF_EP_df$TF)
++n_TA_h <- n_distinct(HSC_TF_TA_df$TF)
++if (n_EP_h > n_TA_h) {
++  keep_ep_h <- HSC_TF_EP_df %>%
++    group_by(TF) %>%
++    summarise(max_NES = max(NES, na.rm = TRUE)) %>%
++    slice_max(order_by = max_NES, n = n_TA_h, with_ties = FALSE) %>%
++    pull(TF)
++  HSC_TF_EP_df <- HSC_TF_EP_df %>% filter(TF %in% keep_ep_h)
++} else if (n_TA_h > n_EP_h) {
++  keep_ta_h <- HSC_TF_TA_df %>%
++    group_by(TF) %>%
++    summarise(max_NES = max(NES, na.rm = TRUE)) %>%
++    slice_max(order_by = max_NES, n = n_EP_h, with_ties = FALSE) %>%
++    pull(TF)
++  HSC_TF_TA_df <- HSC_TF_TA_df %>% filter(TF %in% keep_ta_h)
++}
++
++# After balancing, select top N TFs by max NES within each cell type
++N_matched_mono <- min(n_distinct(Mono_TF_EP_df$TF), n_distinct(Mono_TF_TA_df$TF), max_genes_tf_plot)
++N_matched_hsc  <- min(n_distinct(HSC_TF_EP_df$TF),  n_distinct(HSC_TF_TA_df$TF),  max_genes_tf_plot)
++
++select_top_by_max_nes <- function(df, N) {
++  # Prioritize TFs from TFs_in_papalexi, then fill remaining slots by max NES
++  tf_stats <- df %>%
++    group_by(TF) %>%
++    summarise(max_NES = max(NES, na.rm = TRUE))
++
++  # 1) Take up to N TFs that are in TFs_in_papalexi, highest max NES first
++  pri <- tf_stats %>%
++    filter(TF %in% TFs_in_papalexi) %>%
++    slice_max(order_by = max_NES, n = N, with_ties = FALSE) %>%
++    pull(TF)
++
++  remaining_n <- max(N - length(pri), 0)
++
++  # 2) Fill the remaining with non-priority TFs by highest max NES
++  if (remaining_n > 0) {
++    non_pri <- tf_stats %>%
++      filter(!(TF %in% pri)) %>%
++      slice_max(order_by = max_NES, n = remaining_n, with_ties = FALSE) %>%
++      pull(TF)
++    keep <- c(pri, non_pri)
++  } else {
++    keep <- pri
++  }
++
++  df %>% filter(TF %in% keep)
++}
++
++Mono_TF_EP_df <- select_top_by_max_nes(Mono_TF_EP_df, N_matched_mono)
++Mono_TF_TA_df <- select_top_by_max_nes(Mono_TF_TA_df, N_matched_mono)
++HSC_TF_EP_df  <- select_top_by_max_nes(HSC_TF_EP_df,  N_matched_hsc)
++HSC_TF_TA_df  <- select_top_by_max_nes(HSC_TF_TA_df,  N_matched_hsc)
++
++# order y-axis for each dataset (with tiebreaker)
++Mono_TF_EP_df <- order_by_max_nes(Mono_TF_EP_df)
++Mono_TF_TA_df <- order_by_max_nes(Mono_TF_TA_df)
++HSC_TF_EP_df  <- order_by_max_nes(HSC_TF_EP_df)
++HSC_TF_TA_df  <- order_by_max_nes(HSC_TF_TA_df)
++
++# unified scales across all four panels
++max_nes_both <- max(c(Mono_TF_EP_df$NES, Mono_TF_TA_df$NES, HSC_TF_EP_df$NES, HSC_TF_TA_df$NES), na.rm = TRUE)
++size_range <- c(1, 2.5)
++
++segment_color <- "grey80"
++segment_width <- 0.8
++
++# helper: build rich y-axis labels (bold if in Papalexi; color by shared status)
++red_col <- as.character(RdBu_extremes["up"])    # epigenetic potential color
++blue_col <- as.character(RdBu_extremes["down"])  # transcriptional abundance color
++violet_col <- "purple"
++
++Mono_EP_TFs <- unique(as.character(Mono_TF_EP_df$TF))
++Mono_TA_TFs <- unique(as.character(Mono_TF_TA_df$TF))
++HSC_EP_TFs  <- unique(as.character(HSC_TF_EP_df$TF))
++HSC_TA_TFs  <- unique(as.character(HSC_TF_TA_df$TF))
++
++build_tf_axis_labels <- function(tfs, papalexi_set, red_set, blue_set) {
++  vapply(tfs, function(tf) {
++    is_pap <- tf %in% papalexi_set
++    in_red <- tf %in% red_set
++    in_blue <- tf %in% blue_set
++
++    if (in_red && in_blue) {
++      col <- violet_col
++    } else if (in_red) {
++      col <- red_col
++    } else if (in_blue) {
++      col <- blue_col
++    } else {
++      col <- NA_character_
++    }
++
++    lab <- tf
++    if (is_pap) {
++      lab <- paste0("<b>", lab, "</b>")
++    }
++    if (!is.na(col)) {
++      lab <- paste0("<span style='color:", col, "'>", lab, "</span>")
++    }
++    lab
++  }, character(1))
++}
++
++# EP plot (red scale) MONO
++Mono_TF_EP_plot <- ggplot(Mono_TF_EP_df, aes(x = NES, y = TF, size = nEnrGenes, color = NES)) +
++  geom_segment(aes(x = 0, xend = NES, y = TF, yend = TF), color = segment_color, linewidth = segment_width) +
++  geom_point(alpha = 0.8, shape = 16) +
++  MrBiomics_theme() +
++  theme(axis.text.y = ggtext::element_markdown(),
++        panel.grid.major.y = element_blank(),
++        panel.grid.minor.y = element_blank()) +
++  scale_x_continuous(limits = c(0, max_nes_both)) +
++  scale_y_discrete(labels = function(x) build_tf_axis_labels(x, TFs_in_papalexi, HSC_EP_TFs, HSC_TA_TFs)) +
++  scale_size_continuous(range = size_range, name = "Number of\nenriched\ngenes", guide = "none") +
++  scale_color_gradient(limits = c(0, max_nes_both), low = "white", high = as.character(RdBu_extremes["up"]), name = "NES", guide = "none") +
++  labs(x = "NES", y = NULL, title = "Mono\nEpigenetic\npotential")
++
++# TA plot (blue scale) MONO
++Mono_TF_TA_plot <- ggplot(Mono_TF_TA_df, aes(x = NES, y = TF, size = nEnrGenes, color = NES)) +
++  geom_segment(aes(x = 0, xend = NES, y = TF, yend = TF), color = segment_color, linewidth = segment_width) +
++  geom_point(alpha = 0.8, shape = 16) +
++  MrBiomics_theme() +
++  theme(axis.text.y = ggtext::element_markdown(),
++        panel.grid.major.y = element_blank(),
++        panel.grid.minor.y = element_blank()) +
++  scale_x_continuous(limits = c(0, max_nes_both)) +
++  scale_y_discrete(labels = function(x) build_tf_axis_labels(x, TFs_in_papalexi, HSC_EP_TFs, HSC_TA_TFs)) +
++  scale_size_continuous(range = size_range, name = "Number of\nenriched\ngenes") +
++  scale_color_gradient(limits = c(0, max_nes_both), low = "white", high = as.character(RdBu_extremes["down"]), name = "NES", guide = "none") +
++  labs(x = "NES", y = NULL, title = "Mono\nTranscriptional\nabundance")
++
++# EP plot (red scale) HSC
++HSC_TF_EP_plot <- ggplot(HSC_TF_EP_df, aes(x = NES, y = TF, size = nEnrGenes, color = NES)) +
++  geom_segment(aes(x = 0, xend = NES, y = TF, yend = TF), color = segment_color, linewidth = segment_width) +
++  geom_point(alpha = 0.8, shape = 16) +
++  MrBiomics_theme() +
++  theme(axis.text.y = ggtext::element_markdown(),
++        panel.grid.major.y = element_blank(),
++        panel.grid.minor.y = element_blank()) +
++  scale_x_continuous(limits = c(0, max_nes_both)) +
++  scale_y_discrete(labels = function(x) build_tf_axis_labels(x, TFs_in_papalexi, Mono_EP_TFs, Mono_TA_TFs)) +
++  scale_size_continuous(range = size_range, name = "Number of\nenriched\ngenes", guide = "none") +
++  scale_color_gradient(limits = c(0, max_nes_both), low = "white", high = as.character(RdBu_extremes["up"]), name = "NES", guide = "none") +
++  labs(x = "NES", y = NULL, title = "HSC\nEpigenetic\npotential")
++
++# TA plot (blue scale) HSC
++HSC_TF_TA_plot <- ggplot(HSC_TF_TA_df, aes(x = NES, y = TF, size = nEnrGenes, color = NES)) +
++  geom_segment(aes(x = 0, xend = NES, y = TF, yend = TF), color = segment_color, linewidth = segment_width) +
++  geom_point(alpha = 0.8, shape = 16) +
++  MrBiomics_theme() +
++  theme(axis.text.y = ggtext::element_markdown(),
++        panel.grid.major.y = element_blank(),
++        panel.grid.minor.y = element_blank()) +
++  scale_x_continuous(limits = c(0, max_nes_both)) +
++  scale_y_discrete(labels = function(x) build_tf_axis_labels(x, TFs_in_papalexi, Mono_EP_TFs, Mono_TA_TFs)) +
++  scale_size_continuous(range = size_range, name = "Number of\nenriched\ngenes", guide = "none") +
++  scale_color_gradient(limits = c(0, max_nes_both), low = "white", high = as.character(RdBu_extremes["down"]), name = "NES", guide = "none") +
++  labs(x = "NES", y = NULL, title = "HSC\nTranscriptional\nabundance")
++
++# combine with patchwork and save
++# dummy plot to provide a single black-white NES colorbar legend
++legend_dummy_df <- data.frame(x = 1:2, y = 1, NES = c(0, max_nes_both))
++legend_dummy <- ggplot(legend_dummy_df, aes(x = x, y = y, color = NES)) +
++  geom_point(alpha = 0, size = 0) +
++  scale_color_gradient(
++    limits = c(0, max_nes_both), low = "white", high = "black", name = "NES",
++    guide = guide_colorbar(direction = "vertical", barheight = grid::unit(2, "cm"), barwidth = grid::unit(0.22, "cm"))
++  ) +
++  MrBiomics_void() +
++  theme(legend.box.margin = margin(0, 0, 0, 0), legend.margin = margin(0, 0, 0, 0))
++
++# combine with collected legends (only one colorbar from dummy, one size legend from Mono TA)
++TF_combined_plot <- (HSC_TF_TA_plot | HSC_TF_EP_plot | Mono_TF_TA_plot | Mono_TF_EP_plot | legend_dummy)
++TF_combined_plot <- TF_combined_plot +
++  plot_layout(ncol = 5, widths = c(1, 1, 1, 1, 0.1), guides = "collect") &
++  theme(legend.position = "right", legend.box.margin = margin(0, 0, 0, 0), legend.margin = margin(0, 0, 0, 0))
++
++ggsave_all_formats(path = TF_plot_path, plot = TF_combined_plot,
++                   width = PLOT_SIZE_3_PER_ROW*2, height = PLOT_SIZE_3_PER_ROW)
+\ No newline at end of file
+diff --git a/workflow/scripts/CorcesRNA_figures.R b/workflow/scripts/CorcesRNA_figures.R
+index 82a1ebb..a7f30b4 100644
+--- a/workflow/scripts/CorcesRNA_figures.R
++++ b/workflow/scripts/CorcesRNA_figures.R
+@@ -6,243 +6,100 @@
+ 
+ #### libraries
+ # source this for libraries, MrBiomics theme and utility functions
+-# source("workflow/scripts/figure_theme.R")
+ source(snakemake@params[["figure_theme_path"]])
++source(snakemake@params[["figure_utils_path"]])
++
++# FIXME snakemakeify
++# ## libraries are loaded in the source files
++# source(snakemake@params[["figure_theme_path"]])
++# figure_utils.R
++# ## input
++# enrichment_results_path <- snakemake@input[["enrichment_results"]]
++# crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
++# ## output
++# enrichment_plot_path <- snakemake@output[["enrichment_plot"]]
++# crossprediction_plot_path <- snakemake@output[["crossprediction_plot"]]
++# ## params
++# # enrichment analysis
++# fdr_threshold <- snakemake@params[["fdr_threshold"]]
++# # lineage reconstructions
++# cut_off <- snakemake@params[["cut_off"]]
++
++# inputs
++CorcesRNA_umap_coords_path <- snakemake@input[["umap_coords"]]
++CorcesRNA_dea_OvA_path <- snakemake@input[["dea_ova"]]
++CorcesRNA_enrichment_results_path <- snakemake@input[["enrichment_results"]]
++CorcesRNA_crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
++
++# outputs
++rna_umap_path <- snakemake@output[["umap_plot"]]
++rna_dea_heatmap_path <- snakemake@output[["dea_heatmap_plot"]]
++rna_enrichment_path <- snakemake@output[["enrichment_plot"]]
++rna_crossprediction_path <- snakemake@output[["crossprediction_plot"]]
++rna_crossprediction_coordinates_path <- snakemake@output[["crossprediction_coordinates"]]
++
++# params
++fdr_threshold <- snakemake@params[["fdr_threshold"]]
++log2FC_threshold <- snakemake@params[["log2FC_threshold"]]
++lineage_tree_cut_off <- snakemake@params[["lineage_tree_cut_off"]]
++hierarchy_coordinates <- snakemake@params[["hierarchy_coordinates"]]
++
++######### UMAPs (from unsupervised analysis) ############
++# Create UMAP plots
++rna_umap_plot <- umap_plot(CorcesRNA_umap_coords_path, rna_umap_path, title = "RNA")
++
++
++######### DEA HEATMAP ############
++rna_dea_heatmap_plot <- plot_differential_features_heatmap(
++    dea_results_path = CorcesRNA_dea_OvA_path,
++    fig_path = rna_dea_heatmap_path,
++    fdr_threshold = fdr_threshold,
++    log2FC_threshold = log2FC_threshold,
++    title = "RNA",
++    feature = 'Genes',
++    ct_clst_dist = "euclidean",
++    ct_clst_method = "ward.D2",
++    feature_clst_dist = "maximum",  # maximum to focus on the most differentially expressed groups when sorting genes
++    feature_clst_method = "ward.D2",
++    q_mask = 0.025,
++    label_box_size_factor = 0.8
++)
++
++######### ENRICHMENT HEATMAP ############
++# Function to create enrichment heatmap
++create_rna_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0.05) {
++    # Load enrichment analysis result
++    df <- data.frame(fread(file.path(enrichment_results_path), header=TRUE))
++
++    df_formatted <- df %>%
++        rename(statistic = FDR_q_val, score = NES) %>%
++        mutate(name = recode(name, !!!DATA_TO_CELL_TYPE_COLORS_MAPPING))
++    
++    return(df_formatted)
++}
+ 
+-#### configs
+-
+-# input
+-enrichment_results_path <- snakemake@input[["enrichment_results"]]
+-#"/nobackup/lab_bock/projects/MrBiomics/results/CorcesRNA/enrichment_analysis/cell_types/preranked_GSEApy/Azimuth_2023/cell_types_Azimuth_2023_all.csv" 
+-
+-crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
+-#"/nobackup/lab_bock/projects/MrBiomics/results/CorcesRNA/special_analyses/crossprediction/adjacency_matrix.csv"
+-
+-# output
+-enrichment_plot_path <- snakemake@output[["enrichment_plot"]]
+-
+-crossprediction_plot_path <- snakemake@output[["crossprediction_graph"]]
+-#"/nobackup/lab_bock/projects/MrBiomics/results/CorcesRNA/special_analyses/crossprediction/normCQN_integrated_graph.png"
+-
+-# params (TODO: consider putting in rule)
+-# enrichment analysis
+-fdr_threshold <- 0.05
+-# lineage reconstructions
+-cut_off <- 0.2 # when pruning at 0.2 both HVF and integrated produce the same graph
+-
+-
+-######### Unsupervised Analysis (PCA & UMAP) ############
+-
+-######### ... ############
+-
+-######### Enrichment analysis ############
+-
+-# load enrichment analysis result
+-enrichment_results <- data.frame(fread(file.path(enrichment_results_path), header=TRUE))
+-dim(enrichment_results)
+-# head(enrichment_results)
+-
+-df <- enrichment_results
+-
+-df_sig <- df %>%
+-  filter(NES > 0, FDR_q_val < fdr_threshold)  # keep only positive, significant terms
+-
+-top_terms <- df_sig %>%
+-  group_by(name) %>%
+-  slice_max(order_by = NES, n = 1, with_ties = FALSE) %>%  # one row per group 
+-  pull(Term)
+-
+-df_top <- df %>%
+-  filter(Term %in% top_terms) 
+-
+-# wide matrix: rows = Term, cols = name, values = NES
+-mat_df <- df_top %>%
+-  select(name, Term, NES) %>%
+-  pivot_wider(names_from = name, values_from = NES, values_fill = 0)
+-
+-mat <- mat_df %>% column_to_rownames("Term") %>% as.matrix()
+-
+-# hierarchical clustering
+-row_dendro <- as.dendrogram(hclust(dist(mat), method = "ward.D2"))
+-col_dendro <- as.dendrogram(hclust(dist(t(mat)), method = "ward.D2"))
+-
+-row_order <- order.dendrogram(row_dendro)  # get row order 
+-col_order <- order.dendrogram(col_dendro)  # get col order 
+-
+-# prepare heatmap
+-heatmap_df <- mat_df %>%
+-  pivot_longer(-Term, names_to = "name", values_to = "NES") %>%
+-  left_join(df %>% select(name, Term, FDR_q_val), by = c("name", "Term")) %>%
+-  mutate(
+-    Term = factor(Term, levels = rownames(mat)[row_order]),
+-    name = factor(name, levels = colnames(mat)[col_order]),
+-    sig = FDR_q_val < fdr_threshold
+-  )
+-
+-# make plot
+-enrichment_plot <- ggplot(heatmap_df, aes(x = name, y = Term, fill = NES)) +
+-  geom_tile() +
+-  # add star for significance
+-  geom_text(aes(label = ifelse(sig, "*", "")), vjust = 0.5) +
+-  # red-white-blue gradient centered at 0
+-  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+-  # ensure square tiles
+-  coord_fixed() +
+-  # wrap long y-axis labels after 25 chars
+-  scale_y_discrete(labels = function(x) str_wrap(x, width = 25)) +
+-  # rotate x-axis labels
+-  theme_minimal() +
+-  theme(
+-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+-    axis.title = element_blank()
+-  ) + MrBiomics_theme()
+-
+-# show plot
+-width <- 4
+-height <- 4
+-options(repr.plot.width=width, repr.plot.height=height)
+-
+-# enrichment_plot
+-
+-# save plot
+-ggsave_new(path=enrichment_plot_path,
+-           plot=enrichment_plot,
+-           width=width,
+-           height=height
+-          )
+-
++# Create enrichment heatmaps
++rna_df_formatted <- create_rna_enrichment_df(CorcesRNA_enrichment_results_path, fdr_threshold)
++rna_heatmap_df <- prepare_for_heatmap(df_formatted = rna_df_formatted,
++                                      fdr_threshold = fdr_threshold,
++                                      tissues_to_keep = c("PBMC", "Bone Marrow"))
++rna_enrichment_plot <- plot_enrichment_heatmap(
++    heatmap_df = rna_heatmap_df,
++    fig_path = rna_enrichment_path,
++    fill_lab = "NES",
++    size_lab = "-log10(q-adj.)",
++    title = "RNA",
++    ylabel = "Enrichment term\n(preranked GSEA, Azimuth 2023)"
++)
+ 
+ ######### Lineage reconstruction using crossprediction ############
+ # plot adapted from: https://gist.github.com/dsparks/4331058
+ 
+-# load adjacency matrix
+-adj_mtx <- data.frame(fread(file.path(crossprediction_adj_mtx_path), header=TRUE), row.names=1)
+-dim(adj_mtx)
+-# head(adj_mtx)
+-
+-# load previous best layout coordinates (TODO)
+-# coordinates <- as.matrix(data.frame(fread(file.path(crossprediction_adj_mtx_path), header=TRUE), row.names=1))
+-# dim(coordinates)
+-# head(coordinates)
+-
+-# make cross prediction graph plot
+-
+-# set colors & shapes
+-nodes <- rownames(adj_mtx)
+-# node_cond <- rep(cond, times = dim(adj_mtx)[1])
+-node_colors <- "#F8766D" #KO_col[nodes]
+-node_shape <- 19 # cond_shapes[node_cond]
+-border_color <- "#000000" #cond_colors[node_cond]
+-stroke_size <- 1.5
+-point_size <- 5
+-
+-# data
+-adjacencyMatrix <- as.matrix(adj_mtx)
+-# parameters
+-curved=FALSE
+-
+-adjacencyMatrix[adjacencyMatrix<cut_off] <- 0
+-
+-# plot graph
+-
+-# Empty ggplot2 theme
+-new_theme_empty <- theme_bw() 
+-new_theme_empty$line <- element_blank()
+-new_theme_empty$rect <- element_blank()
+-new_theme_empty$strip.text <- element_blank()
+-new_theme_empty$axis.text <- element_blank()
+-new_theme_empty$plot.title <- element_blank()
+-new_theme_empty$axis.title <- element_blank()
+-new_theme_empty$plot.margin <- structure(c(0, 0, 0, 0), unit = "lines",
+-                                         valid.unit = 3L, class = "unit")
+-
+-if (exists("coordinates")){
+-    layoutCoordinates <- coordinates
+-} else{
+-    pdf(file = if (.Platform$OS.type == "windows") "NUL" else "/dev/null")  # route to null device (ie trash)
+-    layoutCoordinates <- gplot(adjacencyMatrix, mode="fruchtermanreingold")    # Get graph layout coordinates
+-    dev.off()
+-}
+-
+-
+-adjacencyList <- reshape2::melt(adjacencyMatrix)  # Convert to list of ties only
+-adjacencyList <- adjacencyList[adjacencyList$value >= cut_off, ] # prune weak edges
+-
+-
+-# Function to generate paths between each connected node
+-edgeMaker <- function(whichRow, len = 100, curved = TRUE){
+-    fromC <- layoutCoordinates[adjacencyList[whichRow, 1], ]  # Origin
+-    toC <- layoutCoordinates[adjacencyList[whichRow, 2], ]  # Terminus
+-
+-    # Add curve:
+-    graphCenter <- colMeans(layoutCoordinates)  # Center of the overall graph
+-    bezierMid <- c(fromC[1], toC[2])  # A midpoint, for bended edges
+-    distance1 <- sum((graphCenter - bezierMid)^2)
+-    if(distance1 < sum((graphCenter - c(toC[1], fromC[2]))^2)){
+-    bezierMid <- c(toC[1], fromC[2])
+-    }  # To select the best Bezier midpoint
+-    bezierMid <- (fromC + toC + bezierMid) / 3  # Moderate the Bezier midpoint
+-    if(curved == FALSE){bezierMid <- (fromC + toC) / 2}  # Remove the curve
+-
+-    edge <- data.frame(bezier(c(fromC[1], bezierMid[1], toC[1]),  # Generate
+-                            c(fromC[2], bezierMid[2], toC[2]),  # X & y
+-                            evaluation = len))  # Bezier path coordinates
+-    edge$Sequence <- 1:len  # For size and colour weighting in plot
+-    edge$Group <- paste(adjacencyList[whichRow, 1:2], collapse = ">")
+-
+-    # add a vector 'Probability' that linearly interpolates between the weights of the current edge and its counterpart
+-    x <- c(1,len)
+-    y <- c(adjacencyMatrix[adjacencyList[whichRow,'Var1'],adjacencyList[whichRow,'Var2']],adjacencyMatrix[adjacencyList[whichRow,'Var2'],adjacencyList[whichRow,'Var1']])
+-    edge$Probability <- approx(x,y,xout=1:len)$y
+-
+-  return(edge)
+-}
+-
+-# Generate a (curved) edge path for each pair of connected nodes
+-allEdges <- lapply(1:nrow(adjacencyList), edgeMaker, len = 500, curved = curved)
+-allEdges <- do.call(rbind, allEdges)  # a fine-grained path ^, with bend ^
+-
+-zp1 <- ggplot(allEdges) 
+-zp1 <- zp1 + geom_path(aes(x = x, y = y, group = Group,  # Edges with gradient
+-                           colour = Sequence, size = Probability))  # and taper
+-
+-zp1 <- zp1 + geom_point(data = data.frame(layoutCoordinates),  # Add nodes
+-#                         aes(x = x, y = y),  pch = 21, size = point_size, fill = node_colors, colour = border_color, stroke = stroke_size) # fill & borders are informative
+-                        aes(x = x, y = y), shape=node_shape, size = point_size, color = node_colors)#+scale_shape_manual(name = "condition", labels = names(cond_shapes),values = cond_shapes) # fill and shape are informative
+-
+-# zp1 <- zp1 + geom_text(data = data.frame(layoutCoordinates), aes(x = x, y = y, label=nodes),#rownames(adjacencyMatrix)),
+-#                        hjust=0.5, vjust=-1)
+-
+-zp1 <- zp1 + geom_label(data = data.frame(layoutCoordinates), aes(x = x, y = y, label=nodes), fill=node_colors,#rownames(adjacencyMatrix)),
+-                        hjust=0.5, vjust=-0.5)
+-
+-zp1 <- zp1 + scale_colour_gradient(low = gray(0), high = gray(0), guide = "none") # Customize gradient
+-
+-zp1 <- zp1 + scale_size(range = c(1/10, point_size-1))#, guide = "none")  # Customize taper
+-
+-crosspred_p <- zp1 + 
+-        new_theme_empty + 
+-        #theme(legend.position = c(0.5, 0.5))+ 
+-        guides(size = guide_legend(title='Average\ncross-prediction\nprobability')) # Clean up plot
+-
+-
+-# plot the graph
+-width <- 6
+-height <- 6
+-options(repr.plot.width=width, repr.plot.height=height)
+-
+-# crosspred_p
+-
+-
+-# # save layout coordinates
+-# write.csv(layoutCoordinates, file.path("results/KO150/KO_classifier",cond,'layoutCoordinates.csv'))
+-
+-# save plot
+-ggsave_new(path=crossprediction_plot_path,
+-           plot=crosspred_p,
+-           width=width,
+-           height=height
+-          )
+-
+-
+-######### patchwork of sub figure ############
++crosspred_p <- plot_crossprediction_from_adjacency(
++    adjacency_matrix_path = CorcesRNA_crossprediction_adj_mtx_path,
++    fig_path = rna_crossprediction_path,
++    coordinates_out_path = rna_crossprediction_coordinates_path,
++    lineage_tree_cut_off = lineage_tree_cut_off,
++    hierarchy_coordinates = hierarchy_coordinates,
++    modality_label = "RNA"
++)
+\ No newline at end of file
+diff --git a/workflow/scripts/Papalexi_figures.R b/workflow/scripts/Papalexi_figures.R
+new file mode 100644
+index 0000000..f92bb7b
+--- /dev/null
++++ b/workflow/scripts/Papalexi_figures.R
+@@ -0,0 +1,146 @@
++#### libraries
++# source this for libraries, MrBiomics theme and utility functions
++source(snakemake@params[["figure_theme_path"]])
++source(snakemake@params[["figure_utils_path"]])
++
++#### Inputs
++CORRECTED_umap_coords_path  <- snakemake@input[["CORRECTED_umap_coords"]]
++CORRECTED_metadata_path     <- snakemake@input[["CORRECTED_metadata"]]
++MIXSCAPE_umap_coords_path   <- snakemake@input[["MIXSCAPE_umap_coords"]]
++MIXSCAPE_metadata_path      <- snakemake@input[["MIXSCAPE_metadata"]]
++KO_crossprediction_adj_mtx_path <- snakemake@input[["KO_crossprediction_adj_mtx"]]
++SPI1_TA_results_path   <- snakemake@input[["SPI1_TA_results"]]
++KO_DEA_results_path <- snakemake@input[["KO_DEA_results"]]
++KO_enrichment_results_path_GOBP <- snakemake@input[["KO_enrichment_results_GOBP"]]
++KO_enrichment_results_path_Reactome <- snakemake@input[["KO_enrichment_results_Reactome"]]
++
++#### Outputs
++umap_corrected_fig_path  <- snakemake@output[["umap_corrected_fig"]]
++umap_lda_fig_path        <- snakemake@output[["umap_lda_fig"]]
++crossprediction_fig_path <- snakemake@output[["crossprediction_fig"]]
++spi1_ta_lollipop_fig_path <- snakemake@output[["spi1_ta_lollipop_fig"]]
++ko_DEA_heatmap_fig_path <- snakemake@output[["ko_DEA_heatmap_fig"]]
++ko_enrichment_GOBP_fig_path <- snakemake@output[["ko_enrichment_GOBP_fig"]]
++
++dir.create(dirname(umap_corrected_fig_path), recursive = TRUE, showWarnings = FALSE)
++
++ko_column <- snakemake@params[["ko_column"]]
++phase_column <- snakemake@params[["phase_column"]]
++fdr_threshold <- snakemake@params[["fdr_threshold"]]
++
++umap_corrected_panels_plot <- umap_panels_ko_and_phase_highlights(
++    data_path = CORRECTED_umap_coords_path,
++    metadata_path = CORRECTED_metadata_path,
++    fig_path = umap_corrected_fig_path,
++    ko_column = ko_column,
++    phase_column = phase_column,
++    point_size_all = 0.000001,
++    point_size_highlight = 0.000001,
++)
++
++umap_lda_plot <- umap_plot_with_metadata(
++    data_path = MIXSCAPE_umap_coords_path,
++    metadata_path = MIXSCAPE_metadata_path,
++    fig_path = umap_lda_fig_path,
++    category_col = ko_column,
++    title = "LDA-transformed Mixscape perturbation signatures\nof 11 KOs with phenotype (colored by KO)",
++    min_points_for_label = 1
++)
++
++crosspred_p <- plot_crossprediction_for_kos(
++    adjacency_matrix_path = KO_crossprediction_adj_mtx_path,
++    fig_path = crossprediction_fig_path,
++    cut_off = 0.2,
++    use_hierarchy_layout = FALSE,
++    label = "Functional similarity graph of\nKO phenotypes derived by\ncross-prediction (colored by KO)"
++)
++
++# SPI1 KO enrichment in Corces cell type-specific TA signatures (lollipop)
++spi1_ta_lollipop_plot <- plot_ko_ta_lollipop(
++    results_csv_path = SPI1_TA_results_path,
++    fig_path = spi1_ta_lollipop_fig_path,
++    title = "SPI1 KO signature enrichment in\ntranscriptional abundance gene sets"
++)
++
++# KO logFC heatmap from Mixscape DEA results
++ko_mixscape_heatmap_plot <- plot_ko_logfc_heatmap(
++    dea_results_path = KO_DEA_results_path,
++    fig_path = ko_DEA_heatmap_fig_path,
++    adj.P.Val_col = "p_val_adj",
++    logFC_col = "avg_log2FC",
++    group_renaming_map = NULL,
++    fdr_threshold = 0.05,
++    log2FC_threshold = 1,
++    title = "DEA of knockouts",
++    label_box_size_factor = 0.9,
++    q_mask = 0.025, 
++    n_clusters = 100
++)
++
++
++create_papalexi_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0.05) {
++    # Load enrichment analysis result
++    df <- data.frame(fread(file.path(enrichment_results_path), header=TRUE))
++    df_formatted <- df %>%
++        rename(statistic = FDR_q_val, score = NES)
++    return(df_formatted)
++}
++
++# KO enrichment heatmaps: GOBP and Reactome
++
++# GO Biological Process 2025
++ko_df_formatted_gobp <- create_papalexi_enrichment_df(KO_enrichment_results_path_GOBP, fdr_threshold)
++
++ko_heatmap_df_gobp <- prepare_for_heatmap(
++    df_formatted = ko_df_formatted_gobp,
++    fdr_threshold = fdr_threshold,
++    top_n_per_name = 1,
++    dict_to_sort_by = PAPALEXI_KO_COLORS, 
++    pos_and_neg = TRUE
++)
++
++ko_heatmap_df_gobp %>% filter(grepl("Antigen", Term)) %>% as.data.frame() 
++
++ko_enrichment_plot_gobp <- plot_clustered_enrichment_heatmap(
++    heatmap_df = ko_heatmap_df_gobp,
++    fig_path = ko_enrichment_GOBP_fig_path,
++    fill_lab = "NES",
++    size_lab = "-log10(q-adj.)",
++    title = "",
++    ylabel = "Enrichment term\n(preranked GSEA, GOBP 2025)",
++    xlabel = "Knockout",
++    ct_clst_dist = "euclidean",
++    ct_clst_method = "ward.D2",
++    n_clusters = 4,
++    terms_to_drop = c(  # remove a few that are duplicates in the message they send
++        "Cytoplasmic Translation",
++        "Ribosomal Small Subunit Biogenesis",
++        "Antigen Processing and Presentation of Exogenous Peptide Antigen via MHC Class II",
++        "Antigen Processing and Presentation of Peptide Antigen via MHC Class II",
++        "Regulation of Immune Response"
++    ),
++    mask_tiny_p_values = FALSE
++)
++
++# # Reactome Pathways
++# ko_df_formatted_reactome <- create_papalexi_enrichment_df(KO_enrichment_results_path_Reactome, fdr_threshold)
++# ko_heatmap_df_reactome <- prepare_for_heatmap(
++#     df_formatted = ko_df_formatted_reactome,
++#     fdr_threshold = fdr_threshold,
++#     top_n_per_name = 1,
++#     dict_to_sort_by = PAPALEXI_KO_COLORS,
++#     pos_and_neg = TRUE
++# )
++# ko_enrichment_plot_reactome <- plot_clustered_enrichment_heatmap(
++#     heatmap_df = ko_heatmap_df_reactome,
++#     fig_path = ko_enrichment_Reactome_fig_path,
++#     fill_lab = "NES",
++#     size_lab = "-log10(q-adj.)",
++#     title = "",
++#     ylabel = "Enrichment term\n(preranked GSEA, Reactome)",
++#     xlabel = "Knockout",
++#     ct_clst_dist = "euclidean",
++#     ct_clst_method = "ward.D2", 
++#     n_clusters = 1,
++#     mask_tiny_p_values = FALSE
++# )
+\ No newline at end of file
+diff --git a/workflow/scripts/figure_theme.R b/workflow/scripts/figure_theme.R
+index 0e6a83c..09c0ec2 100644
+--- a/workflow/scripts/figure_theme.R
++++ b/workflow/scripts/figure_theme.R
+@@ -1,22 +1,17 @@
+-
+-
+-########## TODOs
+-# - this is semi-cleaned and adapted. keep what is useful and remove the rest. this is just a starting point
+-# - optimize for downstream Adobe Illustrator/Inkscape usage ideal (e.g., always produce PDF for figures and PNG for slides)
+-# - ideally this can become a plotting template for future papers
+-
+ ### LIBRARIES
+ # select libraries
+ required_libs <- c(
+     "ggplot2",
++    "ggdendro",
++    "dendsort",
+     "tidyr",
+     "tibble",
+     "patchwork",
+     "scales",
+     "dplyr",
+     "reshape2",
+-    "pheatmap",
+     "ggrepel",
++    "ggrastr",
+     "stringr",
+     "gridGraphics",
+     "ggplotify",
+@@ -25,21 +20,34 @@ required_libs <- c(
+     "svglite",
+     "sna",
+     "RColorBrewer",
+-     "Hmisc"
++    "Hmisc",
++    "ggtext"
+ )
+ 
+ set.seed(42)
+ 
+ # load libraries
+ loaded_libs <- lapply(required_libs, function(x) suppressWarnings(suppressMessages(library(x, character.only = TRUE))))
+-options(stringsAsFactors=F)
+-                      
++options(stringsAsFactors=F, ggrastr.default.dpi = 500)
++
++# in cm, for A4 paper
++PAGE_WIDTH <- 19
++PLOT_SIZE_5_PER_ROW <- PAGE_WIDTH/5
++PLOT_SIZE_4_PER_ROW <- PAGE_WIDTH/4
++PLOT_SIZE_3_PER_ROW <- PAGE_WIDTH/3
++PLOT_SIZE_2_PER_ROW <- PAGE_WIDTH/2
++
++# as per Nature and Science guidelines
++FONT <- "Arial"
++FONT_SIZE_NORMAL <- 7
++FONT_SIZE_SMALL <- 5
++
+ # MrBiomics plotting theme (TODO)
+ MrBiomics_theme <- function(){
+     
+     # settings
+-    font <- "Arial"
+-    size <- 6
++    font <- FONT
++    size <- FONT_SIZE_NORMAL
+     
+     theme_bw(
+         base_size=size,
+@@ -47,59 +55,93 @@ MrBiomics_theme <- function(){
+     ) %+replace% 
+     
+     theme(
+-      #grid elements
+-#       panel.grid.major = element_blank(),    #strip major gridlines
+-#       panel.grid.minor = element_blank(),    #strip minor gridlines
+-#       axis.ticks = element_blank(),          #strip axis ticks
+-      
+-#       strips axis lines ?
+-      
+-      #text elements
++        ###  grid elements
++        axis.ticks = element_blank(),          #remove axis ticks
++        ### text elements
+         text = element_text(              
+-                   family = font,           
+-                   size = size),
++                    family = font,           
++                    size = size),
++            
++        plot.title = element_text(             #title
++                    family = font,            #set font family
++                    size = size,                #set font size
++                    face = 'bold',            #bold typeface
++                    hjust = 0,                #center align
++                    vjust = 2),               #raise slightly
+         
+-      plot.title = element_text(             #title
+-                   family = font,            #set font family
+-                   size = size,                #set font size
+-                   face = 'bold',            #bold typeface
+-                   hjust = 0.5,                #center align
+-                   vjust = 2),               #raise slightly
+-      
+-      plot.subtitle = element_text(          #subtitle
+-                   family = font,            #font family
+-                   size = size),               #font size
+-      
+-      plot.caption = element_text(           #caption
+-                   family = font,            #font family
+-                   size = size,                 #font size
+-                   hjust = 0.5),               #center align
+-      
+-      axis.title = element_text(             #axis titles
+-                   family = font,            #font family
+-                   size = size),               #font size
+-      
+-      axis.text = element_text(              #axis text
+-                   family = font,            #axis famuly
+-                   size = size),                #font size
++        plot.subtitle = element_text(          #subtitle
++                    family = font,            #font family
++                    size = size),               #font size
++        
++        plot.caption = element_text(           #caption
++                    family = font,            #font family
++                    size = size,                 #font size
++                    hjust = 0.5),               #center align
+         
++        axis.title = element_text(             #axis titles
++                    family = font,            #font family
++                    size = size),               #font size
++        
++        axis.text = element_text(              #axis text
++                    family = font,            #axis famuly
++                    size = size),                #font size
++            
+         legend.text = element_text(              #axis text
+-                   family = font,            #axis famuly
+-                   size = size), 
++                    family = font,            #axis famuly
++                    size = size), 
+         
+         legend.title = element_text(              #axis text
+-                   family = font,            #axis famuly
+-                   size = size),
++                    family = font,            #axis famuly
++                    size = size),
++        
++        # compact legends globally
++        legend.key.height = grid::unit(0.4, "lines"),
++        legend.key.width  = grid::unit(0.6, "lines"),
++        legend.spacing.y  = grid::unit(0.1, "lines"),
++        legend.spacing    = grid::unit(0.2, "lines"),
++        legend.box.spacing= grid::unit(0.2, "lines")
+       
+ #       axis.text.x = element_text(            #margin for axis text
+ #                     margin=margin(5, b = 10))
+     )
+ }
+ 
++# text in axis is in pt, but geom_text etc use other units --> fix here
++# note: .pt is a conversion factor from mm to pt (setting size.units = "pt" did not work)
++update_geom_defaults("text", list(size = FONT_SIZE_SMALL / .pt, family = FONT, lineheight = 0.6))
++update_geom_defaults("text_repel", list(size = FONT_SIZE_SMALL / .pt, segment.size = 0.2, family = FONT))
++update_geom_defaults("label", list(size = FONT_SIZE_SMALL / .pt, family = FONT))
++update_geom_defaults("label_repel", list(size = FONT_SIZE_SMALL / .pt, segment.size = 0.2, family = FONT))
++
++# same theme as MrBiomics_theme but everything removed except for the title
++MrBiomics_void <- function(){
++    font <- FONT
++    size <- FONT_SIZE_NORMAL
++    
++    theme_void() +
++        theme(
++            plot.title = element_text(hjust = 0, size = size, family = font, face = "bold", vjust = 2),
++            legend.text = element_text(              #axis text
++                        family = font,            #axis famuly
++                        size = size), 
++            
++            legend.title = element_text(              #axis text
++                        family = font,            #axis famuly
++                        size = size),
++            
++            # compact legends globally
++            legend.key.height = grid::unit(0.4, "lines"),
++            legend.key.width  = grid::unit(0.6, "lines"),
++            legend.spacing.y  = grid::unit(0.1, "lines"),
++            legend.spacing    = grid::unit(0.2, "lines"),
++            legend.box.spacing= grid::unit(0.2, "lines")
++        )
++}
++
+ ### FUNCTIONS
+ 
+ # extended ggsave
+-ggsave_new <- function(path, plot, width=5, height=5, dpi=300){
++ggsave_all_formats <- function(path, plot, width=PLOT_SIZE_3_PER_ROW, height=PLOT_SIZE_3_PER_ROW, dpi=300){
+ 
+     # close any lingering devices before opening a new one
+     while (!is.null(dev.list())) dev.off()
+@@ -108,8 +150,13 @@ ggsave_new <- function(path, plot, width=5, height=5, dpi=300){
+     dir_path <- file.path(dirname(path))
+     filename <- sub("\\.[^.]+$", "", basename(path))
+     
++    # ensure directory exists
++    if (!dir.exists(dir_path)) {
++        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
++    }
++    
+     # SVG, PNG & PDF
+-    for (format in c('svg','png','pdf')){
++    for (format in c('svg','pdf','png')){
+         ggsave(
+           paste0(filename,'.',format),
+           plot = plot,
+@@ -120,8 +167,10 @@ ggsave_new <- function(path, plot, width=5, height=5, dpi=300){
+             width = width,
+             height = height,
+           limitsize = FALSE,
++          units = "cm"
+         )
+     }
++    print(paste0("Saved ", file.path(dir_path, paste0(filename,'.',format))))
+ }
+                       
+ remove_term_suffix <- function(db, terms){
+@@ -141,10 +190,136 @@ remove_term_suffix <- function(db, terms){
+ 
+                       
+ ### DEFINITIONS (e.g., shapes, colors,...)
+-                      
++IRONMAN_COLORS <- c(
++    "red"="#AA0505",
++    "darkred"="#6A0C0B",
++    "gold"="#B97D10",
++    "yellow"="#FBCA03",
++    "lightblue"="#67C7EB"
++)
++
+ ## CorcesRNA & CorcesATAC
++# blue green violet: https://coolors.co/0e536c-3b8dac-51aacc-67c7eb-977cba-c73188-7fc493-96c03a-86ac35-566e21
++# red yellow orange: https://coolors.co/e95e30-ca321b-aa0505-b97d10-daa40a-fbca03-e1de3d-96c03a
++
+ # cell type colors
+-celltype_colors <- c('HSC'='#707070')
++CELL_TYPE_COLORS <- c(
++    'HSC'='#566E21',
++    'MPP'='#96C03A',
++    'LMPP'='#7FC493',
++    'CMP'='#E1DE3D',
++    'GMP'='#FBCA03',
++    'Mono'='#B97D10',
++    'CLP'='#67C7EB',
++    'CD4'='#3B8DAC',
++    'CD8'='#0E536C',
++    'B'='#977CBA',
++    'NK'='#C73188',
++    'MEP'='#E95E30',
++    'Ery'='#AA0505'
++)
++
++# Map from data names to CELL_TYPE_COLORS names
++DATA_TO_CELL_TYPE_COLORS_MAPPING <- c(
++    "Bcell" = "B",
++    "CD4Tcell" = "CD4", 
++    "CD8Tcell" = "CD8",
++    "CLP" = "CLP",
++    "CMP" = "CMP",
++    "Ery" = "Ery",
++    "GMP" = "GMP",
++    "HSC" = "HSC",
++    "LMPP" = "LMPP",
++    "MEP" = "MEP",
++    "MPP" = "MPP",
++    "Mono" = "Mono",
++    "NKcell" = "NK"
++)
++
++CELL_TYPE_TO_LINEAGE_MAPPING <- c(
++    "HSC" = "Progenitor",
++    "MPP" = "Progenitor",
++    "LMPP" = "Progenitor",
++    "CMP" = "Progenitor",
++    "GMP" = "Myeloid",
++    "Mono" = "Myeloid",
++    "MEP" = "Erythroid",
++    "Ery" = "Erythroid",
++    "CLP" = "Lymphoid",
++    "CD4" = "Lymphoid",
++    "CD8" = "Lymphoid",
++    "NK" = "Lymphoid",
++    "B" = "Lymphoid"
++)
++
++LINEAGE_COLORS <- c(
++    "Progenitor" = "#86AC35",
++    "Myeloid" = "#DAA40A",
++    "Erythroid" = "#CA321B",
++    "Lymphoid" = "#51AACC"
++)
++
++CELL_TYPE_AND_LINEAGE_COLORS <- c(CELL_TYPE_COLORS, LINEAGE_COLORS)
++
++HAEMATOPOIESIS_MARKERS <- c(
++    "CD34",
++    "CD38",
++    "THY1",
++    "KIT",
++    "FLT3",
++    "IL3RA",
++    "PTPRC",
++    "CSF1R",
++    "IL7R",
++    "MME",
++    "CD19",
++    "MS4A1",
++    "CD3E",
++    "CD4",
++    "CD8A",
++    "CD8B",
++    "NCAM1",
++    "FCGR3A",
++    "CD14",
++    "HLA-DRA",
++    "GYPA",
++    "TFRC"
++)
++
++children_list <- list(
++    HSC = c("MPP"),
++    MPP = c("LMPP", "CMP"),
++    LMPP = c("CLP", "GMP"),
++    CMP = c("GMP", "MEP"),
++    GMP = c("Mono"),
++    MEP = c("Ery"),
++    CLP = c("CD4", "CD8", "NK", "B")
++)
++
++# picked from colorpalette RdBu from ggplot2
++RdBu_extremes <- c(
++    "up" = "#B6242F",  # red
++    "down" = "#2569AD"  # blue
++)
++
++# Papalexi 2021 scCRISPR knockout color scheme (built from metadata)
++# This fixed palette is generated once at load-time based on the measured KOs
++# defined in the Papalexi CORRECTED metadata file.
++PAPALEXI_KO_LIST = c(
++    "SPI1", "CUL3", "IRF1", "MYC", "STAT1", "STAT2", "BRD4", "IFNGR1", "IFNGR2", "JAK2", "SMAD4", 
++    "ATF2", "CAV1", "CD86", "CMTM6",  "ETV7", "IRF7", "MARCH8",
++    "NFKBIA", "PDCD1LG2", "POU2F2", "STAT3", "STAT5A", "TNFRSF14", "UBE2L6"
++)  # don't include NT, this should be grey
++
++PAPALEXI_KO_COLORS <- c(
++    RColorBrewer::brewer.pal(8, "Set1"),
++    RColorBrewer::brewer.pal(7, "Dark2"),
++    RColorBrewer::brewer.pal(12, "Set3"),
++    RColorBrewer::brewer.pal(8, "Set2")
++)
++PAPALEXI_KO_COLORS <- PAPALEXI_KO_COLORS[1:length(PAPALEXI_KO_COLORS)]
++PAPALEXI_KO_COLORS <- c('grey80', PAPALEXI_KO_COLORS)
++names(PAPALEXI_KO_COLORS) <- c('NT', PAPALEXI_KO_LIST)
+ 
+-# cell type shapes
+-celltype_shapes <- c('HSC' = 16)
++CELL_CYCLE_COLORS <- viridis::plasma(3, end = 0.8)
++names(CELL_CYCLE_COLORS) <- c("G1", "S", "G2M")
+\ No newline at end of file
+diff --git a/workflow/scripts/figure_utils.R b/workflow/scripts/figure_utils.R
+new file mode 100644
+index 0000000..979fb72
+--- /dev/null
++++ b/workflow/scripts/figure_utils.R
+@@ -0,0 +1,1746 @@
++########################################################################################################################
++#### UMAP plotting #####################################################################################################
++########################################################################################################################
++umap_plot <- function(data_path, fig_path, title = NULL, modality_by_shape = FALSE) {
++    # Load UMAP data
++    umap_data <- data.frame(fread(file.path(data_path), header=TRUE))
++    
++    # Parse sample names to extract cell type
++    umap_data$cell_type <- sapply(strsplit(umap_data$sample_name, "_"), function(x) x[1])
++    
++    # Translate cell type names to match CELL_TYPE_COLORS
++    umap_data$cell_type_colored <- DATA_TO_CELL_TYPE_COLORS_MAPPING[umap_data$cell_type]
++    
++    # Order cell types according to CELL_TYPE_COLORS
++    umap_data$cell_type_colored <- factor(umap_data$cell_type_colored, 
++                                         levels = names(CELL_TYPE_COLORS))
++
++    if (modality_by_shape) {
++        umap_data$modality <- sapply(strsplit(umap_data$sample_name, "_"), function(x) x[3])
++        umap_plot <- ggplot(umap_data, aes(x = UMAP_1, y = UMAP_2, color = cell_type_colored, shape = modality)) +
++            scale_shape_manual(values = c("ATAC" = 17, "RNA" = 16), name = NULL)
++    } else {
++        umap_plot <- ggplot(umap_data, aes(x = UMAP_1, y = UMAP_2, color = cell_type_colored))
++    }
++
++    umap_plot <- umap_plot +
++        geom_point(size = 2, alpha = 0.8) +
++        scale_color_manual(values = CELL_TYPE_COLORS, name = "Cell type") +
++        labs(x = "UMAP 1", y = "UMAP 2", title = title) +
++        MrBiomics_theme() +
++        theme(
++            legend.position = "right",
++            panel.grid.minor = element_blank(),
++            panel.grid.major = element_blank(),
++            axis.text.x = element_blank(),
++            axis.text.y = element_blank(),
++            aspect.ratio = 1
++        )
++    
++    # Save plot
++    ggsave_all_formats(path = fig_path,
++                       plot = umap_plot,
++                       width = PLOT_SIZE_3_PER_ROW+1,
++                       height = PLOT_SIZE_3_PER_ROW)
++    
++    return(umap_plot)
++}
++
++# UMAP with metadata join and direct labeling for categorical variable
++umap_plot_with_metadata <- function(data_path, metadata_path, fig_path, category_col, title = NULL, guide=FALSE,
++                                    color_map = NULL, label_points = TRUE, min_points_for_label = 1) {
++    umap_data <- data.frame(fread(file.path(data_path), header = TRUE))
++    metadata_df <- data.frame(fread(file.path(metadata_path), header = TRUE, check.names = FALSE))
++
++    # join by sample_name = first column in metadata
++    row_id_col <- colnames(metadata_df)[1]
++    colnames(metadata_df)[1] <- "sample_name"
++    df <- umap_data %>% left_join(metadata_df, by = "sample_name")
++
++    stopifnot(category_col %in% colnames(df))
++    df[[category_col]] <- as.character(df[[category_col]])
++
++    # Determine color mapping; default to global Papalexi KO colors
++    if (is.null(color_map)) {
++        if (exists("PAPALEXI_KO_COLORS") && length(PAPALEXI_KO_COLORS) > 0) {
++            color_map <- PAPALEXI_KO_COLORS
++        } else {
++            stop("PAPALEXI_KO_COLORS not defined; please define in figure_theme.R or pass color_map")
++        }
++    }
++
++    # Fix factor levels to include the full mapping so nothing is dropped
++    df[[category_col]] <- factor(df[[category_col]], levels = names(color_map))
++
++    p <- ggplot(df, aes(x = UMAP_1, y = UMAP_2, color = .data[[category_col]])) +
++        rasterise(geom_point(size = 0.01, alpha = 0.7, shape=16)) +
++        labs(x = "UMAP 1", y = "UMAP 2", title = title) +
++        scale_color_manual(values = color_map, name = NULL) +
++        MrBiomics_theme() +
++        theme(
++            legend.position = if (guide) "right" else "none",
++            panel.grid.minor = element_blank(),
++            panel.grid.major = element_blank(),
++            axis.text.x = element_blank(),
++            axis.text.y = element_blank(),
++            aspect.ratio = 1
++        )
++
++    if (label_points) {
++        centers <- df %>%
++            group_by(.data[[category_col]]) %>%
++            summarise(
++                n = n(),
++                UMAP_1 = median(UMAP_1, na.rm = TRUE),
++                UMAP_2 = median(UMAP_2, na.rm = TRUE),
++                .groups = "drop"
++            ) %>%
++            filter(n >= min_points_for_label)
++        p <- p + ggrepel::geom_label_repel(
++            data = centers,
++            aes(x = UMAP_1, y = UMAP_2, label = .data[[category_col]], fill = .data[[category_col]]),
++            inherit.aes = FALSE,
++            label.size = 0.2,
++            label.padding = grid::unit(0.1, "lines"),
++            min.segment.length = 0,
++            seed = 42,
++            max.overlaps = Inf,
++            show.legend = FALSE
++        )
++        p <- p + scale_fill_manual(values = color_map, guide = "none")
++    }
++
++    ggsave_all_formats(path = fig_path,
++                       plot = p,
++                       width = PLOT_SIZE_3_PER_ROW + 1,
++                       height = PLOT_SIZE_3_PER_ROW)
++
++    return(p)
++}
++
++
++# 2x2 panel: KO-colored UMAP + three panels highlighting each cell-cycle phase
++umap_panels_ko_and_phase_highlights <- function(data_path,
++                                               metadata_path,
++                                               fig_path,
++                                               ko_column,
++                                               phase_column,
++                                               supertitle = "scCRISPR-seq of 25 gene knockouts (KO)",
++                                               point_size_all = 0.01,
++                                               point_size_highlight = 0.01,
++                                               background_grey = "grey85",
++                                               highlight_color = NULL) {
++
++    # Load data
++    umap_data <- data.frame(fread(file.path(data_path), header = TRUE))
++    metadata_df <- data.frame(fread(file.path(metadata_path), header = TRUE, check.names = FALSE))
++
++    # Join
++    row_id_col <- colnames(metadata_df)[1]
++    colnames(metadata_df)[1] <- "sample_name"
++    df <- umap_data %>% left_join(metadata_df, by = "sample_name")
++
++    stopifnot(ko_column %in% colnames(df))
++    stopifnot(phase_column %in% colnames(df))
++
++    # KO color map
++    stopifnot(exists("PAPALEXI_KO_COLORS"))
++    ko_colors <- PAPALEXI_KO_COLORS
++    df[[ko_column]] <- factor(as.character(df[[ko_column]]), levels = names(ko_colors))
++
++    # Highlight color for phases (prefer CELL_CYCLE_COLORS per phase; fallback to RdBu_extremes['up'])
++    default_highlight <- tryCatch({ as.character(RdBu_extremes["up"]) }, error = function(e) "#B6242F")
++    if (is.null(highlight_color)) highlight_color <- default_highlight
++
++    # Common theme for tiny panels
++    panel_theme <- MrBiomics_theme() +
++        theme(
++            legend.position = "none",
++            panel.grid.minor = element_blank(),
++            panel.grid.major = element_blank(),
++            axis.text.x = element_blank(),
++            axis.text.y = element_blank(),
++            axis.title.x = element_blank(),
++            axis.title.y = element_blank(),
++            aspect.ratio = 1
++        )
++
++    # Panel 1: KO colored (subtitle; supertitle applied on the combined plot)
++    p_ko <- ggplot(df, aes(x = UMAP_1, y = UMAP_2, color = .data[[ko_column]])) +
++        rasterise(geom_point(size = point_size_all, alpha = 0.7, shape = 16)) +
++        scale_color_manual(values = ko_colors, name = NULL) +
++        labs(subtitle = 'Knockout') +
++        panel_theme
++
++    # Phase panels: one per level in CELL_CYCLE_COLORS order if present, else unique values
++    phase_levels <- intersect(c("G1", "S", "G2M"), unique(as.character(df[[phase_column]])))
++    if (length(phase_levels) == 0) phase_levels <- unique(as.character(df[[phase_column]]))
++    phase_levels <- phase_levels[seq_len(min(3, length(phase_levels)))]
++
++    build_phase_panel <- function(phase_name) {
++        df_phase <- df[df[[phase_column]] == phase_name, , drop = FALSE]
++        # pick color per phase if available; otherwise fallback to highlight_color
++        phase_col <- tryCatch({
++            if (exists("CELL_CYCLE_COLORS") && phase_name %in% names(CELL_CYCLE_COLORS)) {
++                as.character(CELL_CYCLE_COLORS[phase_name])
++            } else if (exists("CELL_CYCLE_COLORS") && length(CELL_CYCLE_COLORS) >= 3 && phase_name %in% c("G1","S","G2M")) {
++                # ensure named vector; fallback indexing if names missing
++                as.character(CELL_CYCLE_COLORS[match(phase_name, c("G1","S","G2M"))])
++            } else {
++                highlight_color
++            }
++        }, error = function(e) highlight_color)
++        ggplot(df, aes(x = UMAP_1, y = UMAP_2)) +
++            rasterise(geom_point(color = background_grey, size = point_size_all, alpha = 0.5, shape = 16)) +
++            rasterise(geom_point(data = df_phase, color = phase_col, size = point_size_highlight, alpha = 0.5, shape = 16)) +
++            labs(subtitle = phase_name) +
++            panel_theme
++    }
++
++    panels <- lapply(phase_levels, build_phase_panel)
++    # If fewer than 3 phases available, fill with spacers to keep 2x2 grid
++    while (length(panels) < 3) {
++        panels[[length(panels) + 1]] <- plot_spacer()
++    }
++
++    # Layout 2x2: [KO | Phase1]
++    #              [Phase2 | Phase3]
++    gp <- wrap_plots(list(p_ko, panels[[1]], panels[[2]], panels[[3]]), ncol = 2) +
++        plot_annotation(title = supertitle) &
++        theme(
++            plot.margin = margin(0, 0, 0, 0),
++            plot.title = element_text(hjust = 0, size = FONT_SIZE_NORMAL, family = FONT, face = "bold"),
++            plot.subtitle = element_text(hjust = 0, size = FONT_SIZE_NORMAL, family = FONT, face = "plain")
++        )
++
++    # Save with suffix appended to fig_path base name
++    ggsave_all_formats(path = fig_path,
++                       plot = gp,
++                       width = PLOT_SIZE_3_PER_ROW + 1,
++                       height = PLOT_SIZE_3_PER_ROW)
++
++    return(gp)
++}
++
++
++########################################################################################################################
++#### DEA HEATMAP #######################################################################################################
++########################################################################################################################
++get_top_differential_features <- function(dea_results_path, fdr_threshold, log2FC_threshold,
++                                          adj.P.Val_col = NULL, logFC_col = NULL,
++                                          group_renaming_map = DATA_TO_CELL_TYPE_COLORS_MAPPING) {
++    # read data
++    dea_df <- data.frame(fread(file.path(dea_results_path), header=TRUE))
++
++    # rename columns to expected, nicer names
++    if (!is.null(adj.P.Val_col)) {
++        dea_df <- dea_df %>%
++            rename(adj.P.Val = all_of(adj.P.Val_col))
++    }
++    if (!is.null(logFC_col)) {
++        dea_df <- dea_df %>%
++            rename(logFC = all_of(logFC_col))
++    }
++
++    # get the features that are significant and have a logFC above the threshold
++    significant_features <- dea_df %>%
++        filter(adj.P.Val < fdr_threshold, abs(logFC) > log2FC_threshold) %>%
++        pull(feature) %>%
++        unique()
++    
++    # filter the original df for these features
++    dea_top_features_df <- dea_df %>%
++        filter(feature %in% significant_features)
++    
++    # rename groups to nicer names
++    if (!is.null(group_renaming_map)) {
++        dea_top_features_df <- dea_top_features_df %>%
++            mutate(group = group_renaming_map[group])
++    }
++
++    return(dea_top_features_df)
++}
++
++# Handcrafted non-overlapping label placement
++# heatmap_rows: character vector of all row levels in heatmap order (same as factor levels in heatmap_df[[feature_col]])
++# selected_features: character vector of features to label
++# box_size: minimal vertical separation between labels (in row-index units)
++compute_nonoverlapping_label_positions <- function(heatmap_rows, selected_features, box_size = 1) {
++	# Number of rows in heatmap
++	n_rows <- length(heatmap_rows)
++	if (length(selected_features) == 0) {
++		return(data.frame(feature = character(0), orig_y = numeric(0), label_y = numeric(0)))
++	}
++
++	# Convert to top-down index (top row = 1)
++	levels_top_to_bottom <- rev(heatmap_rows)
++	orig_idx <- match(selected_features, levels_top_to_bottom)
++
++	# Remove any NA (features not found in heatmap levels)
++	valid <- !is.na(orig_idx)
++	selected_features <- selected_features[valid]
++	orig_idx <- orig_idx[valid]
++
++	# Define safe plotting bounds to avoid touching the frame
++	lower_bound <- 1
++	upper_bound <- n_rows - box_size/2
++	if (upper_bound < lower_bound) {
++		# Degenerate case: too large margin relative to number of rows
++		lower_bound <- 1
++		upper_bound <- n_rows
++	}
++
++	if (length(orig_idx) <= 1) {
++		pos_single <- pmin(pmax(orig_idx, lower_bound), upper_bound)
++		return(data.frame(feature = selected_features, orig_y = orig_idx, label_y = pos_single))
++	}
++
++	# Sort by original position (top to bottom)
++	ord <- order(orig_idx)
++	orig_sorted <- orig_idx[ord]
++	feat_sorted <- selected_features[ord]
++
++	# Initialize label positions with originals
++	pos <- as.numeric(orig_sorted)
++
++	# Forward pass (top -> bottom): enforce minimal spacing
++	for (i in seq(2, length(pos))) {
++		pos[i] <- max(pos[i], pos[i - 1] + box_size)
++	}
++	# Clamp to safe bottom boundary
++	pos <- pmin(pos, upper_bound)
++
++	# Backward pass (bottom -> top): pull up if needed while keeping spacing
++	if (length(pos) >= 2) {
++		for (i in seq(length(pos) - 1, 1)) {
++			pos[i] <- min(pos[i], pos[i + 1] - box_size)
++		}
++	}
++
++	# Enforce safe boundaries
++	pos <- pmax(lower_bound, pmin(upper_bound, pos))
++
++	# If original is at or beyond top safe bound, anchor there and push others
++	if (orig_sorted[1] <= lower_bound) {
++		pos[1] <- lower_bound
++		if (length(pos) >= 2) {
++			for (i in seq(2, length(pos))) {
++				pos[i] <- max(pos[i], pos[i - 1] + box_size)
++			}
++			pos <- pmin(pos, upper_bound)
++		}
++	}
++	# If original is at or beyond bottom safe bound, anchor there and pull others
++	if (orig_sorted[length(orig_sorted)] >= upper_bound) {
++		pos[length(pos)] <- upper_bound
++		if (length(pos) >= 2) {
++			for (i in seq(length(pos) - 1, 1)) {
++				pos[i] <- min(pos[i], pos[i + 1] - box_size)
++			}
++			pos <- pmax(lower_bound, pos)
++		}
++	}
++
++	# Return in original selected_features order
++	result_sorted <- data.frame(feature = feat_sorted, orig_y = orig_sorted, label_y = pos, stringsAsFactors = FALSE)
++	# Reorder back to the original selected_features order
++	reord <- match(selected_features, result_sorted$feature)
++	result <- result_sorted[reord, , drop = FALSE]
++
++	return(result)
++}
++
++compute_diagonal_cluster_order <- function(mat,
++                                           row_clst_dist = "euclidean",
++                                           row_clst_method = "ward.D2",
++                                           col_clst_dist = "euclidean",
++                                           col_clst_method = "ward.D2",
++                                           focus = 'positive',
++                                           n_clusters = 25) {
++
++    if (focus == 'negative') {
++        mat <- -mat
++    }
++    
++    # Row clustering (features)
++    row_hclust <- hclust(dist(mat, method = row_clst_dist), method = row_clst_method)
++    row_dendro <- dendsort(as.dendrogram(row_hclust))
++    row_order <- order.dendrogram(row_dendro)
++
++    # Column clustering (cell types)
++    col_hclust <- hclust(dist(t(mat), method = col_clst_dist), method = col_clst_method)
++    col_dendro <- dendsort(as.dendrogram(col_hclust))
++    col_order <- order.dendrogram(col_dendro)
++
++    # Derive diagonal-friendly row order by clustering rows, assigning each cluster to
++    # the column with the highest mean, then grouping clusters by column order
++    rownames_in_hclust_order <- rownames(mat)[row_order]
++    k_effective <- max(1, min(n_clusters, nrow(mat)))
++    cluster_assignments <- cutree(row_hclust, k = k_effective)
++    cluster_ids <- sort(unique(cluster_assignments))
++    column_names_in_order <- colnames(mat)[col_order]
++
++    cluster_summary <- lapply(cluster_ids, function(cl_id) {
++        rows_in_cluster <- names(cluster_assignments)[cluster_assignments == cl_id]
++        col_means <- colMeans(mat[rows_in_cluster, , drop = FALSE])
++        best_col <- names(which.max(col_means))
++        first_pos <- min(match(rows_in_cluster, rownames_in_hclust_order), na.rm = TRUE)
++        list(
++            cluster_id = cl_id,
++            rows = rows_in_cluster,
++            best_column = best_col,
++            best_column_rank = match(best_col, column_names_in_order),
++            first_pos = first_pos
++        )
++    })
++
++    cluster_order_idx <- order(
++        vapply(cluster_summary, function(x) x$best_column_rank, numeric(1)),
++        vapply(cluster_summary, function(x) x$first_pos, numeric(1))
++    )
++    cluster_summary <- cluster_summary[cluster_order_idx]
++
++    final_row_order <- unlist(lapply(cluster_summary, function(cs) {
++        rows <- cs$rows
++        rows[order(match(rows, rownames_in_hclust_order))]
++    }), use.names = FALSE)
++
++    return(list(
++        row_order = final_row_order,
++        col_order = column_names_in_order,
++        col_dendro = col_dendro
++    ))
++}
++
++build_column_annotations <- function(col_order, col_dendro, title = NULL) {
++    annotation_df <- data.frame(group = col_order)
++    annotation_df$group <- factor(annotation_df$group, levels = col_order)
++    annotation_df$lineage <- CELL_TYPE_TO_LINEAGE_MAPPING[as.character(annotation_df$group)]
++
++    cell_type_plot <- ggplot(annotation_df, aes(x = group, y = 1, fill = group)) +
++        geom_tile(color = 'white', linewidth = 0.5) +
++        scale_fill_manual(values = CELL_TYPE_COLORS, name = "Cell type", guide = "none") +
++        scale_x_discrete(expand = expansion(add = 0.6)) +
++        scale_y_continuous(expand = c(0, 0)) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(axis.title.y = element_blank(), plot.margin = margin(t = -12, r = 0, b = -8, l = 0, unit = "pt"))
++
++    lineage_plot <- ggplot(annotation_df, aes(x = group, y = 1, fill = lineage)) +
++        geom_tile(color = 'white', linewidth = 0.5) +
++        scale_fill_manual(
++            values = LINEAGE_COLORS,
++            name = "Lineage",
++            guide = guide_legend(ncol = 1, keyheight = grid::unit(0.4, "lines"), keywidth = grid::unit(0.6, "lines"))
++        ) +
++        scale_x_discrete(expand = expansion(add = 0.6)) +
++        scale_y_continuous(expand = c(0, 0)) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(axis.title.y = element_blank(), plot.margin = margin(t = -10, r = 0, b = 0, l = 0, unit = "pt"))
++
++    cell_type_label_plot <- ggplot() +
++        annotate("text", x = 1, y = 0.5, label = "Cell type", hjust = 1, vjust = 0.5) +
++        xlim(0, 1) + ylim(0, 1) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(plot.margin = margin(t = -12, r = 0, b = -8, l = 4, unit = "pt"))
++
++    lineage_label_plot <- ggplot() +
++        annotate("text", x = 1, y = 0.5, label = "Lineage", hjust = 1, vjust = 0.5) +
++        xlim(0, 1) + ylim(0, 1) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(plot.margin = margin(t = -10, r = 0, b = 0, l = 4, unit = "pt"))
++
++    n_cols <- length(col_order)
++    dendro_data_obj <- dendro_data(col_dendro, type = "rectangle")
++    dendro_plot <- ggdendrogram(dendro_data_obj, labels = FALSE) +
++        scale_x_continuous(limits = c(0.5, n_cols + 0.5), expand = c(0, 0)) +
++        scale_y_continuous(expand = c(0, 0)) +
++        labs(title = title) +
++        MrBiomics_void() +
++        theme(plot.margin = margin(t = 0, r = 0, b = -14, l = 0, unit = "pt"))
++
++    return(list(
++        cell_type_plot = cell_type_plot,
++        lineage_plot = lineage_plot,
++        cell_type_label_plot = cell_type_label_plot,
++        lineage_label_plot = lineage_label_plot,
++        dendro_plot = dendro_plot
++    ))
++}
++
++plot_differential_features_heatmap <- function(dea_results_path, fig_path, fdr_threshold, log2FC_threshold, title = NULL, 
++                                               feature, ct_clst_method, ct_clst_dist, feature_clst_method,
++                                               feature_clst_dist, q_mask=0, label_box_size_factor = 1, n_clusters = 25,
++                                               max_marker_labels = 30, test_marker_annot = FALSE) {
++    if (feature == 'Genes') {
++        feature_col <- 'feature_name'
++        y_label <- 'Differentially expressed genes'
++    } else if (feature == 'Regions') {
++        feature_col <- 'feature'
++        y_label <- 'Differentially accessible regions\n(mapped to closest gene)'
++    }
++    
++    # Get data for both up and down regulated features
++    heatmap_df <- get_top_differential_features(dea_results_path, fdr_threshold, log2FC_threshold)
++
++    if (test_marker_annot) {
++        stopifnot(feature == 'Regions')
++        # add some made up regions that have very high or low logFC for all cell types
++        cell_types <- unique(heatmap_df$group)
++        new_regions <- data.frame(
++            feature = rep(paste0("test_region", 1:2), each = length(cell_types)),  # regions different names
++            feature_name = rep("test_region", length(cell_types)),  # all map to the same gene to test duplicates
++            logFC = c(rep(20, length(cell_types)), rep(-20, length(cell_types))),
++            group = cell_types
++        )
++        # Add NA values for any missing columns when binding the dataframes
++        new_regions[setdiff(names(heatmap_df), names(new_regions))] <- NA
++        heatmap_df <- rbind(heatmap_df, new_regions)
++
++        # add to HAEMATOPOIESIS_MARKERS
++        HAEMATOPOIESIS_MARKERS <- c(HAEMATOPOIESIS_MARKERS, "test_region")
++
++    }
++
++    # For Regions, avoid adding display suffixes; instead, use a simple unique key for pivoting
++    # based on the (feature, feature_name) pair so that duplicate regions remain duplicated rows.
++    if (feature == 'Regions') {
++        heatmap_df <- heatmap_df %>%
++            mutate(feature_id = paste0(feature, "||", feature_name))
++        feature_col_to_plot <- 'feature_id'
++    } else {
++        feature_col_to_plot <- feature_col
++    }
++
++    # use hclust and dendsort to order rows and columns
++    mat <- heatmap_df %>%
++        select(group, all_of(feature_col_to_plot), logFC) %>%
++        pivot_wider(names_from = group, values_from = logFC, values_fill = 0) %>%
++        column_to_rownames(feature_col_to_plot) %>%
++        as.matrix()
++
++    ord <- compute_diagonal_cluster_order(
++        mat,
++        row_clst_dist = feature_clst_dist,
++        row_clst_method = feature_clst_method,
++        col_clst_dist = ct_clst_dist,
++        col_clst_method = ct_clst_method,
++        n_clusters = n_clusters
++    )
++
++    feature_vector <- heatmap_df[[feature_col_to_plot]]
++    heatmap_df[[feature_col_to_plot]] <- factor(feature_vector, levels = rev(ord$row_order))
++    heatmap_df$group <- factor(heatmap_df$group, levels = ord$col_order)
++    
++    # Annotation bars and dendrogram for cell type and lineage
++    ann_plots <- build_column_annotations(ord$col_order, ord$col_dendro, title = title)
++
++    # Quantile masking to remove outliers from color scale of heatmap
++    if(q_mask > 0) {
++        upper_limit <- quantile(heatmap_df$logFC, probs = 1 - q_mask, na.rm=TRUE)
++        lower_limit <- quantile(heatmap_df$logFC, probs = q_mask, na.rm=TRUE)
++        heatmap_df$logFC <- ifelse(heatmap_df$logFC < lower_limit, lower_limit, heatmap_df$logFC)
++        heatmap_df$logFC <- ifelse(heatmap_df$logFC > upper_limit, upper_limit, heatmap_df$logFC)
++    }
++
++    plot_limits <- c(-1, 1) * max(abs(heatmap_df$logFC), na.rm=TRUE)
++
++    dendro_plot <- ann_plots$dendro_plot
++
++    heatmap_plot <- ggplot(heatmap_df, aes_string(x = "group", y = feature_col_to_plot, fill = "logFC")) +
++        rasterise(geom_tile(linewidth = 0)) +
++        scale_fill_distiller(
++            palette = "RdBu",
++            limits = plot_limits,
++            guide = guide_colorbar(direction = "vertical"),  # , barheight = grid::unit(2, "cm"), barwidth = grid::unit(0.25, "cm")
++            name = "log2(FC)"
++        ) +
++        scale_x_discrete(expand = c(0, 0)) +
++        scale_y_discrete(expand = c(0, 0)) +
++        labs(x = 'Cell type') +
++        MrBiomics_theme() +
++        theme(
++            axis.text.y = element_blank(),
++            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
++            axis.title.x = element_blank(),
++            axis.title.y = element_blank(),
++            axis.ticks.y = element_blank(),
++            plot.margin = margin(t = -14, r = 0, b = -8, l = 0, unit = "pt")
++        )
++
++    # Prepare data for marker labels
++    if (feature == 'Regions') {
++        # Select region rows whose mapped gene is a known marker; keep duplicates
++        marker_labels_df <- heatmap_df %>%
++            filter(feature_name %in% HAEMATOPOIESIS_MARKERS)
++        label_text_map <- setNames(marker_labels_df$feature_name, marker_labels_df[[feature_col_to_plot]])
++    } else {
++        marker_labels_df <- heatmap_df %>%
++            filter(as.character(.data[[feature_col_to_plot]]) %in% HAEMATOPOIESIS_MARKERS) %>%
++            distinct(.data[[feature_col_to_plot]], .keep_all = TRUE)
++        # For genes, label text is the gene itself
++        label_text_map <- setNames(as.character(marker_labels_df[[feature_col_to_plot]]), as.character(marker_labels_df[[feature_col_to_plot]]))
++    }
++
++    # Create a separate plot for the marker labels using handcrafted layout
++    if (nrow(marker_labels_df) > 0) {
++        all_features <- levels(heatmap_df[[feature_col_to_plot]])
++        selected_features <- as.character(marker_labels_df[[feature_col_to_plot]])
++
++        # If there are more candidate markers than allowed, choose top significant markers per cell type
++        if (length(selected_features) > max_marker_labels) {
++            # backup original candidates in case filtering removes all
++            marker_labels_df_backup <- marker_labels_df
++            label_text_map_backup <- label_text_map
++
++            num_cell_types <- length(levels(heatmap_df$group))
++            n_markers_per_ct <- floor(max_marker_labels / max(1, num_cell_types))
++            if (n_markers_per_ct < 1) n_markers_per_ct <- 1
++
++            selected_features_new <- c()
++            marker_labels_no_dupl <- marker_labels_df
++            for (ct in levels(heatmap_df$group)) {
++                ct_df <- marker_labels_no_dupl %>%
++                    filter(group == ct)
++                if (nrow(ct_df) > n_markers_per_ct) {
++                    ct_df <- ct_df %>%
++                        slice_min(order_by = abs(logFC), n = n_markers_per_ct)
++                }
++                selected_features_new <- c(selected_features_new, as.character(ct_df[[feature_col_to_plot]]))
++                # drop already used markers to avoid duplicates between cell types
++                marker_labels_no_dupl <- marker_labels_no_dupl %>%
++                    filter(!.data[[feature_col_to_plot]] %in% ct_df[[feature_col_to_plot]])
++            }
++            selected_features <- selected_features_new
++        }
++
++
++        # adapt based on number of features in the heatmap and how many markers there can be at max
++        label_box_size <- nrow(mat) / max_marker_labels * label_box_size_factor
++        
++        pos_df <- compute_nonoverlapping_label_positions(
++            heatmap_rows = all_features,
++            selected_features = selected_features,
++            box_size = label_box_size
++        )
++
++        n_rows <- length(all_features)
++        # Precompute plotting-space y coordinates (bottom = 1, top = n_rows)
++        pos_df$label_y_plot <- n_rows + 1 - pos_df$label_y
++        pos_df$orig_y_plot  <- n_rows + 1 - pos_df$orig_y
++        # Attach label text (gene symbols for regions, feature itself for genes)
++        pos_df$label <- as.character(label_text_map[pos_df$feature])
++
++        marker_label_plot <- ggplot(pos_df) +
++            # Connect calculated label positions to original row positions
++            geom_segment(aes(x = 0.85, xend = 1.0, y = label_y_plot, yend = orig_y_plot),
++                         size = 0.25, color = "grey40") +
++            # Draw labels
++            geom_text(aes(x = 0.8, y = label_y_plot, label = label), hjust = 1) +
++            # Fixed limits matching number of rows; flush to edges
++            scale_y_continuous(limits = c(0.5, n_rows + 0.5), expand = c(0, 0)) +
++            scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
++            labs(y = y_label) +
++            MrBiomics_theme() +
++            theme(
++                # remove all grid and ticks and box and everything except the y-axis label
++                panel.grid.major = element_blank(),
++                panel.grid.minor = element_blank(),
++                axis.ticks = element_blank(),
++                axis.text = element_blank(),
++                axis.title.x = element_blank(),
++                axis.title.y = element_text(margin = margin(l = 10)),
++                panel.border = element_blank(),
++                # make transparent so that other plots are not cut off
++                panel.background = element_rect(fill = "transparent", color = NA),
++                plot.background = element_rect(fill = "transparent", color = NA)
++            ) +
++            coord_cartesian(clip = "off") +
++            # margin only on the left so that the labels are not cut off
++            theme(plot.margin = margin(0, 0, 0, 10))
++    } else {
++        marker_label_plot <- plot_spacer()
++    }
++    
++    # Assemble the final plot using patchwork's wrap_plots for robust layout
++    plot_list <- list(
++        plot_spacer(),          dendro_plot,
++        ann_plots$cell_type_label_plot,   ann_plots$cell_type_plot,
++        ann_plots$lineage_label_plot,     ann_plots$lineage_plot,
++        marker_label_plot,      heatmap_plot
++    )
++    gp <- wrap_plots(plot_list, ncol = 2,
++                     widths = c(1.2, 3),
++                     heights = c(0.6, 0.35, 0.35, 10)) +
++        plot_layout(guides = "collect") +
++        plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0))) &
++        theme(
++            legend.position = "right",
++            legend.box = "vertical",
++            plot.margin = margin(0, 0, 0, 0),
++            panel.spacing = grid::unit(0, "pt")
++        )
++
++    ggsave_all_formats(path = fig_path,
++                       plot = gp,
++                       width = PLOT_SIZE_3_PER_ROW,
++                       height = PLOT_SIZE_3_PER_ROW, 
++                       dpi = 1000)
++    
++    return(heatmap_plot)
++}
++
++########################################################################################################################
++#### KO logFC heatmap (Papalexi) ########################################################################################
++########################################################################################################################
++build_ko_annotations <- function(col_order, col_dendro, title = NULL) {
++    # One-row color bar for KOs according to PAPALEXI_KO_COLORS
++    annotation_df <- data.frame(KO = col_order)
++    annotation_df$KO <- factor(annotation_df$KO, levels = col_order)
++
++    if (!exists("PAPALEXI_KO_COLORS")) stop("PAPALEXI_KO_COLORS not defined")
++    ko_colors <- PAPALEXI_KO_COLORS
++    # Ensure all KOs have colors; fallback to grey if missing
++    ko_colors_full <- setNames(rep("grey80", length(col_order)), col_order)
++    common <- intersect(names(ko_colors), col_order)
++    ko_colors_full[common] <- ko_colors[common]
++
++    ko_plot <- ggplot(annotation_df, aes(x = KO, y = 1, fill = KO)) +
++        geom_tile(color = 'white', linewidth = 0.5) +
++        scale_fill_manual(values = ko_colors_full, name = NULL, guide = "none") +
++        scale_x_discrete(expand = expansion(add = 0.6)) +
++        scale_y_continuous(expand = c(0, 0)) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(axis.title.y = element_blank(), plot.margin = margin(t = -10, r = 0, b = 0, l = 0, unit = "pt"))
++
++    ko_label_plot <- ggplot() +
++        annotate("text", x = 1, y = 0.5, label = "Knockout", hjust = 1, vjust = 0.5) +
++        xlim(0, 1) + ylim(0, 1) +
++        MrBiomics_void() +
++        coord_cartesian(clip = "off") +
++        theme(plot.margin = margin(t = -10, r = 0, b = 0, l = 4, unit = "pt"))
++
++    n_cols <- length(col_order)
++    dendro_data_obj <- dendro_data(col_dendro, type = "rectangle")
++    dendro_plot <- ggdendrogram(dendro_data_obj, labels = FALSE) +
++        scale_x_continuous(limits = c(0.5, n_cols + 0.5), expand = c(0, 0)) +
++        scale_y_continuous(expand = c(0, 0)) +
++        labs(title = title) +
++        MrBiomics_void() +
++        theme(plot.margin = margin(t = 0, r = 0, b = -14, l = 0, unit = "pt"))
++
++    return(list(
++        ko_label_plot = ko_label_plot,
++        ko_plot = ko_plot,
++        dendro_plot = dendro_plot
++    ))
++}
++
++plot_ko_logfc_heatmap <- function(dea_results_path,
++                                  fig_path,
++                                  fdr_threshold = 0.05,
++                                  log2FC_threshold = 1,
++                                  title = NULL,
++                                  n_clusters = 25,
++                                  q_mask = 0,
++                                  adj.P.Val_col = NULL,
++                                  label_box_size_factor = 1,
++                                  logFC_col = NULL,
++                                  group_renaming_map = NULL) {
++    heatmap_df <- get_top_differential_features(
++        dea_results_path = dea_results_path,
++        fdr_threshold = fdr_threshold,
++        log2FC_threshold = log2FC_threshold,
++        adj.P.Val_col = adj.P.Val_col,
++        logFC_col = logFC_col,
++        group_renaming_map = group_renaming_map
++    )
++
++    mat <- heatmap_df %>%
++        select(group, feature, logFC) %>%
++        pivot_wider(names_from = group, values_from = logFC, values_fill = 0) %>%
++        column_to_rownames("feature") %>%
++        as.matrix()
++
++    # Compute diagonal-friendly cluster order
++    ord <- compute_diagonal_cluster_order(
++        mat,
++        row_clst_dist = "euclidean",
++        row_clst_method = "ward.D2",
++        col_clst_dist = "euclidean",
++        col_clst_method = "ward.D2",
++        n_clusters = n_clusters, 
++        focus='negative'
++    )
++
++    feature_vector <- heatmap_df[["feature"]]
++    heatmap_df[["feature"]] <- factor(feature_vector, levels = rev(ord$row_order))
++    heatmap_df$group <- factor(heatmap_df$group, levels = ord$col_order)
++
++    # Top KO color annotations + dendrogram
++    ann_plots <- build_ko_annotations(ord$col_order, ord$col_dendro, title = title)
++
++    # Quantile masking to reduce effect of outliers (similar to ATAC heatmap)
++    if (q_mask > 0) {
++        upper_limit <- stats::quantile(heatmap_df$logFC, probs = 1 - q_mask, na.rm = TRUE)
++        lower_limit <- stats::quantile(heatmap_df$logFC, probs = q_mask, na.rm = TRUE)
++        heatmap_df$logFC <- ifelse(heatmap_df$logFC < lower_limit, lower_limit, heatmap_df$logFC)
++        heatmap_df$logFC <- ifelse(heatmap_df$logFC > upper_limit, upper_limit, heatmap_df$logFC)
++    }
++
++    # Color scale limits based on masked data
++    plot_limits <- c(-1, 1) * max(abs(heatmap_df$logFC), na.rm = TRUE)
++
++    # Core heatmap (group on x, feature on y)
++    heatmap_plot <- ggplot(heatmap_df, aes(x = group, y = feature, fill = logFC)) +
++        rasterise(geom_tile(linewidth = 0)) +
++        scale_fill_distiller(
++            palette = "RdBu",
++            limits = plot_limits,
++            guide = guide_colorbar(direction = "vertical"),
++            name = "log2(FC)"
++        ) +
++        scale_x_discrete(expand = c(0, 0)) +
++        scale_y_discrete(expand = c(0, 0)) +
++        MrBiomics_theme() +
++        theme(
++            axis.text.y = element_blank(),
++            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
++            axis.title.x = element_blank(),
++            axis.title.y = element_blank(),
++            axis.ticks.y = element_blank(),
++            plot.margin = margin(t = -14, r = 0, b = -8, l = 0, unit = "pt")
++        )
++
++    # Marker labels: choose one feature per group (highest and lowest logFC among significant per group)
++    selected_features <- heatmap_df %>%
++        dplyr::group_by(group) %>%
++        dplyr::slice_max(order_by = logFC, n = 1, with_ties = FALSE) %>%
++        dplyr::ungroup() %>%
++        pull(feature)
++    
++    # KO seem to lead to more downregulation than up, so more markers to show
++    selected_features <- c(selected_features, heatmap_df %>%
++        dplyr::group_by(group) %>%
++        dplyr::slice_min(order_by = logFC, n = 2, with_ties = FALSE) %>%
++        dplyr::ungroup() %>%
++        pull(feature))
++
++    selected_features <- unique(as.character(selected_features))
++
++    # Left-side labels using handcrafted layout
++    all_features <- levels(heatmap_df$feature)
++    label_box_size <- max(1, floor(length(all_features) / max(length(selected_features), 1))) * label_box_size_factor
++    pos_df <- compute_nonoverlapping_label_positions(
++        heatmap_rows = all_features,
++        selected_features = selected_features,
++        box_size = label_box_size
++    )
++    
++    n_rows <- length(all_features)
++    pos_df$label_y_plot <- n_rows + 1 - pos_df$label_y
++    pos_df$orig_y_plot  <- n_rows + 1 - pos_df$orig_y
++    pos_df$label <- pos_df$feature
++
++    marker_label_plot <- ggplot(pos_df) +
++        geom_segment(aes(x = 0.85, xend = 1.0, y = label_y_plot, yend = orig_y_plot), size = 0.25, color = "grey40") +
++        geom_text(aes(x = 0.8, y = label_y_plot, label = label), hjust = 1) +
++        scale_y_continuous(limits = c(0.5, n_rows + 0.5), expand = c(0, 0)) +
++        scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
++        labs(y = "Differential features") +
++        MrBiomics_theme() +
++        theme(
++            panel.grid.major = element_blank(),
++            panel.grid.minor = element_blank(),
++            axis.ticks = element_blank(),
++            axis.text = element_blank(),
++            axis.title.x = element_blank(),
++            axis.title.y = element_text(margin = margin(l = 10)),
++            panel.border = element_blank(),
++            panel.background = element_rect(fill = "transparent", color = NA),
++            plot.background = element_rect(fill = "transparent", color = NA)
++        ) +
++        coord_cartesian(clip = "off") +
++        theme(plot.margin = margin(0, 0, 0, 10))
++
++    # Assemble
++    plot_list <- list(
++        plot_spacer(),              ann_plots$dendro_plot,
++        ann_plots$ko_label_plot,    ann_plots$ko_plot,
++        plot_spacer(),              plot_spacer(),
++        marker_label_plot,          heatmap_plot
++    )
++
++    gp <- wrap_plots(plot_list, ncol = 2,
++                     widths = c(1.2, 3),
++                     heights = c(0.6, 0.35, 0.001, 10)) +
++        plot_layout(guides = "collect") +
++        plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0))) &
++        theme(
++            legend.position = "right",
++            legend.box = "vertical",
++            plot.margin = margin(0, 0, 0, 0),
++            panel.spacing = grid::unit(0, "pt")
++        )
++
++    ggsave_all_formats(path = fig_path,
++                       plot = gp,
++                       width = PLOT_SIZE_3_PER_ROW,
++                       height = PLOT_SIZE_3_PER_ROW,
++                       dpi = 1000)
++
++    return(gp)
++}
++
++########################################################################################################################
++#### ENRICHMENT HEATMAP #################################################################################################
++########################################################################################################################
++split_long_label_at_middle <- function(labels, threshold = 30, longer_first_margin = 5) {
++    vapply(labels, function(s) {
++        s <- as.character(s)
++        if (is.na(s)) return(NA_character_)
++        total_len <- nchar(s, type = "chars")
++        if (total_len <= threshold) return(s)
++        half <- ceiling(total_len / 2)
++        # Candidate breakpoints: spaces (break replaces the space) and hyphens (break after the dash)
++        spaces <- gregexpr(" ", s, fixed = TRUE)[[1]]
++        hyphens <- gregexpr("-", s, fixed = TRUE)[[1]]
++        if (length(spaces) == 1 && spaces[1] == -1) spaces <- integer(0)
++        if (length(hyphens) == 1 && hyphens[0 + 1] == -1) hyphens <- integer(0)
++        spaces <- spaces[spaces > 1 & spaces < total_len]
++        hyphens <- hyphens[hyphens > 1 & hyphens < total_len]
++        if (length(spaces) == 0 && length(hyphens) == 0) return(s)
++        positions <- c(spaces, hyphens)
++        is_hyphen <- c(rep(FALSE, length(spaces)), rep(TRUE, length(hyphens)))
++        if (length(positions) == 0) return(s)
++        # Compute left/right lengths based on breakpoint type
++        left_lens <- ifelse(is_hyphen, positions, positions - 1)
++        right_lens <- total_len - positions
++        # Enforce margin: line 1 can be up to `longer_first_margin` shorter than line 2
++        ok_mask <- left_lens >= (right_lens - longer_first_margin)
++        eligible_positions <- positions[ok_mask]
++        eligible_is_hyphen <- is_hyphen[ok_mask]
++        if (length(eligible_positions) == 0) {
++            eligible_positions <- positions
++            eligible_is_hyphen <- is_hyphen
++        }
++        sel <- which.min(abs(eligible_positions - half))
++        idx <- eligible_positions[sel]
++        hy <- eligible_is_hyphen[sel]
++        if (hy) {
++            paste0(substr(s, 1, idx), "\n", substr(s, idx + 1, total_len))
++        } else {
++            paste0(substr(s, 1, idx - 1), "\n", substr(s, idx + 1, total_len))
++        }
++    }, character(1))
++}
++
++filter_top_terms <- function(df, fdr_threshold, tissues_to_keep = NULL, top_n_per_name = 2, pos_and_neg = FALSE,
++                             dict_to_sort_by = CELL_TYPE_COLORS) {
++    df_sig <- df %>%
++      filter(statistic < fdr_threshold) 
++
++    if (!is.null(tissues_to_keep)) {
++        df_sig <- df_sig %>%
++            filter(grepl(paste(tissues_to_keep, collapse = "|"), Term))
++    }
++
++    # find top terms for each column, but set this up to make them unique (not all the same top term)
++    top_term_strings <- c()
++    top_hits <- data.frame()
++    for (current_name in unique(df_sig$name)) {
++        # Identify top term(s) for each cell type
++        current_top_hits <- df_sig %>%
++            filter(name == current_name) %>%
++            filter(!Term %in% top_term_strings) %>%
++            group_by(name) %>%
++            slice_max(order_by = score, n = top_n_per_name, with_ties = FALSE) %>%
++            ungroup()
++
++        if (pos_and_neg) {
++            neg_hits <- df_sig %>%
++                filter(name == current_name) %>%
++                filter(!Term %in% top_term_strings) %>%
++                group_by(name) %>%
++                slice_max(order_by = -score, n = top_n_per_name, with_ties = FALSE) %>%
++                ungroup()
++            current_top_hits <- rbind(current_top_hits, neg_hits)
++        }
++
++        # Get the list of top terms
++        new_top_term_strings <- current_top_hits %>%
++            pull(Term) %>%
++            unique()
++
++        top_term_strings <- c(top_term_strings, new_top_term_strings)
++        top_hits <- rbind(top_hits, current_top_hits)
++    }
++
++    # Create a mapping from term to the cell type for which it's a top hit
++    term_to_top_name_map <- top_hits %>%
++      select(Term, top_for_name = name)
++
++    # Filter original dataframe for top terms and add the 'top_for_name' info
++    df_top <- df %>%
++      filter(Term %in% top_term_strings)
++
++    # make the terms a factor that is ordered by the order of the matching cell types in CELL_TYPE_COLORS
++    term_to_top_name_map$top_for_name <- factor(term_to_top_name_map$top_for_name, levels = names(dict_to_sort_by))
++    term_to_top_name_map <- term_to_top_name_map %>% arrange(top_for_name)
++    df_top$Term <- factor(df_top$Term, levels = unique(term_to_top_name_map$Term))
++    
++    return(df_top)
++}
++
++prepare_for_heatmap <- function(df_formatted, fdr_threshold, tissues_to_keep = NULL, top_n_per_name = 2,
++                                dict_to_sort_by = CELL_TYPE_COLORS, pos_and_neg = FALSE) {
++    df_top <- filter_top_terms(df = df_formatted, fdr_threshold = fdr_threshold, tissues_to_keep = tissues_to_keep,
++                               top_n_per_name = top_n_per_name, pos_and_neg = pos_and_neg, 
++                               dict_to_sort_by = dict_to_sort_by)
++
++    mat_df <- df_top %>%
++      select(name, Term, score) %>%
++      pivot_wider(names_from = name, values_from = score, values_fill = 0)
++
++    mat <- mat_df %>% column_to_rownames("Term") %>% as.matrix()
++
++    # Shorten term names for plot readability
++    original_term_levels <- levels(df_top$Term)
++    short_term_levels <- original_term_levels
++
++    # Abbreviate tissue and remove level information
++    short_term_levels <- gsub("Bone Marrow", "BM", short_term_levels)
++    # short_term_levels <- gsub("-L[1-9]-", "-", short_term_levels)
++
++    # Define and apply cell type abbreviations
++    cell_type_replacements <- c(
++        "Hematopoeitic Stem Cell" = "HSC",
++        "Lymphoid Primed Multipotent Progenitor" = "LMPP",
++        "Hematopoietic Stem And Progenitor Cell" = "HSPC",
++        "Basophil Eosinophil Mast Progenitor" = "BEMP",
++        "Early Erythroid" = "Pro Ery",
++        "Common Lymphoid Progenitor" = "CLP",
++        "Granulocyte Monocyte Progenitor" = "GMP",
++        "Erythroid Cell" = "Ery",
++        "CD14 Monocyte" = "Mono",
++        "Intermediate B Cell, Kappa Light Chain" = "Int B κ+",
++        "CD8 Memory" = "CD8 mem",
++        "Mucosal Associated Invariant T" = "MAIT",
++        "Intermediate B Cell" = "Int B",
++        "CD56-dim Natural Killer" = "CD56dim NK",
++        "Natural Killer" = "NK",
++        "Monocyte" = "Mono",
++        "CD4 T" = "CD4",
++        "Naive B" = "Naive B",
++        "B" = "B",
++        "Progenitor B" = "Pro B",
++        "Naive B Cell, Kappa Light Chain" = "Naive B κ+",
++        "Precursor Plasmacytoid Dendritic Cell" = "pDC",
++        "Conventional Dendritic Cell 1" = "cDC1",
++        "Transitional B" = "Transitional B",
++        "Platelet" = "Platelet",
++        "gamma-delta T 2" = "Vδ2 T cell",
++        "CD16 Monocyte" = "CD16 Mono",
++        "Innate Lymphoid Cell" = "ILC",
++        "Hematopoeitic Stem And Progenitor Cell" = "HSPC",
++        "Erythroid Megakaryocyte Progenitor" = "MEP"
++    )
++    
++    # Sort by length to avoid partial matches on shorter strings
++    cell_type_replacements <- cell_type_replacements[order(nchar(names(cell_type_replacements)), decreasing = TRUE)]
++    for (i in seq_along(cell_type_replacements)) {
++        short_term_levels <- gsub(names(cell_type_replacements)[i], cell_type_replacements[i], short_term_levels)
++    }
++
++    # for the GOBP terms, shorten the names by removing the text in the brackets at the end (incl the brackets)
++    short_term_levels <- gsub("\\s*\\(.*\\)", "", short_term_levels)
++
++    # Split long labels into two lines at the space nearest the middle
++    short_term_levels <- split_long_label_at_middle(short_term_levels)
++
++    # Create a named vector for applying the new names
++    term_map <- setNames(short_term_levels, original_term_levels)
++
++    heatmap_df <- mat_df %>%
++      pivot_longer(-Term, names_to = "name", values_to = "score") %>%
++      left_join(df_formatted %>% select(name, Term, statistic), by = c("name", "Term")) %>%
++      mutate(
++        Term = factor(term_map[Term], levels = rev(unique(short_term_levels))),
++        name = factor(name, levels = intersect(names(dict_to_sort_by), unique(name))),
++        sig = (statistic < fdr_threshold) & (!is.na(statistic)) & (!is.infinite(statistic)),
++        neg_log10_statistic = ifelse(is.infinite(-log10(statistic)),
++                                     max(
++                                      -log10(statistic[!is.infinite(-log10(statistic)) & !is.na(statistic)]),
++                                      na.rm = TRUE
++                                      )*1.1,
++                                     -log10(statistic))
++      )
++
++    return(heatmap_df)
++}
++
++plot_enrichment_heatmap <- function(heatmap_df, fig_path, fill_lab, size_lab, title = NULL,
++                                    ylabel = NULL, width = NULL) {
++    # mask those values where the log statistic is tiny with NaN, to drop them in the heatmap
++    heatmap_df$neg_log10_statistic <- ifelse(heatmap_df$neg_log10_statistic < 1, NaN, heatmap_df$neg_log10_statistic)
++    lim <- c(-1, 1) * max(abs(heatmap_df$score), na.rm = TRUE)
++
++    enrichment_plot <- ggplot(heatmap_df, aes(x = name, y = Term, size=neg_log10_statistic, fill = score)) +
++      geom_point(shape=21, stroke=0.25) +
++      # add star for significance (overlay centered star points)
++      geom_point(
++        data = subset(heatmap_df, sig),
++        aes(x = name, y = Term),
++        inherit.aes = FALSE,
++        shape = 8,
++        size = 0.5,
++        alpha = 0.8,
++        stroke = 0.25,
++        color = "white",
++        show.legend = FALSE
++      ) +
++      scale_fill_distiller(
++        palette = "RdBu",
++        limits = lim,
++        name = fill_lab,
++        guide = guide_colorbar(direction = "vertical")
++      ) +
++      scale_size_continuous(name = size_lab, range = c(0.5, 3)) +
++    #   guides(size = guide_legend(keyheight = grid::unit(0.4, "lines"), keywidth = grid::unit(0.6, "lines"))) +
++      labs(title = title, x = "Cell type", y = ylabel) +
++      # ensure square tiles
++      coord_fixed() +
++      MrBiomics_theme() + 
++      theme(
++        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
++        axis.text.y = element_text(size = FONT_SIZE_SMALL),
++      )
++
++    if (is.null(width)) {
++        width <- PLOT_SIZE_3_PER_ROW + 2
++    }
++
++    # Save plot
++    ggsave_all_formats(path = fig_path,
++                       plot = enrichment_plot,
++                       width = width,
++                       height = PLOT_SIZE_3_PER_ROW)
++    
++    return(enrichment_plot)
++}
++
++plot_clustered_enrichment_heatmap <- function(heatmap_df,
++                                              fig_path,
++                                              fill_lab,
++                                              size_lab,
++                                              title = NULL,
++                                              xlabel = "Cell type",
++                                              ylabel = NULL,
++                                              ct_clst_dist = "euclidean",
++                                              ct_clst_method = "ward.D2",
++                                              term_clst_dist = "euclidean",
++                                              term_clst_method = "ward.D2",
++                                              n_clusters = 25,
++                                              mask_tiny_p_values = TRUE,
++                                              terms_to_drop = NULL,
++                                              width = NULL) {
++
++    # drop the term 'Nonsense Mediated Decay', since it's a duplicate due to type with 'Nonsense-Mediated Decay'
++    # and has exactly the same enrichment score and stats
++    heatmap_df <- heatmap_df %>%
++        filter(Term != "Nonsense Mediated Decay")
++
++    if (!is.null(terms_to_drop)) {
++        heatmap_df <- heatmap_df %>%
++            filter(!Term %in% split_long_label_at_middle(terms_to_drop))
++    }
++    
++    # Build term-by-celltype matrix of enrichment scores for clustering
++    mat_df <- heatmap_df %>%
++        select(name, Term, score) %>%
++        tidyr::pivot_wider(names_from = name, values_from = score, values_fill = 0)
++    mat <- mat_df %>% column_to_rownames("Term") %>% as.matrix()
++
++    ord <- compute_diagonal_cluster_order(
++        mat,
++        row_clst_dist = term_clst_dist,
++        row_clst_method = term_clst_method,
++        col_clst_dist = ct_clst_dist,
++        col_clst_method = ct_clst_method,
++        n_clusters = n_clusters
++    )
++
++    # Apply orders
++    heatmap_df$Term <- factor(as.character(heatmap_df$Term), levels = rev(ord$row_order))
++    heatmap_df$name <- factor(as.character(heatmap_df$name), levels = ord$col_order)
++
++    # Mask tiny p-values from size scale
++    if (mask_tiny_p_values) {
++        heatmap_df$neg_log10_statistic <- ifelse(heatmap_df$neg_log10_statistic < 1, NaN, heatmap_df$neg_log10_statistic)
++    }
++
++    # Color scale limits based on scores
++    lim <- c(-1, 1) * max(abs(heatmap_df$score), na.rm = TRUE)
++
++    # Bubble heatmap with significance stars (y-axis labels moved to separate plot)
++    bubble <- ggplot(heatmap_df, aes(x = name, y = Term, size = neg_log10_statistic, fill = score)) +
++        geom_point(shape = 21, stroke = 0.25) +
++        # add asterisks for significance (overlay centered star points)
++        geom_point(
++            data = subset(heatmap_df, sig),
++            aes(x = name, y = Term),
++            inherit.aes = FALSE,
++            shape = 8,
++            size = 0.5,
++            alpha = 0.8,
++            stroke = 0.25,
++            color = "white",
++            show.legend = FALSE
++        ) +
++        scale_fill_distiller(
++            palette = "RdBu",
++            limits = lim,
++            name = fill_lab,
++            guide = guide_colorbar(direction = "vertical")
++        ) +
++        scale_size_continuous(name = size_lab, range = c(0.5, 2.3)) +
++        scale_x_discrete(expand = expansion(add = 0.6)) +
++        scale_y_discrete(expand = expansion(add = 0.6)) +
++        labs(title = NULL, x = xlabel, y = NULL) +
++        coord_cartesian(clip = "off") +
++        MrBiomics_theme() +
++        theme(
++            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
++            axis.text.y = element_blank(),
++            axis.title.y = element_blank(),
++            plot.margin = margin(t = -18, r = 4, b = -8, l = 4, unit = "pt")
++        )
++
++    # Top annotations + dendrogram
++    if (xlabel == "Cell type") {
++        ann_plots <- build_column_annotations(ord$col_order, ord$col_dendro, title = title)
++    } else if (xlabel == "Knockout") {
++        ann_plots <- build_ko_annotations(ord$col_order, ord$col_dendro, title = title)
++    } else {
++        stop("Invalid xlabel")
++    }
++
++    # Left-side term labels (y-axis moved out of bubble plot)
++    term_levels <- levels(heatmap_df$Term)
++    if (is.null(term_levels)) {
++        term_levels <- rev(ord$row_order)
++    }
++    n_rows <- length(term_levels)
++    term_labels_df <- data.frame(Term = term_levels, y = seq_len(n_rows))
++    term_label_plot <- ggplot(term_labels_df, aes(y = y)) +
++        geom_text(aes(x = 0.98, label = Term), hjust = 1) +
++        scale_y_continuous(limits = c(0.5, n_rows + 0.5), expand = c(0, 0)) +
++        scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
++        labs(y = ylabel) +
++        MrBiomics_theme() +
++        theme(
++            panel.grid.major = element_blank(),
++            panel.grid.minor = element_blank(),
++            axis.ticks = element_blank(),
++            axis.text.x = element_blank(),
++            axis.title.x = element_blank(),
++            axis.text.y = element_blank(),
++            axis.title.y = element_text(margin = margin(l = 20)),
++            panel.border = element_blank(),
++            panel.background = element_rect(fill = "transparent", color = NA),
++            plot.background = element_rect(fill = "transparent", color = NA),
++            plot.margin = margin(0, 0, 0, 20)
++        ) +
++        coord_cartesian(clip = "off")
++
++    # Assemble 
++    if (xlabel == "Cell type") {
++        plot_list <- list(
++            plot_spacer(),              ann_plots$dendro_plot,
++            ann_plots$cell_type_label_plot, ann_plots$cell_type_plot,
++            ann_plots$lineage_label_plot,   ann_plots$lineage_plot,
++            term_label_plot,            bubble
++        )
++
++        gp <- wrap_plots(plot_list, ncol = 2,
++                        widths = c(1.5, 1),
++                        heights = c(0.6, 0.35, 0.35, 10))
++    } else if (xlabel == "Knockout") {
++        plot_list <- list(
++            plot_spacer(),              ann_plots$dendro_plot,
++            ann_plots$ko_label_plot,    ann_plots$ko_plot,
++            term_label_plot,            bubble
++        )
++
++        gp <- wrap_plots(plot_list, ncol = 2,
++                        widths = c(1.5, 1),
++                        heights = c(0.6, 0.35, 10))
++    } else {
++        stop("Invalid xlabel")
++    }
++
++    gp <- gp + 
++        plot_layout(guides = "collect") +
++        plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0))) &
++        theme(legend.position = "right", legend.box = "vertical", plot.margin = margin(0, 0, 0, 0),
++               panel.spacing = grid::unit(0, "pt"), legend.margin = margin(l = -10))
++
++    if (is.null(width)) {
++        width <- PLOT_SIZE_3_PER_ROW + 2
++    }
++
++    ggsave_all_formats(path = fig_path,
++                       plot = gp,
++                       width = width,
++                       height = PLOT_SIZE_3_PER_ROW)
++
++    return(gp)
++}
++
++########################################################################################################################
++#### Lineage reconstruction via crossprediction #######################################################################
++########################################################################################################################
++# Generate hierarchical layout coordinates based on a predefined tree
++generate_hierarchy_layout_coordinates <- function(nodes, children_list, root_node,
++                                                 spacing_between_layers , jitter_step) {
++    nodes_in_current_layer <- c(root_node)
++    y <- 0
++    x <- 0
++    coordinates <- list()
++    coordinates[[root_node]] <- c(x, y)
++
++    while (length(nodes_in_current_layer) > 0) {
++        y <- y - spacing_between_layers
++        children_in_next_layer <- c()
++
++        for (current_node in nodes_in_current_layer) {
++            if (current_node %in% names(children_list)) {
++                children <- children_list[[current_node]]
++                children_in_next_layer <- c(children_in_next_layer, children)
++            }
++        }
++
++        children_in_next_layer <- unique(children_in_next_layer)
++
++        if (length(children_in_next_layer) > 0) {
++            x_positions <- 1:length(children_in_next_layer) - 1
++            x_positions <- x_positions - ((length(children_in_next_layer) - 1) / 2)
++            x_positions <- x_positions * (spacing_between_layers / (length(children_in_next_layer)))
++            for (i in seq_along(children_in_next_layer)) {
++                y <- y + jitter_step
++                jitter_step <- jitter_step * -1
++                coordinates[[children_in_next_layer[i]]] <- c(x_positions[i], y)
++            }
++        }
++
++        nodes_in_current_layer <- children_in_next_layer
++    }
++
++    layoutCoordinates <- do.call(rbind, coordinates)
++    layoutCoordinates <- layoutCoordinates[nodes, , drop = FALSE]
++    rownames(layoutCoordinates) <- NULL
++    colnames(layoutCoordinates) <- c("x", "y")
++    return(layoutCoordinates)
++}
++
++# Helper: safely recode names using a named mapping; keep originals if no match
++safe_recode_names <- function(x, mapping) {
++    if (is.null(mapping) || length(mapping) == 0) return(x)
++    out <- as.character(x)
++    matched <- out %in% names(mapping)
++    if (!any(matched)) return(out)
++    out[matched] <- mapping[out[matched]]
++    return(out)
++}
++
++# Build and save the crossprediction plot from an adjacency matrix CSV
++plot_crossprediction_from_adjacency <- function(adjacency_matrix_path,
++                                               fig_path,
++                                               coordinates_out_path,
++                                               modality_label,
++                                               lineage_tree_cut_off = 0.05,
++                                               hierarchy_coordinates = TRUE,
++                                               root_node = "HSC",
++                                               spacing_between_layers = 5,
++                                               jitter_step = 1.5,
++                                               outcome_title = "Compared to\nliterature",
++                                               node_shape = 19,
++                                               point_size = 8,
++                                               tp_name = "Consistent",
++                                               fp_name = "Additional",
++                                               fn_name = "Missing",
++                                               node_colors = NULL,
++                                               compare_to_literature = TRUE) {
++
++
++
++    # Load adjacency matrix and harmonize labels (only recode when mapping matches)
++    adj_mtx <- data.frame(fread(file.path(adjacency_matrix_path), header = TRUE), row.names = 1)
++    rownames(adj_mtx) <- safe_recode_names(rownames(adj_mtx), DATA_TO_CELL_TYPE_COLORS_MAPPING)
++    colnames(adj_mtx) <- safe_recode_names(colnames(adj_mtx), DATA_TO_CELL_TYPE_COLORS_MAPPING)
++
++    adjacencyMatrix <- as.matrix(adj_mtx)
++    adjacencyMatrix[adjacencyMatrix < lineage_tree_cut_off] <- 0
++
++    nodes <- rownames(adj_mtx)
++    # Determine node colors if not provided: prefer CELL_TYPE_COLORS; fallback to KO colors when available
++    if (is.null(node_colors)) {
++        if (all(nodes %in% names(CELL_TYPE_COLORS))) {
++            node_colors <- CELL_TYPE_COLORS[nodes]
++        } else if (exists("PAPALEXI_KO_COLORS") && length(PAPALEXI_KO_COLORS) > 0 && all(nodes %in% names(PAPALEXI_KO_COLORS))) {
++            node_colors <- PAPALEXI_KO_COLORS[nodes]
++        } else {
++            node_colors <- rep("grey50", length(nodes))
++            names(node_colors) <- nodes
++        }
++    } else {
++        # If provided as a named vector, align to node order
++        if (!is.null(names(node_colors))) node_colors <- node_colors[nodes]
++    }
++
++    # Create layout coordinates
++    if (hierarchy_coordinates) {
++        layoutCoordinates <- generate_hierarchy_layout_coordinates(
++            nodes = nodes,
++            children_list = children_list,
++            root_node = root_node,
++            spacing_between_layers = spacing_between_layers,
++            jitter_step = jitter_step
++        )
++    } else {
++        # Use Fruchterman-Reingold layout
++        if (.Platform$OS.type == "windows") {
++            pdf(file = "NUL")
++        } else {
++            pdf(file = "/dev/null")
++        }
++        layoutCoordinates <- gplot(adjacencyMatrix, mode = "fruchtermanreingold")
++        dev.off()
++    }
++
++    # Prepare adjacency list of predicted ties and (optionally) ground truth edges
++    adjacencyList <- reshape2::melt(adjacencyMatrix)
++    adjacencyList <- adjacencyList[adjacencyList$value >= lineage_tree_cut_off, , drop = FALSE]
++
++    if (compare_to_literature) {
++        # Build symmetric ground-truth adjacency from lineage tree
++        ground_truth_adj_mat <- matrix(0, nrow = length(nodes), ncol = length(nodes))
++        rownames(ground_truth_adj_mat) <- nodes
++        colnames(ground_truth_adj_mat) <- nodes
++        for (parent in names(children_list)) {
++            children <- children_list[[parent]]
++            children <- intersect(children, nodes)
++            if (length(children) > 0 && parent %in% nodes) {
++                ground_truth_adj_mat[parent, children] <- 1
++                ground_truth_adj_mat[children, parent] <- 1
++            }
++        }
++
++        # Capture full set of undirected ground-truth edges before subtracting predicted edges
++        ground_truth_pairs_all <- ground_truth_adj_mat %>%
++            reshape2::melt() %>%
++            dplyr::filter(value == 1) %>%
++            dplyr::mutate(
++                a = pmin(as.character(Var1), as.character(Var2)),
++                b = pmax(as.character(Var1), as.character(Var2))
++            ) %>%
++            dplyr::select(a, b) %>%
++            dplyr::distinct()
++        gt_keys <- paste(ground_truth_pairs_all$a, ground_truth_pairs_all$b, sep = ">")
++
++        # Remove ground-truth edges that are predicted
++        if (nrow(adjacencyList) > 0) {
++            for (i in seq_len(nrow(adjacencyList))) {
++                v1 <- adjacencyList[i, 'Var1']
++                v2 <- adjacencyList[i, 'Var2']
++                ground_truth_adj_mat[v1, v2] <- 0
++                ground_truth_adj_mat[v2, v1] <- 0
++            }
++        }
++
++        # Unstack remaining ground-truth edges and add coordinates
++        layoutCoordinates_df <- data.frame(layoutCoordinates)
++        layoutCoordinates_df['node_name'] <- nodes
++        ground_truth_adj_mat_long <- ground_truth_adj_mat %>%
++            reshape2::melt() %>%
++            dplyr::filter(value == 1) %>%
++            dplyr::mutate(Var1 = as.character(Var1), Var2 = as.character(Var2)) %>%
++            dplyr::filter(Var1 < Var2) %>%
++            dplyr::select(-value) %>%
++            dplyr::left_join(layoutCoordinates_df, by = c("Var1" = "node_name"), copy = TRUE) %>%
++            dplyr::rename(x_start = x, y_start = y) %>%
++            dplyr::left_join(layoutCoordinates_df, by = c("Var2" = "node_name"), copy = TRUE) %>%
++            dplyr::rename(x_end = x, y_end = y)
++    } else {
++        ground_truth_adj_mat_long <- data.frame()
++        gt_keys <- character(0)
++    }
++
++    # Edge path generator with type and probability
++    edgeMaker <- function(whichRow, len = 100) {
++        fromC <- layoutCoordinates[adjacencyList[whichRow, 1], ]
++        toC <- layoutCoordinates[adjacencyList[whichRow, 2], ]
++
++        edge <- data.frame(bezier(c(fromC[1], toC[1]), c(fromC[2], toC[2]), evaluation = len))
++        edge$Sequence <- 1:len
++        edge$Group <- paste(adjacencyList[whichRow, 1:2], collapse = ">")
++
++        # Determine undirected pair key and type based on ground truth membership, when applicable
++        if (compare_to_literature) {
++            a_val <- pmin(as.character(adjacencyList[whichRow, 'Var1']), as.character(adjacencyList[whichRow, 'Var2']))
++            b_val <- pmax(as.character(adjacencyList[whichRow, 'Var1']), as.character(adjacencyList[whichRow, 'Var2']))
++            pair_key <- paste(a_val, b_val, sep = ">")
++            edge$edge_type <- ifelse(pair_key %in% gt_keys, tp_name, fp_name)
++        } else {
++            edge$edge_type <- "Edge"
++        }
++
++        # Interpolate between the weights of the current edge and its counterpart
++        x <- c(1, len)
++        y <- c(adjacencyMatrix[adjacencyList[whichRow, 'Var1'], adjacencyList[whichRow, 'Var2']],
++               adjacencyMatrix[adjacencyList[whichRow, 'Var2'], adjacencyList[whichRow, 'Var1']])
++        edge$Probability <- approx(x, y, xout = 1:len)$y
++
++        return(edge)
++    }
++
++    # Generate edge paths
++    allEdges <- lapply(seq_len(nrow(adjacencyList)), edgeMaker, len = 500)
++    if (length(allEdges) > 0) {
++        allEdges <- do.call(rbind, allEdges)
++    } else {
++        allEdges <- data.frame()
++    }
++
++    # Build plot
++    p <- ggplot()
++    if (compare_to_literature && nrow(ground_truth_adj_mat_long) > 0) {
++        p <- p + geom_segment(
++            data = ground_truth_adj_mat_long,
++            aes(x = x_start, y = y_start, xend = x_end, yend = y_end,
++                colour = fn_name, linetype = fn_name),
++            size = 1
++        )
++    }
++    if (nrow(allEdges) > 0) {
++        if (compare_to_literature) {
++            p <- p + rasterise(geom_path(
++                data = allEdges,
++                aes(x = x, y = y, group = Group, size = Probability, colour = edge_type, linetype = edge_type),
++                na.rm = TRUE
++            ))
++        } else {
++            p <- p + rasterise(geom_path(
++                data = allEdges,
++                aes(x = x, y = y, group = Group, size = Probability),
++                colour = "black",
++                linetype = "solid",
++                na.rm = TRUE
++            ))
++        }
++    }
++    nodes_df <- data.frame(layoutCoordinates)
++    nodes_df$node_name <- nodes
++    # attach per-node color (already ordered by nodes)
++    nodes_df$node_color <- unname(node_colors)
++
++    # draw nodes using fill so edge colour scale remains intact
++    p <- p + geom_point(
++        data = nodes_df,
++        aes(x = x, y = y, fill = node_color),
++        shape = 21,
++        size = point_size,
++        stroke = 0.2,
++        colour = "black",
++        show.legend = FALSE
++    ) +
++    scale_fill_identity(guide = "none")
++    p <- p + geom_text(data = data.frame(layoutCoordinates),
++                       aes(x = x, y = y, label = nodes), color = 'white', hjust = 0.5, vjust = 0.5, fontface = "bold")
++
++    if (compare_to_literature) {
++        p <- p +
++            scale_colour_manual(
++                name = outcome_title,
++                values = setNames(c("black", "grey", "grey"), c(tp_name, fp_name, fn_name)),
++                breaks = c(tp_name, fp_name, fn_name),
++                labels = c(tp_name, fp_name, fn_name)
++            ) +
++            scale_linetype_manual(
++                name = outcome_title,
++                values = setNames(c("solid", "solid", "11"), c(tp_name, fp_name, fn_name)),
++                breaks = c(tp_name, fp_name, fn_name),
++                labels = c(tp_name, fp_name, fn_name)
++            )
++    }
++
++    p <- p + scale_size(range = c(0.1, 3))
++
++    # Add padding so nodes/edges aren't clipped at plot boundaries
++    p <- p +
++        scale_x_continuous(expand = expansion(mult = 0.12)) +
++        scale_y_continuous(expand = expansion(mult = 0.12))
++
++    # Add modality label as title text
++    p <- p + geom_text(aes(x = min(data.frame(layoutCoordinates)$x), y = 1, label = modality_label),
++                       hjust = 0, vjust = 1, fontface = "bold", size = FONT_SIZE_NORMAL / .pt)
++
++    if (compare_to_literature) {
++        crosspred_plot <- p +
++            guides(
++                size = guide_legend(title = 'Average\ncross-prediction\nprobability'),
++                colour = guide_legend(),
++                linetype = guide_legend()
++            ) +
++            MrBiomics_void()
++    } else {
++        crosspred_plot <- p +
++            guides(
++                size = guide_legend(title = 'Average\ncross-prediction\nprobability')
++            ) +
++            MrBiomics_void()
++    }
++
++    # Save plot and coordinates
++    ggsave_all_formats(path = fig_path,
++                       plot = crosspred_plot,
++                       width = PLOT_SIZE_3_PER_ROW+2,
++                       height = PLOT_SIZE_3_PER_ROW)
++
++    write.csv(layoutCoordinates, file.path(coordinates_out_path))
++
++    return(crosspred_plot)
++}
++
++# Wrapper: crossprediction for KO similarity (no coordinates_out)
++plot_crossprediction_for_kos <- function(adjacency_matrix_path,
++                                         fig_path,
++                                         cut_off = 0.05,
++                                         use_hierarchy_layout = FALSE,
++                                         label = "KO similarity") {
++    # Load adjacency, keep KO order
++    adj_mtx <- data.frame(fread(file.path(adjacency_matrix_path), header = TRUE), row.names = 1)
++    nodes <- rownames(adj_mtx)
++    # Use KO color map if available
++    node_colors <- NULL
++    if (exists("PAPALEXI_KO_COLORS") && length(PAPALEXI_KO_COLORS) > 0) {
++        node_colors <- PAPALEXI_KO_COLORS[nodes]
++    }
++
++    # Reuse plotting with generic layout path by creating a temporary coordinates path
++    tmp_csv <- tempfile(fileext = ".csv")
++    p <- plot_crossprediction_from_adjacency(
++        adjacency_matrix_path = adjacency_matrix_path,
++        fig_path = fig_path,
++        coordinates_out_path = tmp_csv,
++        lineage_tree_cut_off = cut_off,
++        hierarchy_coordinates = use_hierarchy_layout,
++        modality_label = label,
++        point_size = 8,
++        node_colors = node_colors,
++        compare_to_literature = FALSE
++    )
++    return(p)
++}
++
++########################################################################################################################
++#### KO enrichment lollipop (Corces TA signatures) #####################################################################
++########################################################################################################################
++# Create a simple lollipop plot with one row per term and NES on x-axis.
++# Strictly uses 'Term' (y) and 'NES' (x) from the CSV.
++plot_ko_ta_lollipop <- function(results_csv_path,
++                                fig_path,
++                                title = NULL,
++                                width = NULL,
++                                fdr_threshold = 0.05) {
++
++    df <- data.frame(fread(file.path(results_csv_path), header = TRUE))
++
++    stopifnot(all(c("Term", "NES") %in% names(df)))
++
++    # significance from FDR_q_val if available
++    if ("FDR_q_val" %in% names(df)) {
++        df$sig <- (!is.na(df$FDR_q_val)) & is.finite(df$FDR_q_val) & (df$FDR_q_val < fdr_threshold)
++    } else {
++        df$sig <- FALSE
++    }
++
++    # Keep a single row per Term if duplicates occur (prefer largest |NES|)
++    df <- df %>%
++        dplyr::mutate(Term = as.character(Term)) %>%
++        dplyr::group_by(Term) %>%
++        dplyr::slice_max(order_by = abs(NES), n = 1, with_ties = FALSE) %>%
++        dplyr::ungroup()
++
++    # Order terms by NES for a tidy diverging plot
++    df$Term <- factor(df$Term, levels = df$Term[order(df$NES)])
++
++    # Symmetric x-limits around 0
++    max_abs_nes <- max(abs(df$NES), na.rm = TRUE)
++    if (!is.finite(max_abs_nes) || max_abs_nes == 0) max_abs_nes <- 1
++
++    # Map FDR_q_val to point size (larger size = more significant)
++    if ("FDR_q_val" %in% names(df)) {
++        # clamp to (0,1] to avoid Inf and negatives, then transform
++        fdr_clamped <- pmax(pmin(df$FDR_q_val, 1), 0.0001)
++        dot_size <- -log10(fdr_clamped)
++        # keep NAs where FDR is NA
++        dot_size[!is.finite(dot_size)] <- NA_real_
++        df$dot_size <- dot_size
++    } else {
++        # fallback constant size if no FDR present
++        df$dot_size <- 3.2
++    }
++
++    lollipop <- ggplot(df, aes(y = Term)) +
++        geom_segment(aes(x = 0, xend = NES, yend = Term, linewidth = dot_size/500, alpha = abs(NES)), color = "grey80") +
++        geom_point(aes(x = NES, color = NES, size = dot_size), alpha = 0.9) +
++        # significance stars overlay (centered)
++        geom_point(
++            data = subset(df, sig),
++            aes(x = NES, y = Term),
++            inherit.aes = FALSE,
++            shape = 8,
++            size = 0.8,
++            alpha = 0.9,
++            stroke = 0.25,
++            color = "white",
++            show.legend = FALSE
++        ) +
++        scale_x_continuous(limits = c(-max_abs_nes * 1.1, max_abs_nes * 1)) +
++        scale_color_gradient2(
++            low = as.character(RdBu_extremes["down"]),
++            mid = "white",
++            high = as.character(RdBu_extremes["up"]),
++            name = "NES"
++        ) +
++        scale_size_continuous(name = "-log10(q-adj.)", range = c(0.5, 5)) +
++        scale_alpha_continuous(name = "NES", range = c(0.2, 1), guide = "none") +
++        scale_linewidth_continuous(name = "-log10(q-adj.)", range = c(0.3, 3), guide = "none") +
++        labs(x = "NES", y = NULL, title = title) +
++        MrBiomics_theme() +
++        theme(
++            panel.grid.major.y = element_blank(),
++            panel.grid.minor.y = element_blank()
++        )
++
++    # Hide size legend if FDR not available (constant size mapping)
++    if (!("FDR_q_val" %in% names(df))) {
++        lollipop <- lollipop + guides(size = "none")
++    }
++
++    if (is.null(width)) {
++        width <- PLOT_SIZE_3_PER_ROW
++    }
++
++    ggsave_all_formats(path = fig_path,
++                       plot = lollipop,
++                       width = width,
++                       height = PLOT_SIZE_3_PER_ROW)
++
++    return(lollipop)
++}
+\ No newline at end of file

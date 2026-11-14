@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/ClawBio__ClawBio-786"
+description = "fix(xena-tcga-gene-query): write the reproducibility bundle with the shared helpers"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ClawBio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ClawBio/ClawBio"
+ref = "a4a8c7281c8ddd8a0b84c5cffae5d9a0760f40fe"
+reference = "https://github.com/ClawBio/ClawBio/pull/786"
+source_access = "auto"
+built_at = "2026-11-14T05:42:45.209166+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3e5a65965ef8eeb285f5e078b575297f6ba567dcef8330eaf824eb8c3921ce26"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T08:47:55Z"
+diff_format = "unified"
+context_files = [
+    "skills/contract_known_gaps.json",
+    "skills/xena-tcga-gene-query/SKILL.md",
+    "skills/xena-tcga-gene-query/scripts/query_tcga_api.py",
+    "skills/xena-tcga-gene-query/tests/test_repro_bundle.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 181
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

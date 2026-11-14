@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/wbaopaul__scATAC-pro-51"
+description = "Enable PE/SE choice in call_peak.sh"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "scATAC-pro",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "wbaopaul/scATAC-pro"
+ref = "b6380d961bd0aae9da1ff0acea7f95e8138c43f1"
+reference = "https://github.com/wbaopaul/scATAC-pro/pull/51"
+source_access = "auto"
+built_at = "2026-11-14T07:17:05.461199+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b158838ef56b3a6aada9c8fa6f2afe53b7708773f88bf76306c46a50885d2349"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-11-23T21:28:19Z"
+diff_format = "unified"
+context_files = [
+    "scripts/call_peak.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 9
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/nf-core__methylseq-640"
+description = "Important! Template update for nf-core/tools v4.2.2"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "methylseq",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nf-core/methylseq"
+ref = "3caf7b85d76cd5742d06afc435decdfa812c7175"
+reference = "https://github.com/nf-core/methylseq/pull/640"
+source_access = "auto"
+built_at = "2026-11-14T07:15:08.709184+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d33caf4aad7e0be11d2c7b51d937d2baf92a215b4b3d919a1135755464ce515d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-11T21:32:10Z"
+diff_format = "unified"
+context_files = [
+    ".github/actions/nf-test/action.yml",
+    ".github/workflows/download_pipeline.yml",
+    ".nf-core.yml",
+    "README.md",
+    "ro-crate-metadata.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 10
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

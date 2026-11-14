@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/ClawBio__ClawBio-788"
+description = "fix(fine-mapping): make SuSiE-inf's est_tausq path follow the reference"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ClawBio",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ClawBio/ClawBio"
+ref = "a4a8c7281c8ddd8a0b84c5cffae5d9a0760f40fe"
+reference = "https://github.com/ClawBio/ClawBio/pull/788"
+source_access = "auto"
+built_at = "2026-11-14T05:42:41.398558+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:37ef0a275412942b56e23769d62f868f4a282cc131e7a2e856e36cdbcfa9054a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T08:47:36Z"
+diff_format = "unified"
+context_files = [
+    "skills/fine-mapping/SKILL.md",
+    "skills/fine-mapping/fine_mapping_core/susie_inf.py",
+    "skills/fine-mapping/tests/test_susie_inf_tausq.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 237
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

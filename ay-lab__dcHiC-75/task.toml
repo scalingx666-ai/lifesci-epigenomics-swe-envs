@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/ay-lab__dcHiC-75"
+description = "Fix Issue #67 + Documentation Enhancements"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "dcHiC",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ay-lab/dcHiC"
+ref = "b134e2c24761c44a9b896a4fb8ed7feaf40d0b78"
+reference = "https://github.com/ay-lab/dcHiC/pull/75"
+source_access = "auto"
+built_at = "2026-11-14T07:17:28.851155+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:14216640df45445030c1b2b6d364698788b3e2d184d24beb1befba33fe23ebcc"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2023-08-15T23:13:58Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "demo/README.md",
+    "demo/Readme.md",
+    "utility/preprocess.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 40
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

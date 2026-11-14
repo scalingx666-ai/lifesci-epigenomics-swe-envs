@@ -1,0 +1,80 @@
+diff --git a/R/geom_cnv.R b/R/geom_cnv.R
+index 4042d0c..15bd853 100644
+--- a/R/geom_cnv.R
++++ b/R/geom_cnv.R
+@@ -22,7 +22,7 @@
+ #' @export
+ #'
+ #' @examples
+-#' if (requireNamespace("BSgenome.Hsapiens.UCSC.hg19", quietly = TRUE)) {
++#' \dontrun{
+ #'   library("BSgenome.Hsapiens.UCSC.hg19")
+ #'
+ #'   # load track data
+diff --git a/R/geom_gc.R b/R/geom_gc.R
+index 80fa337..3f7383b 100644
+--- a/R/geom_gc.R
++++ b/R/geom_gc.R
+@@ -20,7 +20,7 @@
+ #' @export
+ #'
+ #' @examples
+-#' if (requireNamespace("BSgenome.Hsapiens.UCSC.hg19", quietly = TRUE)) {
++#' \dontrun{
+ #'   library("BSgenome.Hsapiens.UCSC.hg19")
+ #'
+ #'   # load track data
+diff --git a/cran-comments.md b/cran-comments.md
+index 3b314d6..4576a09 100644
+--- a/cran-comments.md
++++ b/cran-comments.md
+@@ -1,9 +1,19 @@
+ # Resubmission
+ 
+-Update for current submission: We have substantially removed the size of test
+-files for the examples, reducing overall package size from ~30 Mb to only ~6 Mb.
+-A further reduction was not possible as the package contains examples for 
+-many different NGS file types.
++Update for current submission: 
++
++- We have substantially removed the size of test files for the examples,
++reducing overall package size from ~30 Mb to only ~6 Mb. A further reduction
++was not possible as the package contains examples for many different NGS file
++types.
++
++- Examples were reduced to run in shorter time or excluded from running at all.
++Please note that the 5 sec threshold feels very arbitrary and heavily depends
++on the test environment -- this package never exceeds the threshold when
++tested locally on a 3 year old average laptop, or in 3 different github actions 
++workflows, but regularly fails on the CRAN server.
++
++Background information:
+ 
+ This package has been submitted previously (2023, v0.7.1) and was removed from
+ CRAN due to several issues. In the mean time many functions were re-factored,
+diff --git a/man/geom_cnv.Rd b/man/geom_cnv.Rd
+index 1767123..ddde347 100644
+--- a/man/geom_cnv.Rd
++++ b/man/geom_cnv.Rd
+@@ -46,7 +46,7 @@ Plot.
+ Add CNV Annotation to Coverage Plot.
+ }
+ \examples{
+-if (requireNamespace("BSgenome.Hsapiens.UCSC.hg19", quietly = TRUE)) {
++\dontrun{
+   library("BSgenome.Hsapiens.UCSC.hg19")
+ 
+   # load track data
+diff --git a/man/geom_gc.Rd b/man/geom_gc.Rd
+index 708e4a4..45b264c 100644
+--- a/man/geom_gc.Rd
++++ b/man/geom_gc.Rd
+@@ -42,7 +42,7 @@ Plot.
+ Add GC Content Annotation to Coverage Plot.
+ }
+ \examples{
+-if (requireNamespace("BSgenome.Hsapiens.UCSC.hg19", quietly = TRUE)) {
++\dontrun{
+   library("BSgenome.Hsapiens.UCSC.hg19")
+ 
+   # load track data

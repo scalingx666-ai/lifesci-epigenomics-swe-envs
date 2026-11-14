@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/eliocamp__ggnewscale-73"
+description = "Compatability with ggplot2 4.0.0"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "ggnewscale",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "eliocamp/ggnewscale"
+ref = "0235697b9a3c0ac25ea6cc287f891ae8b3c0d2d0"
+reference = "https://github.com/eliocamp/ggnewscale/pull/73"
+source_access = "auto"
+built_at = "2026-11-14T07:13:47.742619+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5ff0435fda5c80b75a48e271ba76a00401437ac4390c7de5f6447dfaa6c47fb2"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-20T03:44:07Z"
+diff_format = "unified"
+context_files = [
+    "R/bump-aes-scales.R",
+    "R/ggplot-add.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 29
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

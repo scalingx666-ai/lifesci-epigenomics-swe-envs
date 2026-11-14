@@ -1,0 +1,77 @@
+diff --git a/.github/workflows/check_build.yml b/.github/workflows/check_build.yml
+new file mode 100644
+index 0000000..ef85bf0
+--- /dev/null
++++ b/.github/workflows/check_build.yml
+@@ -0,0 +1,24 @@
++# Checks if the build works, 
++# by installing the requirements
++# and then running the example code
++
++name: Check build
++
++on:
++  push:
++    branches:
++      - main
++jobs:
++  check_build:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v2
++      - uses: actions/setup-python@v2
++        with:
++          python-version: 3.8
++
++      - name: install required packages
++        run: python3 -m pip install -r requirements.txt
++
++      - name: run example code shown in README
++        run: python3 .github/workflows/example_huggingface_v4_28.py
+diff --git a/.github/workflows/example_huggingface_newer_than_v4_28.py b/.github/workflows/example_huggingface_newer_than_v4_28.py
+new file mode 100644
+index 0000000..b3ece64
+--- /dev/null
++++ b/.github/workflows/example_huggingface_newer_than_v4_28.py
+@@ -0,0 +1,16 @@
++from transformers.models.bert.configuration_bert import BertConfig
++
++config = BertConfig.from_pretrained("zhihan1996/DNABERT-2-117M")
++model = AutoModel.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True, config=config)
++
++dna = "ACGTAGCATCGGATCTATCTATCGACACTTGGTTATCGATCTACGAGCATCTCGTTAGC"
++inputs = tokenizer(dna, return_tensors = 'pt')["input_ids"]
++hidden_states = model(inputs)[0] # [1, sequence_length, 768]
++
++# embedding with mean pooling
++embedding_mean = torch.mean(hidden_states[0], dim=0)
++print(embedding_mean.shape) # expect to be 768
++
++# embedding with max pooling
++embedding_max = torch.max(hidden_states[0], dim=0)[0]
++print(embedding_max.shape) # expect to be 768
+\ No newline at end of file
+diff --git a/.github/workflows/example_huggingface_v4_28.py b/.github/workflows/example_huggingface_v4_28.py
+new file mode 100644
+index 0000000..e7040f4
+--- /dev/null
++++ b/.github/workflows/example_huggingface_v4_28.py
+@@ -0,0 +1,17 @@
++import torch
++from transformers import AutoTokenizer, AutoModel
++
++tokenizer = AutoTokenizer.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
++model = AutoModel.from_pretrained("zhihan1996/DNABERT-2-117M", trust_remote_code=True)
++
++dna = "ACGTAGCATCGGATCTATCTATCGACACTTGGTTATCGATCTACGAGCATCTCGTTAGC"
++inputs = tokenizer(dna, return_tensors = 'pt')["input_ids"]
++hidden_states = model(inputs)[0] # [1, sequence_length, 768]
++
++# embedding with mean pooling
++embedding_mean = torch.mean(hidden_states[0], dim=0)
++print(embedding_mean.shape) # expect to be 768
++
++# embedding with max pooling
++embedding_max = torch.max(hidden_states[0], dim=0)[0]
++print(embedding_max.shape) # expect to be 768
+\ No newline at end of file

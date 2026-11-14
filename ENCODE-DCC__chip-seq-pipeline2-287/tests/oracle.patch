@@ -1,0 +1,395 @@
+diff --git a/.circleci/config.yml b/.circleci/config.yml
+index c102902c..8853f190 100644
+--- a/.circleci/config.yml
++++ b/.circleci/config.yml
+@@ -2,12 +2,12 @@ version: 2.1
+ 
+ defaults: &defaults
+   docker:
+-    - image: google/cloud-sdk:latest
++    - image: cimg/base@sha256:d75b94c6eae6e660b6db36761709626b93cabe8c8da5b955bfbf7832257e4201
+   working_directory: ~/chip-seq-pipeline2
+ 
+ machine_defaults: &machine_defaults
+   machine: 
+-    image: ubuntu-2004:202010-01
++    image: ubuntu-2004:202201-02
+   working_directory: ~/chip-seq-pipeline2
+ 
+ make_tag: &make_tag
+diff --git a/README.md b/README.md
+index bfa19f4f..ebc25211 100644
+--- a/README.md
++++ b/README.md
+@@ -3,20 +3,6 @@
+ [![CircleCI](https://circleci.com/gh/ENCODE-DCC/chip-seq-pipeline2/tree/master.svg?style=svg)](https://circleci.com/gh/ENCODE-DCC/chip-seq-pipeline2/tree/master)
+ 
+ 
+-## Conda environment name change (since v2.2.0 or 6/13/2022)
+-
+-Pipeline's Conda environment's names have been shortened to work around the following error:
+-```
+-PaddingError: Placeholder of length '80' too short in package /XXXXXXXXXXX/miniconda3/envs/
+-```
+-
+-You need to reinstall pipeline's Conda environment. It's recommended to do this for every version update.
+-```bash
+-$ bash scripts/uninstall_conda_env.sh
+-$ bash scripts/install_conda_env.sh
+-```
+-
+-
+ ## Introduction
+ 
+ This ChIP-Seq pipeline is based off the ENCODE (phase-3) transcription factor and histone ChIP-seq pipeline specifications (by Anshul Kundaje) in [this google doc](https://docs.google.com/document/d/1lG_Rd7fnYgRpSIqrIfuVlAz2dW1VaSQThzk836Db99c/edit#).
+@@ -29,20 +15,17 @@ This ChIP-Seq pipeline is based off the ENCODE (phase-3) transcription factor an
+ 
+ ## Installation
+ 
+-1) Make sure that you have Python>=3.6. Caper does not work with Python2. Install Caper and check its version >=2.0.
++1) Install Caper (Python Wrapper/CLI for [Cromwell](https://github.com/broadinstitute/cromwell)).
+ 	```bash
+ 	$ pip install caper
+-
+-	# use caper version >= 2.3.0 for a new HPC feature (caper hpc submit/list/abort).
+-	$ caper -v
+ 	```
+-2) Read Caper's [README](https://github.com/ENCODE-DCC/caper/blob/master/README.md) carefully to choose a backend for your system. Follow the instruction in the configuration file.
++
++2) **IMPORTANT**: Read Caper's [README](https://github.com/ENCODE-DCC/caper/blob/master/README.md) carefully to choose a backend for your system. Follow the instruction in the configuration file.
+ 	```bash
+-	# this will overwrite the existing conf file ~/.caper/default.conf
+-	# make a backup of it first if needed
++	# backend: local or your HPC type (e.g. slurm, sge, pbs, lsf). read Caper's README carefully.
+ 	$ caper init [YOUR_BACKEND]
+ 
+-	# edit the conf file
++	# IMPORTANT: edit the conf file and follow commented instructions in there
+ 	$ vi ~/.caper/default.conf
+ 	```
+ 
+@@ -52,61 +35,83 @@ This ChIP-Seq pipeline is based off the ENCODE (phase-3) transcription factor an
+ 	$ git clone https://github.com/ENCODE-DCC/chip-seq-pipeline2
+ 	```
+ 
+-4) (Optional for Conda) **DO NOT USE A SHARED CONDA. INSTALL YOUR OWN [MINICONDA3](https://docs.conda.io/en/latest/miniconda.html) AND USE IT.** Install pipeline's Conda environments if you don't have Singularity or Docker installed on your system. We recommend to use Singularity instead of Conda.
++4) Define test input JSON.
+ 	```bash
+-	# check if you have Singularity on your system, if so then it's not recommended to use Conda
+-	$ singularity --version
+-
+-	# check if you are not using a shared conda, if so then delete it or remove it from your PATH
+-	$ which conda
+-
+-	# change directory to pipeline's git repo
+-	$ cd chip-seq-pipeline2
++	INPUT_JSON="https://storage.googleapis.com/encode-pipeline-test-samples/encode-chip-seq-pipeline/ENCSR000DYI_subsampled_chr19_only.json"
++	```
+ 
+-	# uninstall old environments
+-	$ bash scripts/uninstall_conda_env.sh
++5) If you have Docker and want to run pipelines locally on your laptop. `--max-concurrent-tasks 1` is to limit number of concurrent tasks to test-run the pipeline on a laptop. Uncomment it if run it on a workstation/HPC.
++	```bash
++	# check if Docker works on your machine
++	$ docker run ubuntu:latest echo hello
+ 
+-	# install new envs, you need to run this for every pipeline version update.
+-	# it may be killed if you run this command line on a login node.
+-	# it's recommended to make an interactive node and run it there.
+-	$ bash scripts/install_conda_env.sh
++	# --max-concurrent-tasks 1 is for computers with limited resources
++	$ caper run chip.wdl -i "${INPUT_JSON}" --docker --max-concurrent-tasks 1
+ 	```
+ 
+-## Input JSON file
++6) Otherwise, install Singularity on your system. Please follow [this instruction](https://neuro.debian.net/install_pkg.html?p=singularity-container) to install Singularity on a Debian-based OS. Or ask your system administrator to install Singularity on your HPC.
++	```bash
++	# check if Singularity works on your machine
++	$ singularity exec docker://ubuntu:latest echo hello
+ 
+-> **IMPORTANT**: DO NOT BLINDLY USE A TEMPLATE/EXAMPLE INPUT JSON. READ THROUGH THE FOLLOWING GUIDE TO MAKE A CORRECT INPUT JSON FILE.
++	# on your local machine (--max-concurrent-tasks 1 is for computers with limited resources)
++	$ caper run chip.wdl -i "${INPUT_JSON}" --singularity --max-concurrent-tasks 1
+ 
+-An input JSON file specifies all the input parameters and files that are necessary for successfully running this pipeline. This includes a specification of the path to the genome reference files and the raw data fastq file. Please make sure to specify absolute paths rather than relative paths in your input JSON files.
++	# on HPC, make sure that Caper's conf ~/.caper/default.conf is correctly configured to work with your HPC
++    # the following command will submit Caper as a leader job to SLURM with Singularity
++    $ caper hpc submit chip.wdl -i "${INPUT_JSON}" --singularity --leader-job-name ANY_GOOD_LEADER_JOB_NAME
+ 
+-1) [Input JSON file specification (short)](docs/input_short.md)
+-2) [Input JSON file specification (long)](docs/input.md)
++    # check job ID and status of your leader jobs
++    $ caper hpc list
+ 
++    # cancel the leader node to close all of its children jobs
++    # If you directly use cluster command like scancel or qdel then
++    # child jobs will not be terminated
++    $ caper hpc abort [JOB_ID]
++	```
+ 
+-## Running on local computer/HPCs
++7) (Optional Conda method) **WE DO NOT HELP USERS FIX CONDA DEPENDENCY ISSUES. IF CONDA METHOD FAILS THEN PLEASE USE SINGULARITY METHOD INSTEAD**. **DO NOT USE A SHARED CONDA. INSTALL YOUR OWN [MINICONDA3](https://docs.conda.io/en/latest/miniconda.html) AND USE IT.**
++	```bash
++	# check if you are not using a shared conda, if so then delete it or remove it from your PATH
++	$ which conda
+ 
+-You can use URIs(`s3://`, `gs://` and `http(s)://`) in Caper's command lines and input JSON file then Caper will automatically download/localize such files. Input JSON file example: https://storage.googleapis.com/encode-pipeline-test-samples/encode-chip-seq-pipeline/ENCSR000DYI_subsampled_chr19_only.json
++	# uninstall pipeline's old environments
++	$ bash scripts/uninstall_conda_env.sh
+ 
+-According to your chosen platform of Caper, run Caper or submit Caper command line to the cluster. You can choose other environments like `--singularity` or `--docker` instead of `--conda`. But you must define one of the environments.
++	# install new envs, you need to run this for every pipeline version update.
++	# it may be killed if you run this command line on a login node on HPC.
++	# it's recommended to make an interactive node with enough resources and run it there.
++	$ bash scripts/install_conda_env.sh
+ 
+-PLEASE READ [CAPER'S README](https://github.com/ENCODE-DCC/caper) VERY CAREFULLY BEFORE RUNNING ANY PIPELINES. YOU WILL NEED TO CORRECTLY CONFIGURE CAPER FIRST. These are just example command lines.
++	# if installation fails please use Singularity method instead.
+ 
+-    ```bash
+-    # Run it locally with Conda (DO NOT ACTIVATE PIPELINE'S CONDA ENVIRONEMT)
+-    $ caper run chip.wdl -i https://storage.googleapis.com/encode-pipeline-test-samples/encode-chip-seq-pipeline/ENCSR000DYI_subsampled_chr19_only.json --conda
++	# on your local machine (--max-concurrent-tasks 1 is for computers with limited resources)
++	$ caper run chip.wdl -i "${INPUT_JSON}" --conda --max-concurrent-tasks 1
+ 
+-    # On HPC, submit it as a leader job to SLURM with Singularity
+-    $ caper hpc submit chip.wdl -i https://storage.googleapis.com/encode-pipeline-test-samples/encode-chip-seq-pipeline/ENCSR000DYI_subsampled_chr19_only.json --singularity --leader-job-name ANY_GOOD_LEADER_JOB_NAME
++	# on HPC, make sure that Caper's conf ~/.caper/default.conf is correctly configured to work with your HPC
++    # the following command will submit Caper as a leader job to SLURM with Conda
++    $ caper hpc submit chip.wdl -i "${INPUT_JSON}" --conda --leader-job-name ANY_GOOD_LEADER_JOB_NAME
+ 
+-    # Check job ID and status of your leader jobs
++    # check job ID and status of your leader jobs
+     $ caper hpc list
+ 
+-    # Cancel the leader node to close all of its children jobs
++    # cancel the leader node to close all of its children jobs
+     # If you directly use cluster command like scancel or qdel then
+     # child jobs will not be terminated
+     $ caper hpc abort [JOB_ID]
+ 	```
+ 
+ 
++## Input JSON file
++
++> **IMPORTANT**: DO NOT BLINDLY USE A TEMPLATE/EXAMPLE INPUT JSON. READ THROUGH THE FOLLOWING GUIDE TO MAKE A CORRECT INPUT JSON FILE.
++
++An input JSON file specifies all the input parameters and files that are necessary for successfully running this pipeline. This includes a specification of the path to the genome reference files and the raw data fastq file. Please make sure to specify absolute paths rather than relative paths in your input JSON files.
++
++1) [Input JSON file specification (short)](docs/input_short.md)
++2) [Input JSON file specification (long)](docs/input.md)
++
++
+ ## Running on Terra/Anvil (using Dockstore)
+ 
+ Visit our pipeline repo on [Dockstore](https://dockstore.org/workflows/github.com/ENCODE-DCC/chip-seq-pipeline2). Click on `Terra` or `Anvil`. Follow Terra's instruction to create a workspace on Terra and add Terra's billing bot to your Google Cloud account.
+diff --git a/chip.wdl b/chip.wdl
+index e747b629..f9eb0b3e 100644
+--- a/chip.wdl
++++ b/chip.wdl
+@@ -7,10 +7,10 @@ struct RuntimeEnvironment {
+ }
+ 
+ workflow chip {
+-    String pipeline_ver = 'v2.2.0'
++    String pipeline_ver = 'v2.2.1'
+ 
+     meta {
+-        version: 'v2.2.0'
++        version: 'v2.2.1'
+ 
+         author: 'Jin wook Lee'
+         email: 'leepc12@gmail.com'
+@@ -19,8 +19,8 @@ workflow chip {
+ 
+         specification_document: 'https://docs.google.com/document/d/1lG_Rd7fnYgRpSIqrIfuVlAz2dW1VaSQThzk836Db99c/edit?usp=sharing'
+ 
+-        default_docker: 'encodedcc/chip-seq-pipeline:v2.2.0'
+-        default_singularity: 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.0.sif'
++        default_docker: 'encodedcc/chip-seq-pipeline:v2.2.1'
++        default_singularity: 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.1.sif'
+         croo_out_def: 'https://storage.googleapis.com/encode-pipeline-output-definition/chip.croo.v5.json'
+ 
+         parameter_group: {
+@@ -71,8 +71,8 @@ workflow chip {
+     }
+     input {
+         # group: runtime_environment
+-        String docker = 'encodedcc/chip-seq-pipeline:v2.2.0'
+-        String singularity = 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.0.sif'
++        String docker = 'encodedcc/chip-seq-pipeline:v2.2.1'
++        String singularity = 'https://encode-pipeline-singularity-image.s3.us-west-2.amazonaws.com/chip-seq-pipeline_v2.2.1.sif'
+         String conda = 'encd-chip'
+         String conda_macs2 = 'encd-chip-macs2'
+         String conda_spp = 'encd-chip-spp'
+diff --git a/scripts/install_conda_env.sh b/scripts/install_conda_env.sh
+index 5d2cefb0..bb57ea39 100755
+--- a/scripts/install_conda_env.sh
++++ b/scripts/install_conda_env.sh
+@@ -1,6 +1,28 @@
+ #!/bin/bash
+ set -e  # Stop on error
+ 
++install_ucsc_tools_369() {
++  # takes in conda env name and find conda bin
++  CONDA_BIN=$(conda run -n $1 bash -c "echo \$(dirname \$(which python))")
++  curl -o "$CONDA_BIN/fetchChromSizes" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/fetchChromSizes"
++  curl -o "$CONDA_BIN/wigToBigWig" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/wigToBigWig"
++  curl -o "$CONDA_BIN/bedGraphToBigWig" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bedGraphToBigWig"
++  curl -o "$CONDA_BIN/bigWigInfo" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bigWigInfo"
++  curl -o "$CONDA_BIN/bedClip" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bedClip"
++  curl -o "$CONDA_BIN/bedToBigBed" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bedToBigBed"
++  curl -o "$CONDA_BIN/twoBitToFa" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/twoBitToFa"
++  curl -o "$CONDA_BIN/bigWigAverageOverBed" "https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bigWigAverageOverBed"
++
++  chmod +x "$CONDA_BIN/fetchChromSizes"
++  chmod +x "$CONDA_BIN/wigToBigWig"
++  chmod +x "$CONDA_BIN/bedGraphToBigWig"
++  chmod +x "$CONDA_BIN/bigWigInfo"
++  chmod +x "$CONDA_BIN/bedClip"
++  chmod +x "$CONDA_BIN/bedToBigBed"
++  chmod +x "$CONDA_BIN/twoBitToFa"
++  chmod +x "$CONDA_BIN/bigWigAverageOverBed"
++}
++
+ SH_SCRIPT_DIR=$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd)
+ 
+ echo "$(date): Installing pipeline's Conda environments..."
+@@ -12,15 +34,52 @@ conda create -n encd-chip-macs2 --file ${SH_SCRIPT_DIR}/requirements.macs2.txt \
+   --override-channels -c bioconda -c defaults -y
+ 
+ conda create -n encd-chip-spp --file ${SH_SCRIPT_DIR}/requirements.spp.txt \
+-  --override-channels -c r -c bioconda -c defaults -y
++  -c r -c bioconda -c defaults -y
+ 
+ # adhoc fix for the following issues:
+ # - https://github.com/ENCODE-DCC/chip-seq-pipeline2/issues/259
+ # - https://github.com/ENCODE-DCC/chip-seq-pipeline2/issues/265
+ # force-install readline 6.2, ncurses 5.9 from conda-forge (ignoring dependencies)
+-conda install -n encd-chip-spp --no-deps --no-update-deps -y \
+-  readline==6.2 ncurses==5.9 -c conda-forge
++# conda install -n encd-chip-spp --no-deps --no-update-deps -y \
++#   readline==6.2 ncurses==5.9 -c conda-forge
++
++CONDA_BIN=$(conda run -n encd-chip-spp bash -c "echo \$(dirname \$(which python))")
++
++echo "$(date): Installing phantompeakqualtools in Conda environments..."
++RUN_SPP="https://raw.githubusercontent.com/kundajelab/phantompeakqualtools/1.2.2/run_spp.R"
++conda run -n encd-chip-spp bash -c \
++  "curl -o $CONDA_BIN/run_spp.R $RUN_SPP && chmod +x $CONDA_BIN/run_spp.R"
++
++echo "$(date): Installing R packages in Conda environments..."
++CRAN="https://cran.r-project.org/"
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('snow', repos='$CRAN')\""
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('snowfall', repos='$CRAN')\""
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('bitops', repos='$CRAN')\""
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('caTools', repos='$CRAN')\""
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('BiocManager', repos='$CRAN')\""
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"require('BiocManager'); BiocManager::install('Rsamtools'); BiocManager::install('Rcpp')\""
++
++echo "$(date): Installing R spp 1.15.5 in Conda environments..."
++SPP="https://cran.r-project.org/src/contrib/Archive/spp/spp_1.15.5.tar.gz"
++SPP_BASENAME=$(basename $SPP)
++curl -o "$CONDA_BIN/$SPP_BASENAME" "$SPP"
++conda run -n encd-chip-spp bash -c \
++  "Rscript -e \"install.packages('$CONDA_BIN/$SPP_BASENAME')\""
++
++echo "$(date): Installing USCS tools (v369)..."
++install_ucsc_tools_369 encd-chip
++install_ucsc_tools_369 encd-chip-spp
++install_ucsc_tools_369 encd-chip-macs2
+ 
+ echo "$(date): Done successfully."
++echo
++echo "If you see readline or ncurses library errors while running pipelines"
++echo "then switch to Singularity method. Conda method will not work on your system."
+ 
+ bash ${SH_SCRIPT_DIR}/update_conda_env.sh
+diff --git a/scripts/requirements.macs2.txt b/scripts/requirements.macs2.txt
+index 945c7888..99935a54 100644
+--- a/scripts/requirements.macs2.txt
++++ b/scripts/requirements.macs2.txt
+@@ -6,14 +6,6 @@ python >=3
+ macs2 ==2.2.4
+ bedtools ==2.29.0
+ bedops ==2.4.39
+-ucsc-fetchchromsizes # 377 in docker/singularity image
+-ucsc-wigtobigwig
+-ucsc-bedgraphtobigwig
+-ucsc-bigwiginfo
+-ucsc-bedclip
+-ucsc-bedtobigbed
+-ucsc-twobittofa
+-ucsc-bigWigAverageOverBed
+ pybedtools ==0.8.0
+ pybigwig ==0.3.13
+ tabix
+@@ -21,4 +13,3 @@ tabix
+ matplotlib
+ ghostscript
+ 
+-openssl ==1.0.2u # to fix missing libssl.so.1.0.0 for UCSC tools (bedClip, ...)
+diff --git a/scripts/requirements.spp.txt b/scripts/requirements.spp.txt
+index bd75b3bc..fd3bf904 100644
+--- a/scripts/requirements.spp.txt
++++ b/scripts/requirements.spp.txt
+@@ -1,20 +1,13 @@
+ # Conda environment for tasks (spp, xcor) in atac/chip 
++# some packages (phantompeakquals, r-spp) will be installed separately
++# couldn't resolve all conda conflicts
+ 
+ python >=3
+ bedtools ==2.29.0
+ bedops ==2.4.39
+-phantompeakqualtools ==1.2.2
+ 
+-ucsc-bedclip
+-ucsc-bedtobigbed
++r-base ==3.6.1
+ 
+-r #==3.5.1  # 3.4.4 in docker/singularity image
+-r-snow
+-r-snowfall
+-r-bitops
+-r-catools
+-bioconductor-rsamtools
+-r-spp <1.16 #==1.15.5  # previously 1.15.5, and 1.14 in docker/singularity image, 1.16 has lwcc() error
+ tabix
+ 
+ matplotlib
+@@ -22,4 +15,3 @@ pandas
+ numpy
+ ghostscript
+ 
+-openssl ==1.0.2u # to fix missing libssl.so.1.0.0 for UCSC tools (bedClip, ...)
+diff --git a/scripts/requirements.txt b/scripts/requirements.txt
+index ed93b2c9..3992e699 100644
+--- a/scripts/requirements.txt
++++ b/scripts/requirements.txt
+@@ -13,15 +13,6 @@ pysam ==0.15.3
+ pybedtools ==0.8.0
+ pybigwig ==0.3.13
+ 
+-ucsc-fetchchromsizes # 377 in docker/singularity image
+-ucsc-wigtobigwig
+-ucsc-bedgraphtobigwig
+-ucsc-bigwiginfo
+-ucsc-bedclip
+-ucsc-bedtobigbed
+-ucsc-twobittofa
+-ucsc-bigWigAverageOverBed
+-
+ deeptools ==3.3.1
+ cutadapt ==2.5
+ preseq ==2.0.3
+@@ -49,4 +40,3 @@ java-jdk
+ picard ==2.20.7
+ trimmomatic ==0.39
+ 
+-openssl ==1.0.2u # to fix missing libssl.so.1.0.0 for UCSC tools (bedClip, ...)

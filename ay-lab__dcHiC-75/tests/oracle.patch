@@ -1,0 +1,81 @@
+diff --git a/README.md b/README.md
+index c95af9b..d4c803f 100644
+--- a/README.md
++++ b/README.md
+@@ -19,7 +19,7 @@ To see how to run dcHiC, read our docs and try our demo (below)! Information abo
+ 
+ ### Demo
+ 
+-This README contains the key information you will need to use this application. However, some users may find a demo helpful—ours includes a script to run package installation as well as detailed guides for different options of dcHiC. All of these resources are available in `packages/dchic_demo.zip`, with relevant instructions inside! 
++This README contains the key information you will need to use this application. However, some users may find a demo helpful; ours includes a script to run package installation as well as detailed guides for different options of dcHiC. All of these resources are available in the `demo` directory, with relevant instructions inside! 
+ 
+ ## Installation
+ 
+diff --git a/demo/README.md b/demo/README.md
+new file mode 100644
+index 0000000..eeeb26b
+--- /dev/null
++++ b/demo/README.md
+@@ -0,0 +1,18 @@
++## Information
++
++The .zip file has a demo directory to test dcHiC. As a
++testing example, principal component (PC) values for
++mouse ESC (4 replicates), NPC (3 replicates) and CN
++(5 replicates) are provided in the **ESC_NPC_CN_100Kb** directory. 
++
++We are also providing demo files to recreate the
++results for pseudo-bulk single cell 3D genome. For testing,
++we are providing the **mouse_cortex_single_cell3D** and
++**mouse_hippocampus_single_cell3D** directories with the required
++files and the expected results folder. The same directories
++contain the `run_dchic.sh` script to recreate the results.
++
++The scripts directory contains the basic but necessary
++scripts to reproduce the results while packages directory
++contains the accessory programs that needs to be installed
++before the dcHiC run.
+diff --git a/demo/Readme.md b/demo/Readme.md
+deleted file mode 100644
+index 3b2af36..0000000
+--- a/demo/Readme.md
++++ /dev/null
+@@ -1,16 +0,0 @@
+-## Information
+-The .zip file has a demo directory to test dcHiC tool. As a
+-testing example principal component (pc) values for
+-mouse ESC (4 replicates), NPC (3 replicates) and CN
+-(5 replicates) are provided in the **ESC_NPC_CN_100Kb**.
+-We are also providing the demo files to recreate the
+-results for pseudo-bulk single cell 3D genome. For testing
+-we are providing the **mouse_cortex_single_cell3D** and
+-**mouse_hippocampus_single_cell3D** directories with the required
+-files and the expected results folder. The same directories
+-contain the run_dchic.sh script to recreate the results.
+-
+-The scripts directory contains the basic but necessary
+-scripts to reproduce the results while packages direcotry
+-contains the accessory programs that needs to be installed
+-before the dcHiC run.
+diff --git a/utility/preprocess.py b/utility/preprocess.py
+index bf04eeb..91f7263 100755
+--- a/utility/preprocess.py
++++ b/utility/preprocess.py
+@@ -23,7 +23,7 @@
+ 
+ parser.add_argument("-genomeFile", action = "store", dest = "genomeSize", help = "[.cool only] Location of chromosome size file (Must be: hg38, hg19, mm10, mm9)")
+ 
+-parser.add_argument("-removeChr", action = 'store', dest = 'remove', help = "[.hic only] Remove chromosomes: {Chr,Chr,Chr} format. Commonly used for Y. Default MT removed.")
++parser.add_argument("-removeChr", action = 'store', dest = 'remove', help = "[.hic only] Remove chromosomes: {Chr,Chr,Chr} format. Commonly used for Y (default MT). Specify like 'chry' or 'chrY'.")
+             
+ results = parser.parse_args()
+ 
+@@ -128,7 +128,7 @@
+             else:
+                 print(f"  - {chrom.name}")
+         else:
+-            chrTag = "chr" + chrom.name
++            chrTag = "chr" + chrom.name if "chr" not in chrom.name else chrom.name
+             chrSize = chrom.length
+             chrSizes[chrTag] = chrSize
+             chrs.append(chrTag)

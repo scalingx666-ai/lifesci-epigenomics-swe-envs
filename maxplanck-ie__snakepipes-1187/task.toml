@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/maxplanck-ie__snakepipes-1187"
+description = "Organism yamls update"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "snakepipes",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "maxplanck-ie/snakepipes"
+ref = "aaa1867a63ce5187fad9f658a8b6da9541a5d724"
+reference = "https://github.com/maxplanck-ie/snakepipes/pull/1187"
+source_access = "auto"
+built_at = "2026-11-14T06:59:16.144738+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1b393ec11b5d864bc74b627c8adf176180eb04874b5c828bd448bfe3c290d644"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-12T12:03:48Z"
+diff_format = "unified"
+context_files = [
+    "snakePipes/shared/organisms/GRCh38.yaml",
+    "snakePipes/shared/organisms/GRCh38_gencode40.yaml",
+    "snakePipes/shared/organisms/GRCz10.yaml",
+    "snakePipes/shared/organisms/GRCz11.yaml",
+    "snakePipes/shared/organisms/SchizoSPombe_ASM294v2.yaml",
+    "snakePipes/shared/organisms/dm6.yaml",
+    "snakePipes/shared/organisms/hg38.yaml",
+    "snakePipes/shared/organisms/mm10_gencodeM19.yaml",
+    "snakePipes/shared/organisms/mm10_tes.yaml",
+    "snakePipes/shared/organisms/mm39_ens106.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 71
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

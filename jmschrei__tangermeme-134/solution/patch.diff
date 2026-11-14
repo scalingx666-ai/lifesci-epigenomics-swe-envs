@@ -1,0 +1,25 @@
+diff --git a/docs/whats_new.rst b/docs/whats_new.rst
+index 8a54112..29e0b8e 100644
+--- a/docs/whats_new.rst
++++ b/docs/whats_new.rst
+@@ -6,8 +6,8 @@ Release History
+ ===============
+ 
+ 
+-Unreleased
+-==========
++Version 1.6.0
++=============
+ 
+ Packed sequences
+ ----------------
+diff --git a/tangermeme/__init__.py b/tangermeme/__init__.py
+index 89c836c..1626db5 100644
+--- a/tangermeme/__init__.py
++++ b/tangermeme/__init__.py
+@@ -1,4 +1,4 @@
+ # tangermeme: biological sequence analysis for the modern age
+ # Author: Jacob Schreiber
+ 
+-__version__ = '1.5.0'
++__version__ = '1.6.0'

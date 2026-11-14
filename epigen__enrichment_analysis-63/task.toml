@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/epigen__enrichment_analysis-63"
+description = "Limit GREAT region annotations"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "enrichment_analysis",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "epigen/enrichment_analysis"
+ref = "921efa4dd571a0f2e19964e9e72287ba99f03caf"
+reference = "https://github.com/epigen/enrichment_analysis/pull/63"
+source_access = "auto"
+built_at = "2026-11-14T07:17:10.433059+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:42c50d83276419bc96bae7609e03207abb87d90e043e5aa8283e4f2eab0ead5b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-06-08T12:54:53Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "config/README.md",
+    "config/config.yaml",
+    "workflow/rules/enrichment_analysis.smk",
+    "workflow/schemas/config.schema.yaml",
+    "workflow/scripts/aggregate.py",
+    "workflow/scripts/region_enrichment_analysis_GREAT.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 60
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

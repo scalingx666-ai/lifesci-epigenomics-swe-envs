@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/macs3-project__MACS-831"
+description = "Fix callvar assembly and spliced-read edge cases (#813)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "MACS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "macs3-project/MACS"
+ref = "b8dc7d694ad299d2bfff5521e0d57c433fe27c04"
+reference = "https://github.com/macs3-project/MACS/pull/831"
+source_access = "auto"
+built_at = "2026-11-14T07:13:30.321864+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0c1b2f0914d3d2c9bd77a3a304db1363f40dd7d6bcedab9f9c5cf4a5bb0d5a6a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-02T23:15:38Z"
+diff_format = "unified"
+context_files = [
+    "MACS3/Commands/callvar_cmd.py",
+    "MACS3/Signal/RACollection.py",
+    "MACS3/Utilities/OptValidator.py",
+    "MACS3/fermi-lite/bfc.c",
+    "MACS3/fermi-lite/htab.c",
+    "MACS3/fermi-lite/misc.c",
+    "bin/macs3",
+    "docs/source/docs/callvar.md",
+    "test/callvar_assembly_probe.py",
+    "test/issue_813_verification.md",
+    "test/test_callvar_assembly.py",
+    "test/test_callvar_cmd.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 483
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

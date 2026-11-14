@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/aertslab__cisTopic-34"
+description = "cisTopicObject should be object"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "cisTopic",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "aertslab/cisTopic"
+ref = "4d000cf8b306fe73ae47d6821de4f936c9414bdd"
+reference = "https://github.com/aertslab/cisTopic/pull/34"
+source_access = "auto"
+built_at = "2026-11-14T07:15:56.552237+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f2559aa523f21d1bf19864fa01e3674e1b5aac40877d6008dafd39632e1aaf87"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-11-20T13:39:22Z"
+diff_format = "unified"
+context_files = [
+    "R/OverlapcisTopic.R",
+    "R/RcisTarget.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 4
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

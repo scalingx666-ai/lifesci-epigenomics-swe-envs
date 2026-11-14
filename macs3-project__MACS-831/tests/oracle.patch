@@ -1,0 +1,664 @@
+diff --git a/MACS3/Commands/callvar_cmd.py b/MACS3/Commands/callvar_cmd.py
+index fa1d3bb7..240074d4 100644
+--- a/MACS3/Commands/callvar_cmd.py
++++ b/MACS3/Commands/callvar_cmd.py
+@@ -188,13 +188,19 @@ def run(args):
+ 
+             # t0 = time()
+             try:
+-                if cbam:
+-                    ra_collection = RACollection(chrom, peak,
+-                                                 tbam.get_reads_in_region(chrom, peak["start"], peak["end"], maxDuplicate=maxDuplicate),
+-                                                 cbam.get_reads_in_region(chrom, peak["start"], peak["end"], maxDuplicate=maxDuplicate))
+-                else:
+-                    ra_collection = RACollection(chrom, peak,
+-                                                 tbam.get_reads_in_region(chrom, peak["start"], peak["end"], maxDuplicate=maxDuplicate))
++                reads = [tbam.get_reads_in_region(chrom, peak["start"], peak["end"], maxDuplicate=maxDuplicate),
++                         cbam.get_reads_in_region(chrom, peak["start"], peak["end"], maxDuplicate=maxDuplicate) if cbam else []]
++                for sample, alignments in enumerate(reads):
++                    # MD tags do not describe skipped reference bases. Keep
++                    # spliced alignments out of this DNA variant caller.
++                    unspliced = [read for read in alignments
++                                 if not any(op & 15 == 3 for op in read["cigar"])]
++                    skipped = len(alignments) - len(unspliced)
++                    if skipped:
++                        options.warn("Skipped %d spliced %s alignments (CIGAR N) in this peak",
++                                     skipped, "treatment" if sample == 0 else "control")
++                    reads[sample] = unspliced
++                ra_collection = RACollection(chrom, peak, reads[0], reads[1])
+             except Exception:
+                 info("No reads found in this peak. Skipped")
+                 # while there is no reads in peak region, simply skip it.
+@@ -255,7 +261,7 @@ def run(args):
+                     if peak_variants.n_variants() > 0:
+                         peak_variants.fix_indels()
+                         ovcf.write(peak_variants.toVCF())
+-                        continue
++                    continue
+                 # uncomment the following to print those assembled unitigs and their alignments to reference genome
+                 # for u in unitig_collection["URAs_list"]:
+                 #    print(u["seq"].decode(), u["lpos"], u["rpos"], u["count"])
+diff --git a/MACS3/Signal/RACollection.py b/MACS3/Signal/RACollection.py
+index 7fef43bf..455ec86e 100644
+--- a/MACS3/Signal/RACollection.py
++++ b/MACS3/Signal/RACollection.py
+@@ -276,6 +276,8 @@ def __fill_refseq(self,
+             if read["lpos"] > prev_r:
+                 read = ralist[i - 1]
+                 read_refseq = read.get_REFSEQ()
++                if len(read_refseq) != read["rpos"] - read["lpos"]:
++                    raise ValueError("Reconstructed sequence does not match read reference span")
+                 ind = read["lpos"] - start
+                 ind_r = ind + read["rpos"] - read["lpos"]
+                 seq[ind: ind_r] = read_refseq
+@@ -283,6 +285,8 @@ def __fill_refseq(self,
+         # last
+         read = ralist[-1]
+         read_refseq = read.get_REFSEQ()
++        if len(read_refseq) != read["rpos"] - read["lpos"]:
++            raise ValueError("Reconstructed sequence does not match read reference span")
+         ind = read["lpos"] - start
+         ind_r = ind + read["rpos"] - read["lpos"]
+         seq[ind: ind_r] = read_refseq
+@@ -375,6 +379,9 @@ def fermi_assemble(self,
+         unitig_list: list             # contain of: list sequences in format: bytes
+         # n: cython.pointer(cython.int)
+ 
++        if not 1 <= fermiMinOverlap <= 63:
++            raise ValueError("fermi overlap must be between 1 and 63")
++
+         n_seqs = len(self.RAlists[0]) + len(self.RAlists[1])
+ 
+         # prn_seqs: cython.int
+@@ -767,6 +774,9 @@ def build_unitig_collection(self, fermiMinOverlap):
+         n_unitigs_0: cython.int
+         n_unitigs_1: cython.int
+ 
++        if not 1 <= fermiMinOverlap <= 63:
++            raise ValueError("fermi overlap must be between 1 and 63")
++
+         # first round of assembly
+         # print (" First round to assemble unitigs")
+         unitig_list = self.fermi_assemble(fermiMinOverlap, opt_flag=0x80)
+@@ -833,7 +843,7 @@ def build_unitig_collection(self, fermiMinOverlap):
+                                                   self.peak,
+                                                   unmapped_RAlist_T,
+                                                   unmapped_RAlist_C)
+-            unitigs_2nd = unmapped_ra_collection.fermi_assemble(fermiMinOverlap/2,
++            unitigs_2nd = unmapped_ra_collection.fermi_assemble(max(1, fermiMinOverlap // 2),
+                                                                 opt_flag=0x80)
+ 
+             if unitigs_2nd:
+diff --git a/MACS3/Utilities/OptValidator.py b/MACS3/Utilities/OptValidator.py
+index 76e9eefe..c2b346f7 100644
+--- a/MACS3/Utilities/OptValidator.py
++++ b/MACS3/Utilities/OptValidator.py
+@@ -710,7 +710,9 @@ def opt_validate_callvar(options):
+ 
+     validate_execution_options(options, callvar=True)
+ 
+-    # methods should be valid:
++    if not 1 <= options.fermiMinOverlap <= 63:
++        options.error("--fermi-overlap must be between 1 and 63.")
++        sys.exit(1)
+ 
+     return options
+ 
+diff --git a/MACS3/fermi-lite/bfc.c b/MACS3/fermi-lite/bfc.c
+index 50d288d6..4568357b 100644
+--- a/MACS3/fermi-lite/bfc.c
++++ b/MACS3/fermi-lite/bfc.c
+@@ -652,7 +652,7 @@ float fml_correct_core(const fml_opt_t *opt, int flt_uniq, int n, bseq1_t *seq)
+ 	mode = bfc_ch_hist(ch, hist, hist_high);
+ 	for (i = opt->min_cnt; i < 256; ++i)
+ 		sum_k += hist[i], tot_k += i * hist[i];
+-	kcov = (float)tot_k / sum_k;
++	kcov = sum_k? (float)tot_k / sum_k : 0.;
+ 	bfc_opt.min_cov = (int)(BFC_EC_MIN_COV_COEF * kcov + .499);
+ 	bfc_opt.min_cov = bfc_opt.min_cov < opt->max_cnt? bfc_opt.min_cov : opt->max_cnt;
+ 	bfc_opt.min_cov = bfc_opt.min_cov > opt->min_cnt? bfc_opt.min_cov : opt->min_cnt;
+diff --git a/MACS3/fermi-lite/htab.c b/MACS3/fermi-lite/htab.c
+index 13b41507..884d2a52 100644
+--- a/MACS3/fermi-lite/htab.c
++++ b/MACS3/fermi-lite/htab.c
+@@ -21,6 +21,8 @@ bfc_ch_t *bfc_ch_init(int k, int l_pre)
+ 	bfc_ch_t *ch;
+ 	int i;
+ 	assert(k <= 63);
++	/* get_subhash uses 2*k-l_pre as a shift when k <= 32. */
++	if (l_pre > k * 2) l_pre = k * 2;
+ 	if (k * 2 - l_pre > BFC_CH_KEYBITS)
+ 		l_pre = k * 2 - BFC_CH_KEYBITS;
+ 	if (l_pre > BFC_CH_MAXPRE) l_pre = BFC_CH_MAXPRE;
+diff --git a/MACS3/fermi-lite/misc.c b/MACS3/fermi-lite/misc.c
+index f42a1632..7dc94dcc 100644
+--- a/MACS3/fermi-lite/misc.c
++++ b/MACS3/fermi-lite/misc.c
+@@ -95,6 +95,13 @@ struct rld_t *fml_fmi_gen(int n, bseq1_t *seq, int is_mt)
+ 		free(s->seq);
+ 	}
+ 	free(seq);
++	/* Filtering can remove every read (e.g. reads shorter than the
++	 * requested overlap). No index can be built from an empty string. */
++	if (str.l == 0) {
++		free(str.s);
++		mr_destroy(mr);
++		return 0;
++	}
+ 	mr_insert_multi(mr, str.l, (uint8_t*)str.s, is_mt);
+ 	free(str.s);
+ 
+@@ -279,10 +286,16 @@ fml_utg_t *fml_assemble(const fml_opt_t *opt0, int n_seqs, bseq1_t *seqs, int *n
+ 	fml_utg_t *utg;
+ 	fml_opt_t opt = *opt0;
+ 	float kcov;
++	*n_utg = 0;
++	if (n_seqs == 0) {
++		free(seqs);
++		return 0;
++	}
+ 	fml_opt_adjust(&opt, n_seqs, seqs);
+ 	if (opt.ec_k >= 0) fml_correct(&opt, n_seqs, seqs);
+ 	kcov = fml_fltuniq(&opt, n_seqs, seqs);
+ 	e = fml_seq2fmi(&opt, n_seqs, seqs);
++	if (e == 0) return 0; /* fml_seq2fmi has consumed and freed seqs */
+ 	g = fml_fmi2mag(&opt, e);
+ 	opt.mag_opt.min_ensr = opt.mag_opt.min_ensr > kcov * MAG_MIN_NSR_COEF? opt.mag_opt.min_ensr : (int)(kcov * MAG_MIN_NSR_COEF + .499);
+ 	opt.mag_opt.min_ensr = opt.mag_opt.min_ensr < opt0->max_cnt? opt.mag_opt.min_ensr : opt0->max_cnt;
+diff --git a/bin/macs3 b/bin/macs3
+index 62fa66e3..eabee5e9 100644
+--- a/bin/macs3
++++ b/bin/macs3
+@@ -708,7 +708,7 @@ To call variants:
+     group_para.add_argument("-F", "--fermi", dest="fermi", type=str, default="auto",
+                             help="Option to control when to apply local assembly through fermi-lite. By default (set as 'auto'), while callvar detects any INDEL variant in a peak region, it will utilize fermi-lite to recover the actual DNA sequences to refine the read alignments. If set as 'on', fermi-lite will be always invoked. It can increase specificity however sensivity and speed will be significantly lower. If set as 'off', Fermi won't be invoked at all. If so, speed and sensitivity can be higher but specificity will be significantly lower. Default: auto")
+     group_para.add_argument("--fermi-overlap", dest="fermiMinOverlap", type=int,
+-                            help="The minimal overlap for fermi to initially assemble two reads. Must be between 1 and read length. A longer fermiMinOverlap is needed while read length is small (e.g. 30 for 36bp read, but 33 for 100bp read may work). Default:30", default=30)
++                            help="The minimal overlap for fermi to initially assemble two reads (1-63). Choose an overlap no longer than the reads. If assembly produces no unitigs, auto retains first-pass calls and on skips the peak. For 25bp reads, try 20. Default:30", default=30)
+     group_para.add_argument("--top2alleles-mratio", dest="top2allelesMinRatio", type=float,
+                             help="The reads for the top 2 most frequent alleles (e.g. a ref allele and an alternative allele) at a loci shouldn't be too few comparing to total reads mapped. The minimum ratio is set by this optoin. Must be a float between 0.5 and 1.  Default:0.8 which means at least 80%% of reads contain the top 2 alleles.", default=0.8)
+     group_para.add_argument("--altallele-count", dest="altalleleMinCount", type=int,
+diff --git a/docs/source/docs/callvar.md b/docs/source/docs/callvar.md
+index d2171fe5..e2f69210 100644
+--- a/docs/source/docs/callvar.md
++++ b/docs/source/docs/callvar.md
+@@ -84,9 +84,11 @@ Here is a brief overview of these options:
+   invoked at all. If so, speed and sensitivity can be higher but
+   specificity will be significantly lower.
+ - `--fermi-overlap`: The minimal overlap for fermi to initially
+-  assemble two reads. Must be between 1 and read length. A longer
+-  fermiMinOverlap is needed while read length is small (e.g. 30 for
+-  36bp read, but 33 for 100bp read may work). Default is 30. 
++  assemble two reads, between 1 and 63 (the fermi-lite k-mer limit).
++  Choose an overlap no longer than the reads; for 25bp reads, try 20.
++  If assembly produces no unitigs, `auto` retains any first-pass calls,
++  while `on` skips the peak and continues to the next one. Default is 30.
++
+ - `--top2alleles-mratio`: The reads for the top 2 most frequent
+   alleles (e.g. a ref allele and an alternative allele) at a loci
+   shouldn't be too few comparing to total reads mapped. The minimum
+@@ -108,6 +110,12 @@ Here is a brief overview of these options:
+   memory operations and may negate benefit from multi
+   processing. Default: 1 
+ 
++Alignments containing CIGAR `N` (spliced reads) are skipped with a warning
++in both treatment and control. Their MD tags omit the skipped reference
++bases, so they cannot be used to reconstruct the DNA reference for
++`callvar`. Other alignments in the same peak remain eligible. Peaks with
++no usable treatment reads produce no variant calls.
++
+ ## Example Usage
+ 
+ Here is an example of how to use the `callvar` command:
+diff --git a/test/callvar_assembly_probe.py b/test/callvar_assembly_probe.py
+new file mode 100644
+index 00000000..503b30db
+--- /dev/null
++++ b/test/callvar_assembly_probe.py
+@@ -0,0 +1,100 @@
++"""Bounded native assembly probes, launched by test_callvar_assembly.py."""
++
++from pathlib import Path
++import sys
++
++from MACS3.IO.PeakIO import PeakIO
++from MACS3.Signal import RACollection as module
++from MACS3.Signal.ReadAlignment import ReadAlignment
++
++
++def reference(n=400):
++    x = 20261003
++    seq = bytearray()
++    for _ in range(n):
++        x = (1103515245 * x + 12345) % 2**31
++        seq.append(b"ACGT"[(x >> 16) & 3])
++    return bytes(seq)
++
++
++REF = reference()
++
++
++def read(start, seq, cigar=None, span=None):
++    codes = [b"=ACMGRSVTWYHKDBN".index(c) for c in seq]
++    if len(codes) % 2:
++        codes.append(0)
++    packed = bytes((codes[i] << 4) | codes[i + 1]
++                   for i in range(0, len(codes), 2))
++    return ReadAlignment(b"read", b"chr1", start,
++                         start + (len(seq) if span is None else span), 0,
++                         packed, bytes([40] * len(seq)),
++                         cigar or (len(seq) << 4,), str(len(seq)).encode())
++
++
++def collection(treatment, control=None):
++    peak = PeakIO()
++    peak.add(b"chr1", 0, 300)
++    return module.RACollection(b"chr1", peak.get_data_from_chrom(b"chr1")[0],
++                               treatment, control or [])
++
++
++def main():
++    assert Path(module.__file__).resolve() == Path(sys.argv[1]).resolve()
++    assert Path(module.__file__).suffix != ".py"
++    case = sys.argv[2]
++    if case in ("short", "equal", "filtered", "ambiguous"):
++        if case == "filtered":
++            # No repeated k-mers: all reads are removed by fermi's filter.
++            reads = [read(i, REF[i:i + 50]) for i in (0, 100, 200)]
++        elif case == "ambiguous":
++            reads = [read(i, b"N" * 50) for i in range(10)]
++        else:
++            reads = [read(i, REF[i:i + 25]) for i in range(10)]
++        assert collection(reads).build_unitig_collection(
++            25 if case == "equal" else 30) == 0
++    elif case.startswith("invalid-"):
++        overlap = int(case.split("-", 1)[1])
++        c = collection([read(0, REF[:50])])
++        try:
++            c.build_unitig_collection(overlap)
++        except ValueError as exc:
++            assert "overlap" in str(exc).lower()
++        else:
++            raise AssertionError("invalid overlap accepted")
++    elif case.startswith("mixed-") or case in ("minimum", "maximum"):
++        long = [read(i, REF[i:i + 50]) for i in range(0, 249, 4)]
++        short = [read(i, REF[i:i + 25]) for i in range(0, 249, 4)]
++        if case == "mixed-treatment":
++            c = collection(long + short)
++        elif case == "mixed-control":
++            c = collection(short, long)
++        else:
++            c = collection(long)
++        overlap = 1 if case == "minimum" else 63 if case == "maximum" else 30
++        uc = c.build_unitig_collection(overlap)
++        if case == "maximum":
++            assert uc == 0
++        else:
++            assert uc["URAs_list"]
++            # Assembly can trim the ends when short reads are included.
++            # The resulting mapped unitig must still match its reference.
++            assert any(u["rpos"] - u["lpos"] >= 250
++                       and u["seq"] == REF[u["lpos"]:u["rpos"]]
++                       for u in uc["URAs_list"])
++    elif case in ("bad-span", "splice"):
++        r = (read(0, REF[:50], span=51) if case == "bad-span" else
++             read(0, REF[:25] + REF[125:150],
++                  cigar=(25 << 4, (100 << 4) | 3, 25 << 4), span=150))
++        try:
++            collection([r])
++        except ValueError as exc:
++            assert "reference span" in str(exc)
++        else:
++            raise AssertionError("inconsistent reference span accepted")
++    else:
++        raise AssertionError(case)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/test/issue_813_verification.md b/test/issue_813_verification.md
+new file mode 100644
+index 00000000..79424319
+--- /dev/null
++++ b/test/issue_813_verification.md
+@@ -0,0 +1,119 @@
++# callvar assembly and spliced-read verification
++
++Issue: [#813](https://github.com/macs3-project/MACS/issues/813),
++part of [#757](https://github.com/macs3-project/MACS/issues/757).
++Branch: `fix/macs/813-callvar-assembly-edge-cases`.
++Baseline: `origin/main` at `b8dc7d694ad299d2bfff5521e0d57c433fe27c04`.
++
++## Compiled baseline
++
++Built unmodified source with `python setup.py build_ext --inplace -j 4`,
++Python 3.14.6, Cython 3.3.0, NumPy 2.5.1, and local SIMDe headers.
++Pysam 0.24.1 generated sorted/indexed BAMs with MD tags against a
++deterministic 20 kbp reference. Probes recorded the compiled extension
++paths, used the parent's interpreter and MACS3 package, disabled core
++dumps, and bounded each subprocess to 10 or 30 seconds.
++
++| Input / option | Baseline result |
++| --- | --- |
++| 25 bp reads, `-F on`, overlap 30 | Empty assembly followed by `TypeError: 'int' object is not subscriptable` |
++| 25 bp reads with deletion, `-F auto`, overlap 30 | Empty assembly; first-pass fallback succeeds |
++| Same short inputs, overlap 20 | Assembly succeeds |
++| One `25M2000N25M` read, `-F off` or `auto` | `IndexError` indexing a shortened reference |
++| Same spliced read, `-F on` | Empty-assembly `TypeError` |
++| Four overlapping 30 bp reads, overlap 30, `-F on` | Empty-assembly `TypeError` |
++| Overlap -1 | SIGSEGV (-11) |
++| Overlap 0 | Accepted despite the documented minimum of 1 |
++| Empty indexed BAM or empty peak file | Exit 0, header-only VCF |
++| Malformed peak coordinate | Exit 1, `ValueError` |
++
++The default build defines `NDEBUG`, so native C assertions are disabled.
++Recompiled the unchanged `mrope.c` with `-UNDEBUG` and relinked
++RACollection in a separate package copy, retaining the other baseline
++objects. The 25 bp forced-assembly and auto-with-deletion probes both
++then reproduce **SIGABRT (-6)** at `mrope.c:230`, `mr_insert_multi`,
++`len > 0 && s[len-1] == 0`. Overlap 20 succeeds in that build as well.
++
++Existing focused tests on baseline: **230 passed, 1 skipped, 1 failed**
++in 42.28 seconds. The failure is the test expecting SIGABRT; the default
++build reaches the downstream empty-unitig TypeError instead.
++
++## Changes
++
++- Validate overlap in both CLI option handling and the assembly API,
++  before input loading/native work. The supported range is **1–63**:
++  fermi-lite's hash implementation asserts a maximum k-mer length of 63.
++  At small valid overlaps, cap the hash prefix length so native hash
++  shifts remain nonnegative. Keep a halved retry overlap at least 1.
++- In fermi-lite, return no index when filtering leaves no sequence to
++  insert, and return zero unitigs rather than passing that missing index
++  into graph construction. The sequence buffers and rope are freed on
++  this path; the caller still owns and frees its options/count buffers.
++  Avoid division by zero when no k-mers meet the coverage threshold.
++  No overlap is silently clamped to the read length, and mixed inputs
++  can still assemble using their longer reads.
++- Skip CIGAR `N` alignments in treatment and control before constructing
++  callvar's reference collection, reporting the sample and count per
++  peak. Keep ordinary alignments in mixed inputs. All-spliced treatment
++  peaks follow the existing no-reads skip behavior. This is the
++  skip-spliced-reads policy explicitly permitted by #813.
++- Check reconstructed sequence length against its reference span before
++  assigning it into the reference buffer. Direct API calls with a
++  mismatched reconstruction raise `ValueError` instead of resizing the
++  buffer silently.
++- Always finish the peak after an empty assembly. Auto mode writes any
++  first-pass variants; forced assembly produces no calls for that peak
++  and continues to later peaks.
++
++CLI help and the callvar documentation describe these behaviors.
++The existing test requiring a native abort now requires safe completion
++of both affected peaks.
++
++## Regression coverage and validation
++
++`test_callvar_assembly.py` and `callvar_assembly_probe.py` cover short
++reads, equal overlap, reads eliminated by filtering, ambiguous bases,
++mixed read lengths in treatment/control, minimum and maximum overlap,
++invalid overlap including integer overflow, spliced and malformed
++reference spans, all three assembly modes, mixed/all-spliced samples,
++empty inputs, first-pass fallback, smaller-overlap recovery, and a
++successful deletion call in a later peak following an empty assembly.
++CLI results are compared to ordinary-read controls and nonassembly
++first-pass calls. Existing valid-input VCF expectations are retained.
++
++Each new native API probe runs in a subprocess with a 30-second timeout
++and asserts that its compiled RACollection path exactly matches the
++parent's. CLI probes use `run_macs3`/`macs3_env`, which pins the package
++to the parent's imported installation, with a 30-second timeout.
++
++- In-place focused suite (`test_callvar_assembly`, `test_ReadAlignment`,
++  `test_RACollection`, `test_callvar_cmd`): **280 passed, 1 skipped**
++  in 71.95 seconds. The skip is the existing slow full-real-data test;
++  the ordinary two-peak upstream VCF comparison passes.
++- Assertion-enabled package: all **14 native API regressions pass**;
++  the original three short-read CLI probes also exit 0, including the
++  auto-mode first-pass fallback and overlap-20 recovery.
++- Built `macs3-3.1.0-cp314-cp314-macosx_11_0_x86_64.whl` using
++  `python -m build --wheel --no-isolation` from a fresh source copy
++  containing tracked sources plus the new tests and SIMDe headers, with
++  no copied extension binaries or build artifacts. Installed it into a
++  separate target with `pip install --no-deps --no-compile --target ...`.
++  Repeated the same focused suite from the clean source checkout:
++  **280 passed, 1 skipped** in 81.49 seconds. Before pytest, the driver
++  asserted that MACS3, RACollection, and ReadAlignment were loaded from
++  the installation target, and that the clean source package contained
++  no `.so` files. New subprocess API probes checked the exact parent's
++  extension path again.
++- Full in-place suite (`python -m pytest -q test`): **5,730 passed,
++  101 skipped** in 1,025.90 seconds (17:05). The 302 warnings are existing
++  hmmlearn/NumPy deprecation warnings. Slow tests remain opt-in under the
++  repository's default test configuration.
++
++Local evidence is under `/private/tmp/macs813-verification/`: baseline
++`build.log`, `results.json`, `assert-results.json`, `edge-results.json`,
++and `baseline-tests.log`; fixed `build-fixed.log`, `targeted-inplace.log`,
++and `assert-api-tests.log`; wheel `build-wheel.log`, `install-wheel.log`,
++`targeted-wheel.log`, and `validate_installation.py`; full-suite
++`full-suite.log`; plus `after/`
++containing the repeated CLI probes and assertion-enabled build.
++Temporary BAMs/logs are not committed fixtures.
+diff --git a/test/test_callvar_assembly.py b/test/test_callvar_assembly.py
+new file mode 100644
+index 00000000..cd67238b
+--- /dev/null
++++ b/test/test_callvar_assembly.py
+@@ -0,0 +1,178 @@
++"""Public API and CLI regressions for #813 / #757.
++
++Native failures run in bounded subprocesses using the parent's installation.
++"""
++
++from pathlib import Path
++import subprocess
++import sys
++
++import pytest
++
++from conftest import macs3_env, no_core_dumps
++from test_callvar_cmd import (REF1, GENOME, REFS, DEL,
++                              het_reads, hom_reads, records, write_peaks)
++
++
++@pytest.mark.parametrize("case", [
++    "short", "equal", "filtered", "ambiguous", "mixed-treatment",
++    "mixed-control", "minimum", "maximum", "invalid-0", "invalid--1",
++    "invalid-64", "invalid-2147483648", "bad-span", "splice",
++])
++def test_assembly_api(tmp_path, case):
++    from MACS3.Signal import RACollection
++    probe = Path(__file__).with_name("callvar_assembly_probe.py")
++    result = subprocess.run(
++        [sys.executable, str(probe), RACollection.__file__, case],
++        cwd=tmp_path, env=macs3_env(tmp_path), capture_output=True, text=True,
++        timeout=30, preexec_fn=no_core_dumps)
++    assert result.returncode == 0, result.stdout + result.stderr
++
++
++def run(run_macs3, tmp_path, bam, peaks, mode, *extra, name="out"):
++    output = tmp_path / (name + ".vcf")
++    result = run_macs3(["callvar", "-t", bam, "-b", peaks, "-o", output,
++                       "-F", mode, "-m", "1", *extra], timeout=30)
++    return result, output
++
++
++@pytest.mark.parametrize("mode", ["auto", "on", "off"])
++@pytest.mark.parametrize("overlap", [-1, 0, 64, 2**31])
++def test_invalid_overlap_rejected_before_inputs(tmp_path, run_macs3, mode,
++                                               overlap):
++    res, out = run(run_macs3, tmp_path, "missing.bam", "missing.bed", mode,
++                   "--fermi-overlap", overlap)
++    assert res.returncode > 0
++    assert "--fermi-overlap must be between 1 and 63" in res.stderr
++    assert "Traceback" not in res.stderr
++    assert not out.exists()
++
++
++def short_reads(indel=False):
++    reads = []
++    for i in range(20):
++        start = DEL - 18 + i // 2
++        k = DEL - start
++        seq = (REF1[start:DEL] + REF1[DEL + 1:start + 26]
++               if indel else REF1[start:start + 25])
++        cigar = f"{k}M1D{25-k}M" if indel else "25M"
++        md = f"{k}^{REF1[DEL]}{25-k}" if indel else "25"
++        reads.append(dict(name=f"short{i}", ref="chr1", pos=start,
++                          flag=16 * (i % 2), cigar=cigar, seq=seq,
++                          tags=[("MD", md)]))
++    return reads
++
++
++@pytest.mark.parametrize("mode", ["auto", "on", "off"])
++@pytest.mark.parametrize("indel", [False, True])
++def test_short_reads_and_empty_unitigs(tmp_path, make_alignments, run_macs3,
++                                      mode, indel):
++    # Keep an ordinary SNV as a control alongside the short-read peak.
++    bam = make_alignments(short_reads(indel) + hom_reads(), refs=REFS, index=True)
++    peaks = write_peaks(tmp_path, [("chr1", 1000, 1200), ("chr1", 600, 800)])
++    res, out = run(run_macs3, tmp_path, bam, peaks, mode)
++    assert res.returncode == 0, res.stderr
++    expected, expected_out = run(run_macs3, tmp_path, bam, peaks, "off",
++                                 name="expected")
++    assert expected.returncode == 0, expected.stderr
++    if indel:
++        assert [r for r in records(expected_out) if 1000 <= int(r[1])-1 < 1200]
++    if mode != "on":
++        assert records(out) == records(expected_out)
++    else:
++        assert not [r for r in records(out) if 1000 <= int(r[1])-1 < 1200]
++    assert "Peak: chr1 1000 1200" in res.stderr
++
++
++def spliced_read():
++    ref = GENOME["chr1"]
++    return dict(name="splice", ref="chr1", pos=200, cigar="25M2000N25M",
++                seq=ref[200:225] + ref[2225:2250], tags=[("MD", "50")])
++
++
++@pytest.mark.parametrize("mode", ["auto", "on", "off"])
++@pytest.mark.parametrize("sample", ["treatment", "control", "only"])
++def test_spliced_reads_skipped(tmp_path, make_alignments, run_macs3, mode,
++                               sample):
++    ordinary = het_reads()
++    treatment = ([] if sample == "only" else ordinary)
++    if sample != "control":
++        treatment = treatment + [spliced_read()]
++    bam = make_alignments(treatment, refs=REFS, index=True)
++    extra = []
++    if sample == "control":
++        control = make_alignments([spliced_read()], refs=REFS,
++                                  name="control.bam", index=True)
++        extra = ["-c", control]
++    peaks = write_peaks(tmp_path, [("chr1", 190, 2300)])
++    res, out = run(run_macs3, tmp_path, bam, peaks, mode, *extra)
++    assert res.returncode == 0, res.stderr
++    assert "Skipped 1 spliced" in res.stderr
++    if sample == "only":
++        assert records(out) == []
++        assert "No reads found in this peak. Skipped" in res.stderr
++    else:
++        clean = make_alignments(ordinary, refs=REFS, name="clean.bam", index=True)
++        expected, expected_out = run(run_macs3, tmp_path, clean, peaks, mode,
++                                     name="expected")
++        assert expected.returncode == 0, expected.stderr
++        assert records(out) == records(expected_out)
++
++
++def test_empty_assembly_continues_to_later_peak(tmp_path, make_alignments,
++                                               run_macs3):
++    # Four 30 bp reads have no unitigs. The next peak tiles 300 bp, carries
++    # a homozygous deletion, and has a known nonempty successful assembly.
++    first = [dict(name=f"empty{i}", ref="chr1", pos=100+i*10, cigar="30M",
++                  seq=REF1[100+i*10:130+i*10], tags=[("MD", "30")])
++             for i in range(4)]
++    tiled = []
++    for i, start in enumerate(range(DEL-140, DEL+110, 4)):
++        if start <= DEL < start+50:
++            seq = REF1[start:DEL] + REF1[DEL+1:start+51]
++            k = DEL-start
++            cigar = (f"{k}M" if k else "") + f"1D{50-k}M"
++            md = f"{k}^{REF1[DEL]}{50-k}"
++        else:
++            seq = REF1[start:start+50]
++            cigar, md = "50M", "50"
++        tiled.append(dict(name=f"tile{i}", ref="chr1", pos=start,
++                          flag=16*(i%2), cigar=cigar, seq=seq,
++                          tags=[("MD", md)]))
++    bam = make_alignments(first + tiled, refs=REFS, index=True)
++    peaks = write_peaks(tmp_path, [("chr1", 90, 180), ("chr1", 1000, 1200)])
++    res, out = run(run_macs3, tmp_path, bam, peaks, "on")
++    assert res.returncode == 0, res.stderr
++    assert "Failed to assemble unitigs" in res.stderr
++    expected_peaks = write_peaks(tmp_path, [("chr1", 1000, 1200)], name="later.bed")
++    expected, expected_out = run(run_macs3, tmp_path, bam, expected_peaks, "on",
++                                 name="expected")
++    assert expected.returncode == 0, expected.stderr
++    assert records(out) == records(expected_out)
++    assert records(out)
++
++
++def test_short_reads_with_smaller_overlap(tmp_path, make_alignments, run_macs3):
++    bam = make_alignments(short_reads(indel=True), refs=REFS, index=True)
++    peaks = write_peaks(tmp_path, [("chr1", 1000, 1200)])
++    res, out = run(run_macs3, tmp_path, bam, peaks, "on", "--fermi-overlap", 20)
++    assert res.returncode == 0, res.stderr
++    assert "Failed to assemble unitigs" not in res.stderr
++    expected, expected_out = run(run_macs3, tmp_path, bam, peaks, "off",
++                                 name="expected")
++    assert expected.returncode == 0, expected.stderr
++    assert records(out)
++    assert [r[:5] for r in records(out)] == [r[:5] for r in records(expected_out)]
++
++
++@pytest.mark.parametrize("empty", ["bam", "peaks"])
++@pytest.mark.parametrize("mode", ["auto", "on", "off"])
++def test_empty_input(tmp_path, make_alignments, run_macs3, mode, empty):
++    bam = make_alignments([] if empty == "bam" else het_reads(),
++                          refs=REFS, index=True)
++    peaks = write_peaks(tmp_path, [] if empty == "peaks" else
++                        [("chr1", 200, 400)])
++    res, out = run(run_macs3, tmp_path, bam, peaks, mode)
++    assert res.returncode == 0, res.stderr
++    assert out.read_text().startswith("##fileformat=VCFv4.1")
++    assert records(out) == []
+diff --git a/test/test_callvar_cmd.py b/test/test_callvar_cmd.py
+index 0b73135a..a090001f 100644
+--- a/test/test_callvar_cmd.py
++++ b/test/test_callvar_cmd.py
+@@ -26,7 +26,6 @@
+ import datetime
+ import math
+ import re
+-import signal
+ import sys
+ 
+ import numpy as np
+@@ -919,20 +918,14 @@ def test_callvar_fermi_overlap_in_header(snv_data, tmp_path, run_macs3):
+     assert records(out) == [het_expected(), hom_expected()]
+ 
+ 
+-def test_callvar_fermi_overlap_longer_than_reads_aborts(snv_data, tmp_path,
++def test_callvar_fermi_overlap_longer_than_reads_skips_assembly(snv_data, tmp_path,
+                                                        run_macs3):
+-    """--fermi-overlap 60 with 50 bp reads makes fermi-lite abort callvar
+-    with an assertion in mr_insert_multi (mrope.c).
+-
+-    Pins the current output. The --fermi-overlap help requires a value
+-    between 1 and the read length; outside that range the behaviour is not
+-    documented.
+-    """
++    """No eligible assembly reads: finish both peaks without native abort."""
+     treat, ctrl, peaks = snv_data
+     res, out, args = callvar(run_macs3, tmp_path, treat, peaks, "-F", "on",
+                              "--fermi-overlap", 60)
+-    assert res.returncode == -signal.SIGABRT
+-    assert "mr_insert_multi: Assertion" in res.stderr
++    assert res.returncode == 0, res.stderr
++    assert res.stderr.count("Failed to assemble unitigs") == 2
+     assert records(out) == []
+ 
+ 

@@ -1,0 +1,36 @@
+diff --git a/setup.cfg b/setup.cfg
+index dcf4f59..8807f21 100644
+--- a/setup.cfg
++++ b/setup.cfg
+@@ -1,9 +1,6 @@
+ [metadata]
+ description-file = README.md
+ 
+-[bdist_wheel]
+-universal=1
+-
+ [tool:pytest]
+ testpaths = tests
+ 
+diff --git a/setup.py b/setup.py
+index a0da1cc..b4a0319 100644
+--- a/setup.py
++++ b/setup.py
+@@ -18,7 +18,7 @@
+     include_package_data=True,
+     zip_safe=False,
+     platforms='any',
+-    python_requires='>=3.8',
++    python_requires='>=3.11',
+     install_requires=dependencies,
+     extras_require={'test': ['pytest']},
+     entry_points={
+@@ -45,6 +45,8 @@
+         'Operating System :: Unix',
+         'Programming Language :: Python',
+         'Programming Language :: Python :: 3',
++        'Programming Language :: Python :: 3.11',
++        'Programming Language :: Python :: 3.12',
+         'Topic :: Software Development :: Libraries :: Python Modules',
+     ]
+ )

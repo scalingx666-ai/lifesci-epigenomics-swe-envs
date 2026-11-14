@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/google-deepmind__alphagenome_research-17"
+description = "Fix CTCF filtering in quick start notebook"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "alphagenome_research",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "google-deepmind/alphagenome_research"
+ref = "35ea7aa5dfaba337bfbcf14eb86bef2d7cffd99c"
+reference = "https://github.com/google-deepmind/alphagenome_research/pull/17"
+source_access = "auto"
+built_at = "2026-11-14T07:13:28.407052+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c82553ad970a67759d3aa2c2669eddb718fabd0768b75120f11ed1bedb013b2d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-02-25T09:18:56Z"
+diff_format = "unified"
+context_files = [
+    "colabs/quick_start.ipynb",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 637
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

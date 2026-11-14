@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/nloyfer__wgbs_tools-106"
+description = "Add other statistical tests for find_markers"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "wgbs_tools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nloyfer/wgbs_tools"
+ref = "624f0c76f540396db8a0c1ea8a4c5bac70a45861"
+reference = "https://github.com/nloyfer/wgbs_tools/pull/106"
+source_access = "auto"
+built_at = "2026-11-14T07:15:08.338148+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:3567c3b1327f4f2244c21db405e61eea92a70260628d7c45908aa117eb3d3659"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-07T10:48:01Z"
+diff_format = "unified"
+context_files = [
+    "src/python/find_markers.py",
+    "src/python/fm_load_params.py",
+    "supplemental/find_markers_defaults.txt",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 108
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

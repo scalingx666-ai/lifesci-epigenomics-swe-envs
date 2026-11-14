@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/epigen__spilterlize_integrate-31"
+description = "Save CFA results for downstream analysis and/or visualization #30"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "spilterlize_integrate",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "epigen/spilterlize_integrate"
+ref = "39a3a68504d73faa2112a4d394bbe75135c2df39"
+reference = "https://github.com/epigen/spilterlize_integrate/pull/31"
+source_access = "auto"
+built_at = "2026-11-14T07:17:51.271969+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e205a6051518914c3a95c47c1729b88b20d49e287f2aa3fd051b33b4896bc08f"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-09-16T12:33:36Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "workflow/rules/visualize.smk",
+    "workflow/scripts/confounding_factor_analysis.R",
+    "workflow/scripts/plot_diagnostics.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 40
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

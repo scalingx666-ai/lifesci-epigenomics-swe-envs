@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/stuart-lab__signac-1992"
+description = "Update LinkPeaks"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "signac",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "stuart-lab/signac"
+ref = "8a730c54acfe28e09fe94d195a4aa24cc98069b0"
+reference = "https://github.com/stuart-lab/signac/pull/1992"
+source_access = "auto"
+built_at = "2026-11-14T05:46:46.092588+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9c42631dbdfeb90bdc6c26acdb733f598e332194c2f3bd0bbccf5fcc9f124978"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-05T03:28:13Z"
+diff_format = "unified"
+context_files = [
+    "DESCRIPTION",
+    "NAMESPACE",
+    "NEWS.md",
+    "R/links.R",
+    "R/quantification.R",
+    "R/utilities.R",
+    "man/LinkPeaks.Rd",
+    "tests/testthat/test-links.R",
+    "tests/testthat/test-utilities.R",
+    "vignettes/pbmc_multiomic.Rmd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1997
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

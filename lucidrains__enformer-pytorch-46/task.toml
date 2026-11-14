@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/lucidrains__enformer-pytorch-46"
+description = "small fix to disable future warning with torch.load"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "enformer-pytorch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lucidrains/enformer-pytorch"
+ref = "d4ae222405f40a88036930811e5ba686b6ee9b64"
+reference = "https://github.com/lucidrains/enformer-pytorch/pull/46"
+source_access = "auto"
+built_at = "2026-11-14T05:44:21.299140+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:e383631a98a949a5bf9d33c4c5abc2cbbe3e68c9cc30b22d40834bb5a4328e2d"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-09T16:52:35Z"
+diff_format = "unified"
+context_files = [
+    "enformer_pytorch/modeling_enformer.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 2
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

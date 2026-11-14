@@ -1,0 +1,473 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index b2cb8473..c8308697 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -16,6 +16,13 @@ Types of changes
+ 
+ # Latch SDK Changelog
+ 
++## 2.78.0 - 2026-10-28
++
++### Removed
++
++* Remove `latch nextflow register` and its direct-upload implementation.
++  Use `latch register <pkg_root> --nf-script <script>` with `NextflowMetadata` for Flyte-backed registration.
++
+ ## 2.77.2 - 2026-10-21
+ 
+ ### Security
+diff --git a/pyproject.toml b/pyproject.toml
+index 6620d3d4..3ab18a85 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -12,7 +12,7 @@ include = ["src/**/*.py", "src/**/*.graphql", "src/**/py.typed", "src/latch_cli/
+ 
+ [project]
+ name = "latch"
+-version = "2.77.2"
++version = "2.78.0"
+ description = "The Latch SDK"
+ authors = [{ name = "Kenny Workman", email = "kenny@latch.bio" }]
+ maintainers = [{ name = "Kenny Workman", email = "kenny@latch.bio" }]
+diff --git a/src/latch_cli/main.py b/src/latch_cli/main.py
+index 53c6d991..74b70521 100644
+--- a/src/latch_cli/main.py
++++ b/src/latch_cli/main.py
+@@ -13,7 +13,6 @@
+ 
+ import click
+ from click.decorators import FC
+-import gql
+ from gql.transport.requests import log as requests_logger
+ from packaging.version import parse as parse_version
+ from typing_extensions import ParamSpec
+@@ -33,10 +32,8 @@
+     get_auth_header,
+     get_latest_package_version,
+     get_local_package_version,
+-    hash_directory,
+ )
+ from latch_cli.workflow_config import BaseImageOptions
+-from latch_sdk_gql.execute import execute as gql_execute
+ 
+ log = getLogger(__name__)
+ 
+@@ -1351,194 +1348,6 @@ def attach(execution_id: Optional[str]):
+     attach(execution_id)
+ 
+ 
+-@nextflow.command("register")
+-@click.argument(
+-    "pkg_root", type=click.Path(exists=True, file_okay=False, path_type=Path)
+-)
+-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation dialogs.")
+-@click.option(
+-    "--no-ignore",
+-    "--all",
+-    "-a",
+-    is_flag=True,
+-    help="Add all files (including those excluded by .gitignore/.dockerignore) to workflow archive",
+-)
+-@click.option(
+-    "--disable-auto-version",
+-    "-d",
+-    is_flag=True,
+-    help="Only use the contents of the version file for workflow versioning.",
+-)
+-@click.option(
+-    "--disable-git-version",
+-    "-G",
+-    is_flag=True,
+-    help="When the package root is a git repository, do not append the current commit hash to the version.",
+-)
+-@click.option(
+-    "--script-path",
+-    type=str,
+-    default="main.nf",
+-    help="Path to the entrypoint nextflow file. Must be relative to the package root.",
+-)
+-@requires_login
+-@requires_workspace
+-def nf_register(
+-    pkg_root: Path,
+-    yes: bool,
+-    no_ignore: bool,
+-    disable_auto_version: bool,
+-    disable_git_version: bool,
+-    script_path: str,
+-):
+-    from latch_cli.nextflow.forch_register import RegisterConfig, register
+-
+-    if not (pkg_root / script_path).exists():
+-        click.secho(
+-            f"""\
+-            Could not locate entrypoint file '{script_path}'. Ensure that the path exists, or provide
+-            another using `--script-path`
+-            """.strip(),
+-            fg="red",
+-        )
+-        raise click.exceptions.Exit(1)
+-
+-    # >>> Version parsing
+-
+-    version_file = pkg_root / "version"
+-    try:
+-        version_base = version_file.read_text().strip()
+-    except OSError:
+-        if not yes and not click.confirm(
+-            "Could not find a `version` file in the package root. One will be created. Proceed?"
+-        ):
+-            return
+-
+-        version_base = "0.1.0"
+-        version_file.write_text(version_base)
+-        click.echo(f"Created a version file with initial version {version_base}.")
+-
+-    components: list[str] = [version_base]
+-
+-    if disable_auto_version:
+-        click.echo("Skipping version tagging due to `--disable-auto-version`")
+-    elif disable_git_version:
+-        click.echo("Skipping git version tagging due to `--disable-git-version`")
+-
+-    if not disable_auto_version and not disable_git_version:
+-        try:
+-            from git import GitError, Repo
+-
+-            try:
+-                repo = Repo(pkg_root)
+-                sha = repo.head.commit.hexsha[:6]
+-                components.append(sha)
+-                click.echo(f"Tagging version with git commit {sha}.")
+-                click.secho(
+-                    "  Disable with --disable-git-version/-G", dim=True, italic=True
+-                )
+-
+-                if repo.is_dirty():
+-                    components.append("wip")
+-                    click.secho(
+-                        "  Repo contains uncommitted changes - tagging version with `wip`",
+-                        italic=True,
+-                    )
+-            except GitError:
+-                pass
+-        except ImportError:
+-            pass
+-
+-    if not disable_auto_version:
+-        sha = hash_directory(pkg_root, silent=True)[:6]
+-        components.append(sha)
+-        click.echo(f"Tagging version with directory checksum {sha}.")
+-        click.secho("  Disable with --disable-auto-version/-d", dim=True, italic=True)
+-
+-    version = "-".join(components)
+-
+-    click.echo()
+-
+-    # >>> Display Name parsing
+-
+-    dotfile_root = pkg_root / ".latch"
+-    dotfile_root.mkdir(exist_ok=True)
+-
+-    workflow_name_file = dotfile_root / "workflow_name"
+-    try:
+-        workflow_name = workflow_name_file.read_text()
+-    except OSError:
+-        workflow_name = click.prompt("What is the name of this workflow?")
+-
+-        if not yes and not click.confirm(
+-            "This workflow name will be stored in a file at `.latch/workflow_name` under the package root for future use. Proceed?"
+-        ):
+-            return
+-
+-        workflow_name_file.write_text(workflow_name)
+-        click.echo("Stored workflow name in .latch/workflow_name.")
+-        click.echo()
+-
+-    assert isinstance(workflow_name, str)
+-
+-    click.echo(
+-        dedent(f"""\
+-        {click.style("Workflow Name", fg="bright_blue")}: {workflow_name}
+-        {click.style("Version", fg="bright_blue")}: {version}
+-        {click.style("Workspace", fg="bright_blue")}: {current_workspace()}
+-        """).strip()
+-    )
+-
+-    click.echo()
+-
+-    res = gql_execute(
+-        gql.gql("""
+-            query WorkflowVersionExistenceCheck(
+-                $argWorkspaceId: BigInt!
+-                $argWorkflowName: String!
+-                $argWorkflowVersion: String!
+-            ) {
+-                workflowInfos(
+-                    condition: {
+-                        name: $argWorkflowName
+-                        version: $argWorkflowVersion
+-                        ownerId: $argWorkspaceId
+-                    }
+-                ) {
+-                    totalCount
+-                }
+-            }
+-        """),
+-        {
+-            "argWorkspaceId": current_workspace(),
+-            "argWorkflowName": workflow_name,
+-            "argWorkflowVersion": version,
+-        },
+-    )["workflowInfos"]
+-
+-    if int(res["totalCount"]) > 0:
+-        click.secho(
+-            dedent(f"""
+-            Workflow {workflow_name}:{version} already exists in this workspace.
+-
+-            Please update either the `.latch/workflow_name` or `version` file(s) and re-register.
+-            """).strip(),
+-            fg="red",
+-        )
+-        raise click.exceptions.Exit(1)
+-
+-    if not yes and not click.confirm("Start registration?"):
+-        click.secho("Cancelled", bold=True)
+-        return
+-
+-    click.echo()
+-
+-    register(
+-        pkg_root,
+-        config=RegisterConfig(workflow_name, version, Path(script_path), not no_ignore),
+-    )
+-
+-
+ """
+ POD COMMANDS
+ """
+diff --git a/src/latch_cli/nextflow/forch_register.py b/src/latch_cli/nextflow/forch_register.py
+deleted file mode 100644
+index c2e056fc..00000000
+--- a/src/latch_cli/nextflow/forch_register.py
++++ /dev/null
+@@ -1,205 +0,0 @@
+-import json
+-import math
+-import os
+-import tarfile
+-from dataclasses import dataclass
+-from fnmatch import fnmatch
+-from pathlib import Path
+-from tempfile import NamedTemporaryFile
+-from textwrap import dedent
+-from typing import Optional, TypedDict
+-from urllib.parse import urljoin
+-
+-import click
+-import requests
+-import tqdm
+-
+-from latch.utils import current_workspace
+-from latch_cli.constants import latch_constants
+-from latch_cli.nextflow.parse_schema import parse_schema
+-from latch_cli.tinyrequests import post
+-from latch_cli.utils import get_auth_header
+-from latch_sdk_config.latch import NUCLEUS_URL
+-
+-ignore_files = [".gitignore", ".dockerignore"]
+-
+-
+-@dataclass
+-class RegisterConfig:
+-    display_name: str
+-    version: str
+-    script_path: Path
+-    use_ignore_files: bool
+-
+-
+-# todo(ayush): the ignore logic seems correct on some tests still but need to properly verify
+-def gather_archive_content(
+-    parent: Path,
+-    archive_contents: Optional[list[Path]] = None,
+-    ignore_patterns: Optional[list[str]] = None,
+-    *,
+-    use_ignore_files: bool = True,
+-) -> list[Path]:
+-    if archive_contents is None:
+-        archive_contents = []
+-    if ignore_patterns is None:
+-        ignore_patterns = [".git"]
+-
+-    if any(fnmatch(str(parent), p) for p in ignore_patterns):
+-        return []
+-
+-    if use_ignore_files:
+-        for ignore_file in ignore_files:
+-            p = parent / ignore_file
+-            if not p.exists() or not p.is_file():
+-                continue
+-
+-            ignore_patterns.extend([
+-                (x if parent == Path(".") else f"{parent}/{x}")
+-                for x in p.read_text().splitlines()
+-            ])
+-
+-    for child in parent.iterdir():
+-        if any(fnmatch(str(child), p) for p in ignore_patterns):
+-            continue
+-
+-        if child.is_dir():
+-            gather_archive_content(
+-                child,
+-                archive_contents,
+-                ignore_patterns,
+-                use_ignore_files=use_ignore_files,
+-            )
+-            continue
+-
+-        archive_contents.append(child)
+-
+-    return archive_contents
+-
+-
+-class CompletedPart(TypedDict):
+-    ETag: str
+-    PartNumber: int
+-
+-
+-def register(pkg_root: Path, *, config: RegisterConfig):
+-    param_spec = parse_schema(Path("nextflow_schema.json"))
+-
+-    archive_contents = gather_archive_content(
+-        pkg_root, use_ignore_files=config.use_ignore_files
+-    )
+-
+-    with NamedTemporaryFile() as f:
+-        with (
+-            tarfile.open(fileobj=f, mode="w:gz") as archive,
+-            tqdm.tqdm(
+-                total=len(archive_contents),
+-                desc="Building workflow archive",
+-                leave=False,
+-                smoothing=0,
+-                unit="B",
+-                unit_scale=True,
+-            ) as pbar,
+-        ):
+-            for x in archive_contents:
+-                archive.add(x, arcname=str(x.relative_to(pkg_root)))
+-                pbar.update(1)
+-
+-            pbar.close()
+-
+-        f.flush()
+-        archive_size = Path(f.name).stat().st_size
+-        chunk_size = latch_constants.file_chunk_size
+-
+-        part_count = min(
+-            latch_constants.maximum_upload_parts, math.ceil(archive_size / chunk_size)
+-        )
+-        part_size = max(
+-            chunk_size, math.ceil(archive_size / latch_constants.maximum_upload_parts)
+-        )
+-
+-        res = post(
+-            urljoin(NUCLEUS_URL, "/workflows/start-wf-upload"),
+-            headers={"Authorization": get_auth_header()},
+-            json={
+-                "workspace_id": int(current_workspace()),
+-                "workflow_display_name": config.display_name,
+-                "workflow_name": config.display_name,
+-                "version": config.version,
+-                "param_metadata": json.dumps({
+-                    "parameters": param_spec,
+-                    # ayush: takes advantage of the fact that python dicts preserve insertion order
+-                    "key_order": list(param_spec),
+-                }),
+-                "script_path": str(config.script_path),
+-                "part_count": part_count,
+-            },
+-        )
+-
+-        if res.status_code != 200:
+-            click.secho(f"Unable to upload workflow files: {res.content}", fg="red")
+-            raise click.exceptions.Exit(1)
+-
+-        data = res.json()
+-
+-        upload_id = data["data"]["upload_id"]
+-        urls = data["data"]["urls"]
+-        workflow_id = data["workflow_id"]
+-
+-        with tqdm.tqdm(
+-            total=archive_size,
+-            desc="Uploading workflow files",
+-            leave=False,
+-            smoothing=0,
+-            unit="B",
+-            unit_scale=True,
+-        ) as pbar:
+-            # todo(ayush): parallelize
+-            # todo(ayush): push through the async cp stuff and use that here
+-            offset: int = 0
+-            parts: list[CompletedPart] = []
+-            for idx, url in enumerate(urls):
+-                res = requests.put(url, data=os.pread(f.fileno(), part_size, offset))
+-                pbar.update(part_size)
+-                offset += part_size
+-
+-                if res.status_code != 200:
+-                    click.secho(
+-                        f"failed to upload part {idx} of workflow files: {res.content}"
+-                    )
+-                    raise click.exceptions.Exit(1)
+-
+-                etag = res.headers["ETag"]
+-                if etag is None:
+-                    click.secho(
+-                        f"Malformed response from chunk upload part {idx}: {res.content}"
+-                    )
+-                    raise click.exceptions.Exit(1)
+-
+-                assert isinstance(etag, str)
+-
+-                parts.append(
+-                    CompletedPart(
+-                        # todo(ayush): figure out why boto sometimes adds quotes to ETag values
+-                        ETag=etag.strip('"'),
+-                        PartNumber=idx + 1,
+-                    )
+-                )
+-
+-        res = post(
+-            urljoin(NUCLEUS_URL, "/workflows/end-wf-upload"),
+-            headers={"Authorization": get_auth_header()},
+-            json={"workflow_id": workflow_id, "upload_id": upload_id, "parts": parts},
+-        )
+-
+-        if res.status_code != 200:
+-            click.secho(f"Unable to upload workflow files: {res.content}", fg="red")
+-            raise click.exceptions.Exit(1)
+-
+-        click.secho(
+-            dedent(f"""\
+-            Successfully registered workflow.
+-            URL: https://console.latch.bio/workflows/{workflow_id}
+-            """).strip(),
+-            fg="green",
+-        )
+diff --git a/uv.lock b/uv.lock
+index e2d5eb30..ef24df9c 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -1292,7 +1292,7 @@ wheels = [
+ 
+ [[package]]
+ name = "latch"
+-version = "2.77.2"
++version = "2.78.0"
+ source = { editable = "." }
+ dependencies = [
+     { name = "apscheduler" },

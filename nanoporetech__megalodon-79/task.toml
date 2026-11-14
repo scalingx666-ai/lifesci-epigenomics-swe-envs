@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/nanoporetech__megalodon-79"
+description = "Supplementary alignments"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "megalodon",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nanoporetech/megalodon"
+ref = "de94d256c6d55c0fe0b7500a201a4b795e25b386"
+reference = "https://github.com/nanoporetech/megalodon/pull/79"
+source_access = "auto"
+built_at = "2026-11-14T07:14:53.139861+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:9ca83c493a28c9374faae26b0ce7d32b33327b803245e73af5923a7756c5d12c"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2021-02-02T00:22:16Z"
+diff_format = "unified"
+context_files = [
+    "megalodon/__main__.py",
+    "megalodon/mapping.py",
+    "megalodon/megalodon.py",
+    "megalodon/mods.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 272
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

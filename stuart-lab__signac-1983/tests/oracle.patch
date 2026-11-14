@@ -1,0 +1,77 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index b03af35c..a422aa25 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -53,7 +53,8 @@ Imports:
+     vctrs,
+     lifecycle,
+     sparseMatrixStats,
+-    RSpectra
++    RSpectra,
++    Seqinfo
+ Collate: 
+     'RcppExports.R'
+     'Signac-package.R'
+diff --git a/NAMESPACE b/NAMESPACE
+index 6a3d14ba..5c233615 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -319,6 +319,10 @@ importFrom(S4Vectors,mcols)
+ importFrom(S4Vectors,queryHits)
+ importFrom(S4Vectors,split)
+ importFrom(S4Vectors,subjectHits)
++importFrom(Seqinfo,"seqinfo<-")
++importFrom(Seqinfo,seqinfo)
++importFrom(Seqinfo,seqlevels)
++importFrom(Seqinfo,seqnames)
+ importFrom(SeuratObject,"Idents<-")
+ importFrom(SeuratObject,"Key<-")
+ importFrom(SeuratObject,"LayerData<-")
+diff --git a/NEWS.md b/NEWS.md
+index 8af5e0e9..e0e9d142 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -8,6 +8,12 @@ New features:
+ * Added the `EnrichedTerms()` function to run `fgsea()` on differential testing results from each group of cell identities
+ * Added `layer` parameter to `RunSVD()` to select which layer to use
+ 
++Bug fixes:
++
++* Added `seqinfo` to motif positions in `AddMotifs()` to prevent the extension
++of motif regions beyond the ends of chromosomes
++([#1983](https://github.com/stuart-lab/signac/pull/1983); [@chenyenchung](https://github.com/chenyenchung))
++
+ Other changes:
+ 
+ * Deprecated `NucleosomeSignal` and `TSSEnrichment` functions in favor of the
+@@ -20,6 +26,7 @@ new `ATACqc` function
+ * Removed `irlba.work` parameter from `RunSVD()`
+ * Added `sparseMatrixStats` and `RSpectra` to package dependencies; removed `irlba`
+ * Added `fgsea` to suggested packages
++* Added `Seqinfo` to dependencies
+ * Removed `RunChromVAR()` and `AddChromatinModule()` due to the chromVAR package
+ being unavailable in Bioconductor 3.23
+ * Removed `chromVAR` from suggested packages
+diff --git a/R/motifs.R b/R/motifs.R
+index 91d3eb3c..f2d442a8 100644
+--- a/R/motifs.R
++++ b/R/motifs.R
+@@ -6,7 +6,7 @@ NULL
+ #' @method AddMotifs default
+ #' @concept motifs
+ #' @importFrom methods slot
+-#' @importFrom GenomeInfoDb seqlevels seqnames
++#' @importFrom Seqinfo seqlevels seqnames seqinfo seqinfo<-
+ #' @export
+ AddMotifs.default <- function(
+   object,
+@@ -57,6 +57,9 @@ AddMotifs.default <- function(
+     out = 'positions',
+     genome = genome
+   )
++  # Since motifmatchr::matchMotifs returns a GenomicRanges without seqinfo
++  seqinfo(motif.positions) <- seqinfo(genome)[seqlevels(motif.positions)]
++  
+   if (verbose) {
+     message("Creating Motif object")
+   }

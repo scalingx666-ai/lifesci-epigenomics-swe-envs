@@ -1,0 +1,1869 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6976ad0b..bf6e50f1 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -16,6 +16,24 @@ Types of changes
+ 
+ # Latch SDK Changelog
+ 
++## 2.77.0 - 2026-08-18
++
++### Added
++
++* `latch image upload` and `latch image ls` accept `--workspace-id`, matching `latch register`
++* `latch image upload` reports the digest of the pushed image
++
++### Changed
++
++* `latch image upload` no longer pulls a missing image implicitly; pass `--pull` to fetch it
++* `latch image ls` exits 0 when a workspace has no images and writes its messages to stderr, so stdout carries only the listing
++* `latch_cli.services.docker.utils.get_credentials` requires a `ws_id` keyword argument
++
++### Fixed
++
++* `latch image upload` fails on any Docker push or pull error, not just an expired token
++* `latch image upload` exits 3 when the image is pushed but Latch fails to record it; the record is idempotent, so re-running is safe
++
+ ## 2.76.10 - 2026-07-30
+ 
+ ### Fixed
+diff --git a/pyproject.toml b/pyproject.toml
+index 07900965..0ba1f299 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -12,7 +12,7 @@ include = ["src/**/*.py", "src/**/*.graphql", "src/**/py.typed", "src/latch_cli/
+ 
+ [project]
+ name = "latch"
+-version = "2.76.10"
++version = "2.77.0"
+ description = "The Latch SDK"
+ authors = [{ name = "Kenny Workman", email = "kenny@latch.bio" }]
+ maintainers = [{ name = "Kenny Workman", email = "kenny@latch.bio" }]
+diff --git a/src/latch_cli/main.py b/src/latch_cli/main.py
+index 5ab52e11..53c6d991 100644
+--- a/src/latch_cli/main.py
++++ b/src/latch_cli/main.py
+@@ -12,6 +12,7 @@
+ from typing import Callable, Optional, TypeVar, Union
+ 
+ import click
++from click.decorators import FC
+ import gql
+ from gql.transport.requests import log as requests_logger
+ from packaging.version import parse as parse_version
+@@ -58,6 +59,20 @@ def decorated(*args: P.args, **kwargs: P.kwargs):
+     return decorated
+ 
+ 
++def workspace_id_option(action: str) -> Callable[[FC], FC]:
++    """Return the `--workspace-id` option, worded for the given command."""
++    return click.option(
++        "--workspace-id",
++        type=str,
++        default=None,
++        help=(
++            f"{action} "
++            "This argument accepts a numeric workspace ID, e.g. `--workspace-id 1234`. "
++            "By default, the active workspace is used."
++        ),
++    )
++
++
+ def _require_login() -> None:
+     try:
+         get_auth_header()
+@@ -598,6 +613,17 @@ def image():
+ @click.argument("image-reference", type=str)
+ @click.option("-n", "--image-name", is_flag=False, type=str)
+ @click.option("-v", "--version", is_flag=False, type=str)
++@workspace_id_option("Upload the image to the specified workspace.")
++@click.option(
++    "--pull",
++    is_flag=True,
++    default=False,
++    type=bool,
++    help=(
++        "Pull the image if it is not present locally. An unqualified reference "
++        "resolves to Docker Hub, so check that you own the namespace."
++    ),
++)
+ @click.option(
+     "-y",
+     "--yes",
+@@ -612,9 +638,16 @@ def upload_image(
+     *,
+     image_name: Optional[str] = None,
+     version: Optional[str] = None,
++    workspace_id: Optional[str] = None,
++    pull: bool = False,
+     yes: bool = False,
+-):
+-    """Uploads an existing Docker image to Latch ECR"""
++) -> None:
++    """Uploads an existing Docker image to Latch ECR
++
++    Exits 0 if the image is in the registry and Latch has a record of it, 1 if the
++    image did not reach the registry, and 3 if the image is in the registry but Latch
++    could not record it.
++    """
+ 
+     from .services.private_images import upload_image
+ 
+@@ -622,18 +655,21 @@ def upload_image(
+         image_ref=image_reference,
+         image_name=image_name,
+         version=version,
++        workspace_id=workspace_id,
++        should_pull=pull,
+         skip_confirmation=yes,
+     )
+ 
+ 
+ @image.command("ls")
++@workspace_id_option("List the images in the specified workspace.")
+ @requires_login
+-def image_ls():
++def image_ls(*, workspace_id: Optional[str] = None) -> None:
+     """Lists existing Docker images in Latch ECR"""
+ 
+     from .services.private_images import ls
+ 
+-    ls()
++    ls(workspace_id=workspace_id)
+ 
+ 
+ @latch.command("register")
+@@ -749,16 +785,7 @@ def image_ls():
+         "the package root if one exists, or (2) generate one in .latch/Dockerfile if none exists."
+     ),
+ )
+-@click.option(
+-    "--workspace-id",
+-    type=str,
+-    default=None,
+-    help=(
+-        "Register the workflow to the specified workspace. "
+-        "This argument accepts a numeric workspace ID, e.g. `--workspace-id 1234`. "
+-        "By default, workflows are registered to the active workspace."
+-    ),
+-)
++@workspace_id_option("Register the workflow to the specified workspace.")
+ @requires_login
+ @requires_workspace
+ def register(
+diff --git a/src/latch_cli/services/docker/utils.py b/src/latch_cli/services/docker/utils.py
+index a62016ef..11f426cc 100644
+--- a/src/latch_cli/services/docker/utils.py
++++ b/src/latch_cli/services/docker/utils.py
+@@ -14,7 +14,6 @@
+ import paramiko
+ from docker.transport import SSHHTTPAdapter
+ 
+-from latch.utils import current_workspace
+ from latch_cli import tinyrequests
+ from latch_sdk_config.latch import NUCLEUS_URL, config
+ 
+@@ -33,11 +32,11 @@ class DockerCredentials:
+     password: str
+ 
+ 
+-def get_credentials(image: str) -> DockerCredentials:
++def get_credentials(image: str, *, ws_id: str) -> DockerCredentials:
+     response = tinyrequests.post(
+         urljoin(NUCLEUS_URL, "/sdk/initiate-image-upload"),
+         headers={"Authorization": get_auth_header()},
+-        json={"pkg_name": image, "ws_account_id": current_workspace()},
++        json={"pkg_name": image, "ws_account_id": ws_id},
+     )
+ 
+     try:
+@@ -111,8 +110,9 @@ def dbnp(
+     dockerfile: Path,
+     *,
+     progress_plain: bool,
++    ws_id: str,
+ ):
+-    credentials = get_credentials(image)
++    credentials = get_credentials(image, ws_id=ws_id)
+     client._auth_configs = docker.auth.AuthConfig({  # noqa: SLF001
+         "auths": {config.dkr_repo: asdict(credentials)}
+     })
+@@ -141,7 +141,13 @@ def dbnp(
+ 
+ 
+ def remote_dbnp(
+-    pkg_root: Path, image: str, version: str, dockerfile: Path, *, progress_plain: bool
++    pkg_root: Path,
++    image: str,
++    version: str,
++    dockerfile: Path,
++    *,
++    progress_plain: bool,
++    ws_id: str,
+ ):
+     key_path = pkg_root / ".latch" / "ssh_key"
+ 
+@@ -185,5 +191,11 @@ def _patched_create_paramiko_client(self: SSHHTTPAdapter, base_url: str):
+         client = docker.APIClient("ssh://fake", version="1.41")
+ 
+         dbnp(
+-            client, pkg_root, image, version, dockerfile, progress_plain=progress_plain
++            client,
++            pkg_root,
++            image,
++            version,
++            dockerfile,
++            progress_plain=progress_plain,
++            ws_id=ws_id,
+         )
+diff --git a/src/latch_cli/services/private_images.py b/src/latch_cli/services/private_images.py
+index a15883ae..ce9b4a51 100644
+--- a/src/latch_cli/services/private_images.py
++++ b/src/latch_cli/services/private_images.py
+@@ -1,7 +1,7 @@
+ import re
+ from dataclasses import asdict
+ from pathlib import Path
+-from textwrap import dedent
++from textwrap import dedent, indent
+ from typing import Optional, TypedDict
+ 
+ import click
+@@ -10,7 +10,7 @@
+ import docker.errors
+ import gql
+ 
+-from latch.utils import current_workspace
++from latch.utils import current_workspace, get_workspaces
+ from latch_sdk_config.latch import config
+ from latch_sdk_gql.execute import execute
+ 
+@@ -20,8 +20,79 @@
+ 
+ ecr_base = config.dkr_repo
+ 
++# the image reached the registry but the record did not. Distinct from 1 so a caller
++# can tell "not published" from "published but unrecorded".
++record_failed_exit_code = 3
++
++
++class PrivateImageNode(TypedDict):
++    imageName: str
++    version: str
++    creationTime: str
++
++
++class PrivateImages(TypedDict):
++    nodes: Optional[list[PrivateImageNode]]
++
++
++class PrivateImageExistsNode(TypedDict):
++    workspaceId: str
++    imageName: str
++    version: str
++
++
++class PrivateImageExistsResult(TypedDict):
++    nodes: Optional[list[PrivateImageExistsNode]]
++
++
++def is_recorded_in_db(ws_id: str, image_name: str, version: str) -> bool:
++    """Report whether the workspace already has a record of this image and version."""
++    res: Optional[PrivateImageExistsResult] = execute(
++        gql.gql("""
++            query PrivateImageExists(
++                $wsId: BigInt!
++                $imageName: String!
++                $version: String!
++            ) {
++                privateImages(
++                    filter: {
++                        workspaceId: { equalTo: $wsId }
++                        imageName: { equalTo: $imageName }
++                        version: { equalTo: $version }
++                    }
++                ) {
++                    nodes {
++                        workspaceId
++                        imageName
++                        version
++                    }
++                }
++            }
++        """),
++        {"wsId": ws_id, "imageName": image_name, "version": version},
++    )["privateImages"]
++
++    if res is None or res["nodes"] is None:
++        return False
++
++    # match again client-side: a false positive here makes `record_in_db` skip the
++    # create and report success for a record that never landed.
++    # `workspaceId` comes from the `BigInt` scalar, which can serialize as a JSON
++    # number; normalise to str so the comparison never silently fails to match.
++    return any(
++        str(node["workspaceId"]) == ws_id
++        and node["imageName"] == image_name
++        and node["version"] == version
++        for node in res["nodes"]
++    )
++
++
++def record_in_db(ws_id: str, image_name: str, version: str) -> None:
++    # the mutation is a plain create, so a repeat call fails on the uniqueness
++    # constraint. Skipping it makes a retry of a partly completed upload safe.
++    if is_recorded_in_db(ws_id, image_name, version):
++        return
+ 
+-def record_in_db(ws_id: str, image_name: str, version: str):
+     execute(
+         gql.gql("""
+             mutation AddStagingImage(
+@@ -46,6 +117,45 @@ def record_in_db(ws_id: str, image_name: str, version: str):
+     )
+ 
+ 
++def record_in_db_or_exit(
++    ws_id: str, image_name: str, version: str, *, full_image_ref: str
++) -> None:
++    """Record an image already in the registry, or exit with a distinct code.
++
++    Call only after the push succeeds: a failure here means the image is published but
++    unrecorded, which a caller must not treat like a failed push.
++    """
++    try:
++        record_in_db(ws_id, image_name, version)
++    # both subclass RuntimeError, so `except Exception` would relabel them as a
++    # record failure and swallow the real exit code
++    except (click.exceptions.Exit, click.Abort):
++        raise
++    except Exception as e:
++        # dedent the template first: interpolating a multi-line error would leave a
++        # zero-indent line, and dedent would then strip nothing from the whole block
++        template = dedent("""\
++            The image reached the registry, but Latch could not record it:
++
++            {error}
++
++            `{ref}` is pushed, but Latch has no record of it. It will not appear in
++            `latch image ls`, and workflows cannot reference it.
++
++            Re-run this command to retry the record. The record step skips itself if
++            the record already exists. If the registry refuses the repeated push
++            because the tag is immutable, upload under a new version instead.
++        """)
++
++        click.secho(
++            template.format(error=indent(str(e), "  "), ref=full_image_ref),
++            fg="red",
++            bold=True,
++        )
++
++        raise click.exceptions.Exit(record_failed_exit_code) from e
++
++
+ # note(ayush): latch register, etc. do a simplified version of this that can unnecessarily reformat
+ # image names
+ valid_image_expr = re.compile(
+@@ -113,6 +223,59 @@ def validate_version(version: str):
+         raise click.exceptions.Exit(1)
+ 
+ 
++def resolve_pull_reference(image_ref: str) -> str:
++    """Return the reference Docker pulls for `image_ref`, with the registry made explicit.
++
++    Docker treats the first path component as a registry when it contains a `.` or a
++    `:`, is `localhost`, or is not all lowercase - a repository path may not contain
++    uppercase, so an uppercase component can only be a host. Anything else resolves to
++    Docker Hub, so `team/tool:v1` is `docker.io/team/tool:v1` - a namespace the caller
++    almost certainly does not own.
++    """
++    head, sep, _ = image_ref.partition("/")
++
++    if sep == "":
++        return f"docker.io/library/{image_ref}"
++
++    if "." in head or ":" in head or head == "localhost" or head.lower() != head:
++        return image_ref
++
++    return f"docker.io/{image_ref}"
++
++
++def resolve_workspace_id(workspace_id: Optional[str]) -> str:
++    """Return the workspace to act on, and check that an explicit one is reachable.
++
++    An explicit id can be a typo, so it is checked against the workspaces the user can
++    access. The active workspace skips that check: it comes from the user's own config,
++    and `get_workspaces` (~230ms, measured 2026-08) costs more than the `ls` query it
++    would precede (~120ms). A wrong active workspace still fails, just later - at
++    `get_credentials` for a push, or as an empty listing for `ls`.
++
++    A deliberate difference from `latch register`, which checks both paths.
++    """
++    if workspace_id is None:
++        return current_workspace()
++
++    workspaces = get_workspaces()
++
++    if workspace_id not in workspaces:
++        click.secho(
++            f"User does not have permission to access workspace {workspace_id}.",
++            fg="red",
++            bold=True,
++        )
++
++        raise click.exceptions.Exit(1)
++
++    click.secho(
++        f"Target workspace: {workspaces[workspace_id]['name']} ({workspace_id})",
++        fg="bright_blue",
++    )
++
++    return workspace_id
++
++
+ # note(ayush): not going to support remote here as remote instance will not have necessary
+ # credentials if the source image is private and i dont want to deal with federation or forwarding
+ # credentials
+@@ -121,8 +284,10 @@ def upload_image(
+     *,
+     image_name: Optional[str] = None,
+     version: Optional[str] = None,
++    workspace_id: Optional[str] = None,
++    should_pull: bool = False,
+     skip_confirmation: bool = False,
+-):
++) -> None:
+     click.secho("Beginning image upload:")
+     match = image_ref_expr.match(image_ref)
+ 
+@@ -167,26 +332,56 @@ def upload_image(
+     assert image_name is not None
+     assert version is not None
+ 
+-    ws_id = current_workspace()
++    ws_id = resolve_workspace_id(workspace_id)
+ 
+     namespaced_image_name = f"{ws_id}_{image_name}"
+ 
+     full_image_ref = f"{ecr_base}/{namespaced_image_name}:{version}"
+ 
++    client = get_local_docker_client()
++
++    # resolve the source before we prompt: the user should be confirming a known
++    # source, and a missing image must not cost a credentials round trip
++    pull_ref: Optional[str] = None
++    try:
++        client.inspect_image(image_ref)
++    except docker.errors.ImageNotFound as e:
++        pull_ref = resolve_pull_reference(image_ref)
++
++        if not should_pull:
++            click.secho(f"No local image matches `{image_ref}`.\n", fg="red", bold=True)
++
++            if pull_ref != image_ref:
++                click.secho(
++                    dedent(f"""\
++                        That reference is unqualified, so Docker resolves it to
++                        `{pull_ref}` on Docker Hub. Check that you own that namespace.
++                    """),
++                    fg="red",
++                    bold=True,
++                )
++
++            click.secho(
++                f"Build the image first, or pass `--pull` to fetch `{pull_ref}`.",
++                fg="red",
++                bold=True,
++            )
++
++            raise click.exceptions.Exit(1) from e
++
+     click.secho(f"Image Destination: {full_image_ref}")
++    if pull_ref is not None:
++        click.secho(f"Image Source: {pull_ref} (not present locally, will be pulled)")
+ 
+     if not skip_confirmation and not click.confirm("Proceed?"):
+         raise click.Abort
+ 
+-    credentials = get_credentials(namespaced_image_name)
+-    client = get_local_docker_client()
++    credentials = get_credentials(namespaced_image_name, ws_id=ws_id)
+ 
+-    try:
+-        client.inspect_image(image_ref)
+-    except docker.errors.ImageNotFound:
++    if pull_ref is not None:
+         print_upload_logs(
+-            client.pull(image_ref, stream=True, decode=True, platform="linux/amd64"),
+-            image_ref,
++            client.pull(pull_ref, stream=True, decode=True, platform="linux/amd64"),
++            pull_ref,
+             print_header=False,
+         )
+ 
+@@ -196,7 +391,7 @@ def upload_image(
+         "auths": {ecr_base: asdict(credentials)}
+     })
+ 
+-    print_upload_logs(
++    digest = print_upload_logs(
+         client.push(
+             repository=f"{ecr_base}/{namespaced_image_name}",
+             tag=version,
+@@ -207,9 +402,23 @@ def upload_image(
+         namespaced_image_name,
+     )
+ 
+-    record_in_db(ws_id, namespaced_image_name, version)
++    if digest is None:
++        # the push reported no error, so the tag is there - but without a digest we
++        # cannot say the registry stored what we built. Say so rather than imply it.
++        click.secho(
++            "The registry did not report a digest, so the pushed content could not be"
++            " confirmed.",
++            fg="yellow",
++            bold=True,
++            err=True,
++        )
++
++    confirmation = "" if digest is not None else " (digest unconfirmed)"
++    click.secho(f"Successfully pushed {full_image_ref}{confirmation}", fg="green")
+ 
+-    click.secho(f"Successfully built and tagged {full_image_ref}", fg="green")
++    record_in_db_or_exit(
++        ws_id, namespaced_image_name, version, full_image_ref=full_image_ref
++    )
+ 
+ 
+ def build_and_upload_image(
+@@ -218,10 +427,11 @@ def build_and_upload_image(
+     image_name: str,
+     version: Optional[str] = None,
+     dockerfile_path: Optional[Path] = None,
++    workspace_id: Optional[str] = None,
+     remote: bool = True,
+     skip_confirmation: bool = False,
+     progress_plain: bool = False,
+-):
++) -> None:
+     click.secho("Beginning image build and upload:")
+ 
+     validate_image_name(image_name)
+@@ -237,7 +447,7 @@ def build_and_upload_image(
+ 
+         version = hash_directory(root, silent=True)[:6]
+ 
+-    ws_id = current_workspace()
++    ws_id = resolve_workspace_id(workspace_id)
+     namespaced_image_name = f"{ws_id}_{image_name}"
+ 
+     full_image_ref = f"{ecr_base}/{namespaced_image_name}:{version}"
+@@ -268,6 +478,7 @@ def build_and_upload_image(
+             version,
+             dockerfile_path,
+             progress_plain=progress_plain,
++            ws_id=ws_id,
+         )
+     else:
+         client = get_local_docker_client()
+@@ -279,26 +490,19 @@ def build_and_upload_image(
+             version,
+             dockerfile_path,
+             progress_plain=progress_plain,
++            ws_id=ws_id,
+         )
+ 
+-    record_in_db(ws_id, namespaced_image_name, version)
+-
+     click.secho(f"Successfully built and tagged {full_image_ref}", fg="green")
+ 
+-
+-class PrivateImageNode(TypedDict):
+-    imageName: str
+-    version: str
+-    creationTime: str
+-
+-
+-class PrivateImages(TypedDict):
+-    nodes: Optional[list[PrivateImageNode]]
++    record_in_db_or_exit(
++        ws_id, namespaced_image_name, version, full_image_ref=full_image_ref
++    )
+ 
+ 
+ # todo(ayush): scuffed
+-def ls():
+-    ws_id = current_workspace()
++def ls(*, workspace_id: Optional[str] = None) -> None:
++    ws_id = resolve_workspace_id(workspace_id)
+ 
+     res: Optional[PrivateImages] = execute(
+         gql.gql(
+@@ -317,15 +521,32 @@ def ls():
+         {"wsId": ws_id},
+     )["privateImages"]
+ 
+-    if res is None or res["nodes"] is None:
++    # the schema types the connection as nullable but its nodes as `[PrivateImage!]!`
++    # (verified by introspection), so an empty-but-readable workspace returns `nodes:
++    # []`, never null. A null connection is the only null case, and it means the
++    # workspace could not be read - no permission, or a partial error from the API.
++    nodes = res["nodes"] if res is not None else None
++
++    if nodes is None:
+         click.secho(
+-            f"Could not find any private images in workspace {ws_id}",
+-            dim=True,
+-            italic=True,
++            f"Could not read the private images in workspace {ws_id}.",
++            fg="red",
++            bold=True,
++            err=True,
+         )
+-        raise click.Abort
+ 
+-    for node in res["nodes"]:
++        raise click.exceptions.Exit(1)
++
++    if len(nodes) == 0:
++        # an empty workspace is not an error. The note goes to stderr so that stdout
++        # stays parseable.
++        click.secho(
++            f"No private images in workspace {ws_id}.", dim=True, italic=True, err=True
++        )
++
++        return
++
++    for node in nodes:
+         click.secho(f"{ecr_base}/{node['imageName']}:{node['version']}    ", nl=False)
+ 
+         pretty_time = human_readable_datetime(dp.isoparse(node["creationTime"]))
+diff --git a/src/latch_cli/services/register/constants.py b/src/latch_cli/services/register/constants.py
+index 25a9d6dd..e1aef74f 100644
+--- a/src/latch_cli/services/register/constants.py
++++ b/src/latch_cli/services/register/constants.py
+@@ -5,3 +5,6 @@
+ # for parsing out ansi escape codes during register for pretty printing so
+ # that e.g. carriage returns (\r) don't break the printer
+ ANSI_REGEX = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
++
++# the registry response we translate into a friendlier message
++EXPIRED_TOKEN_ERROR = "denied: Your authorization token has expired."
+diff --git a/src/latch_cli/services/register/register.py b/src/latch_cli/services/register/register.py
+index cfcb707b..8cef74b7 100644
+--- a/src/latch_cli/services/register/register.py
++++ b/src/latch_cli/services/register/register.py
+@@ -20,9 +20,15 @@
+ from latch_cli.centromere.ctx import _CentromereCtx
+ from latch_cli.centromere.utils import MaybeRemoteDir
+ from latch_cli.constants import latch_constants
+-from latch_cli.services.register.constants import ANSI_REGEX, MAX_LINES
++from latch_cli.services.register.constants import (
++    ANSI_REGEX,
++    EXPIRED_TOKEN_ERROR,
++    MAX_LINES,
++)
+ from latch_cli.services.register.utils import (
+     DockerBuildLogItem,
++    DockerPushAux,
++    DockerPushLogItem,
+     build_image,
+     register_serialized_pkg,
+     serialize_pkg_in_container,
+@@ -141,13 +147,27 @@ def write(s: str):
+ 
+ 
+ # todo(ayush): this sucks
+-def print_upload_logs(upload_image_logs, image, *, print_header: bool = True):
++def print_upload_logs(
++    upload_image_logs: Iterable[DockerPushLogItem],
++    image: str,
++    *,
++    print_header: bool = True,
++) -> Optional[str]:
++    """Render the stream, and return the digest of what the registry stored.
++
++    The stream is a single-pass iterator, so the digest is picked out during the same
++    traversal that renders it.
++
++    Returns:
++        The digest the registry reported, or None if the stream carried none. A pull
++        stream never carries one, so only a caller that pushed should ask.
++    """
+     if print_header:
+         click.secho("Uploading Docker image", bold=True)
+ 
+     prog_map: dict[str, Optional[str]] = {}
+ 
+-    def _pp_prog_map(prog_map: dict[str, Optional[str]], prev_lines: int):
++    def _pp_prog_map(prog_map: dict[str, Optional[str]], prev_lines: int) -> int:
+         if prev_lines > 0:
+             click.echo("\x1b[2K\x1b[1E" * prev_lines + f"\x1b[{prev_lines}F", nl=False)
+ 
+@@ -167,23 +187,50 @@ def _pp_prog_map(prog_map: dict[str, Optional[str]], prev_lines: int):
+ 
+         return i
+ 
++    def _move_below_progress(prev_lines: int) -> None:
++        # the cursor sits at the top of the progress block. Move below it so that the
++        # next line, and whatever the caller prints next, do not overwrite a row.
++        if prev_lines > 0:
++            click.echo(f"\x1b[{prev_lines}E", nl=False)
++
+     prev_lines = 0
++    digest: Optional[str] = None
+ 
+     for x in upload_image_logs:
+-        if (
+-            x.get("error") is not None
+-            and "denied: Your authorization token has expired." in x["error"]
+-        ):
+-            click.secho(
+-                f"\nDocker authorization token for {image} is expired.",
+-                fg="red",
+-                bold=True,
+-            )
+-            sys.exit(1)
++        error = x.get("error")
++        if error is not None:
++            _move_below_progress(prev_lines)
+ 
+-        prog_map[x.get("id")] = x.get("progress")
++            if EXPIRED_TOKEN_ERROR in error:
++                click.secho(
++                    f"Docker authorization token for {image} is expired.",
++                    fg="red",
++                    bold=True,
++                )
++            else:
++                click.secho(error, fg="red", bold=True)
++
++            raise click.exceptions.Exit(1)
++
++        aux: Optional[DockerPushAux] = x.get("aux")
++        if aux is not None and aux.get("Digest"):
++            digest = aux["Digest"]
++
++        # status-only items carry no id, and would collide on a single None key
++        layer_id = x.get("id")
++        if layer_id is None:
++            continue
++
++        prog_map[layer_id] = x.get("progress")
+         prev_lines = _pp_prog_map(prog_map, prev_lines)
+ 
++    _move_below_progress(prev_lines)
++
++    if digest is not None:
++        click.secho(f"digest: {digest}", dim=True, italic=True)
++
++    return digest
++
+ 
+ def _print_reg_resp(resp, image):
+     click.secho(f"Registering workflow {image}", bold=True)
+diff --git a/src/latch_cli/services/register/staging.py b/src/latch_cli/services/register/staging.py
+index 91ae54de..5701b255 100644
+--- a/src/latch_cli/services/register/staging.py
++++ b/src/latch_cli/services/register/staging.py
+@@ -130,6 +130,10 @@ def register_staging(
+ 
+     click.echo()
+ 
++    # bind once: the duplicate check, the repository name, the build credentials and the
++    # record below must all agree on one workspace
++    ws_id = current_workspace()
++
+     res = execute(
+         gql.gql("""
+         query LatestVersion($wsId: BigInt!, $name: String!, $version: String!) {
+@@ -144,12 +148,12 @@ def register_staging(
+             }
+         }
+         """),
+-        {"wsId": current_workspace(), "name": wf_name, "version": version},
++        {"wsId": ws_id, "name": wf_name, "version": version},
+     )
+ 
+     if res["latchDevelopStagingImages"]["totalCount"] != 0:
+         click.secho(
+-            f"Version `{version}` already exists for workflow `{wf_name}` in workspace `{current_workspace()}`. ",
++            f"Version `{version}` already exists for workflow `{wf_name}` in workspace `{ws_id}`. ",
+             fg="red",
+         )
+         raise click.exceptions.Exit(1)
+@@ -164,7 +168,7 @@ def register_staging(
+     image_suffix = docker_image_name_illegal_pat.sub(
+         "_", identifier_suffix_from_str(wf_name).lower()
+     )
+-    image_prefix = current_workspace()
++    image_prefix = ws_id
+     if len(image_prefix) == 1:
+         # note(ayush): the sins of our past continue to haunt us
+         image_prefix = f"x{image_prefix}"
+@@ -173,7 +177,12 @@ def register_staging(
+ 
+     if remote:
+         remote_dbnp(
+-            pkg_root, image, version, dockerfile_path, progress_plain=progress_plain
++            pkg_root,
++            image,
++            version,
++            dockerfile_path,
++            progress_plain=progress_plain,
++            ws_id=ws_id,
+         )
+     else:
+         client = get_local_docker_client()
+@@ -185,6 +194,7 @@ def register_staging(
+             version,
+             dockerfile_path,
+             progress_plain=progress_plain,
++            ws_id=ws_id,
+         )
+ 
+     execute(
+@@ -207,7 +217,7 @@ def register_staging(
+             }
+         }
+         """),
+-        {"wsId": current_workspace(), "workflowName": wf_name, "version": version},
++        {"wsId": ws_id, "workflowName": wf_name, "version": version},
+     )
+ 
+     click.secho("Successfully staged workflow.", fg="green")
+diff --git a/src/latch_cli/services/register/utils.py b/src/latch_cli/services/register/utils.py
+index 20ca393b..00155a9c 100644
+--- a/src/latch_cli/services/register/utils.py
++++ b/src/latch_cli/services/register/utils.py
+@@ -100,6 +100,23 @@ class DockerBuildLogItem(TypedDict):
+     stream: Optional[str]
+ 
+ 
++# the daemon's push result, emitted once at the end of a push stream. docker-py does
++# not model it - these are the Engine API's keys verbatim. `build` emits a different
++# `aux` shape, so this is push-specific.
++class DockerPushAux(TypedDict, total=False):
++    Tag: str
++    Digest: str
++    Size: int
++
++
++# a subset: the stream also carries `status`
++class DockerPushLogItem(TypedDict, total=False):
++    id: str
++    error: str
++    progress: str
++    aux: DockerPushAux
++
++
+ def build_image(
+     ctx: _CentromereCtx,
+     image_name: str,
+@@ -124,7 +141,7 @@ def build_image(
+     return build_logs
+ 
+ 
+-def upload_image(ctx: _CentromereCtx, image_name: str) -> List[str]:
++def upload_image(ctx: _CentromereCtx, image_name: str) -> Iterable[DockerPushLogItem]:
+     assert ctx.dkr_client is not None
+     return ctx.dkr_client.push(
+         repository=f"{ctx.dkr_repo}/{image_name}", stream=True, decode=True
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 00000000..b2abbc91
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,68 @@
++"""Fixtures shared by the private image tests."""
++
++import docker.errors
++import pytest
++
++from latch_cli.services import private_images
++from latch_cli.services.docker import utils as docker_utils
++
++PASSWORD = "not-a-real-secret"  # noqa: S105
++ACTIVE_WS = "1111"
++OTHER_WS = "2222"
++
++WORKSPACES = {
++    ACTIVE_WS: {"workspace_id": ACTIVE_WS, "name": "Active Team", "default": True},
++    OTHER_WS: {"workspace_id": OTHER_WS, "name": "Other Team", "default": False},
++}
++
++
++@pytest.fixture
++def _workspaces(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Patch both workspace lookups. Override `current_workspace` to vary the default."""
++    monkeypatch.setattr(private_images, "current_workspace", lambda: ACTIVE_WS)
++    monkeypatch.setattr(private_images, "get_workspaces", lambda: WORKSPACES)
++
++
++class _MissingImageClient:
++    """A daemon with no local images, so `upload_image` reaches the pull decision."""
++
++    def __init__(self) -> None:
++        self.pulled: list[str] = []
++        self.pushed: list[object] = []
++        self._auth_configs: object = None
++
++    @staticmethod
++    def inspect_image(image_ref: str) -> dict[str, str]:
++        raise docker.errors.ImageNotFound(image_ref)
++
++    def pull(self, image_ref: str, **_kwargs: object) -> list[object]:
++        self.pulled.append(image_ref)
++        return []
++
++    @staticmethod
++    def tag(_image_ref: str, **_kwargs: object) -> bool:
++        return True
++
++    def push(self, **kwargs: object) -> list[object]:
++        self.pushed.append(kwargs.get("repository"))
++        return []
++
++
++@pytest.fixture
++def _upload_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
++    monkeypatch.setattr(private_images, "current_workspace", lambda: ACTIVE_WS)
++    monkeypatch.setattr(private_images, "get_workspaces", lambda: WORKSPACES)
++    monkeypatch.setattr(
++        private_images,
++        "get_credentials",
++        lambda _image, **_kwargs: docker_utils.DockerCredentials(
++            username="u", password=PASSWORD
++        ),
++    )
++    monkeypatch.setattr(private_images, "record_in_db_or_exit", lambda *_a, **_k: None)
++
++
++@pytest.fixture
++def _quiet_upload_logs(monkeypatch: pytest.MonkeyPatch) -> None:
++    """Silence the push/pull stream renderer. Omit it to exercise the real one."""
++    monkeypatch.setattr(private_images, "print_upload_logs", lambda *_a, **_k: None)
+diff --git a/tests/test_docker_utils.py b/tests/test_docker_utils.py
+new file mode 100644
+index 00000000..200773b0
+--- /dev/null
++++ b/tests/test_docker_utils.py
+@@ -0,0 +1,115 @@
++"""Tests for the docker helpers behind `latch image upload` and `latch register`."""
++
++from pathlib import Path
++
++import docker
++import pytest
++
++from latch_cli.services.docker import utils as docker_utils
++
++from .conftest import ACTIVE_WS, OTHER_WS
++
++
++class _FakeEcr:
++    @staticmethod
++    def get_authorization_token() -> dict[str, list[dict[str, str]]]:
++        # base64 of "AWS:password"
++        return {"authorizationData": [{"authorizationToken": "QVdTOnBhc3N3b3Jk"}]}
++
++
++class _FakeSession:
++    def __init__(self, **kwargs: object) -> None: ...
++
++    @staticmethod
++    def client(_name: str) -> _FakeEcr:
++        return _FakeEcr()
++
++
++def test_get_credentials_uses_the_given_workspace(monkeypatch: pytest.MonkeyPatch):
++    """Credentials must come from the same workspace as the push target.
++
++    `get_credentials` used to resolve the workspace itself, so an explicit id could
++    push to one workspace with credentials minted for another.
++    """
++    sent: dict[str, object] = {}
++
++    class Response:
++        @staticmethod
++        def json() -> dict[str, str]:
++            return {
++                "tmp_access_key": "a",
++                "tmp_secret_key": "b",
++                "tmp_session_token": "c",
++            }
++
++    def post(_url: str, *, json: dict[str, str], **_kwargs: object) -> Response:
++        sent.update(json)
++        return Response()
++
++    monkeypatch.setattr(docker_utils.tinyrequests, "post", post)
++    monkeypatch.setattr(docker_utils, "get_auth_header", lambda: "token")
++    monkeypatch.setattr(docker_utils.boto3.session, "Session", _FakeSession)
++
++    docker_utils.get_credentials("1111_image", ws_id=OTHER_WS)
++
++    assert sent["ws_account_id"] == OTHER_WS
++
++
++class _StubCalledError(Exception):
++    """Raised from the stubbed `get_credentials` to stop `dbnp` before it builds."""
++
++
++@pytest.mark.parametrize("workspace_id", [ACTIVE_WS, OTHER_WS])
++def test_dbnp_forwards_the_workspace_to_get_credentials(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, workspace_id: str
++):
++    """The local build path mints credentials for the workspace it pushes to."""
++    seen: dict[str, str] = {}
++
++    def get_credentials(_image: str, *, ws_id: str) -> object:
++        seen["ws_id"] = ws_id
++        raise _StubCalledError
++
++    monkeypatch.setattr(docker_utils, "get_credentials", get_credentials)
++
++    with pytest.raises(_StubCalledError):
++        docker_utils.dbnp(
++            docker.APIClient.__new__(docker.APIClient),
++            tmp_path,
++            "1111_image",
++            "v1",
++            tmp_path / "Dockerfile",
++            progress_plain=True,
++            ws_id=workspace_id,
++        )
++
++    assert seen["ws_id"] == workspace_id
++
++
++def test_every_build_call_site_supplies_a_workspace():
++    """`ws_id` is required on the build helpers, so every caller must pass it.
++
++    A static sweep rather than a behavioural test: `register --staging` also calls
++    these, and driving it needs a real workflow package. This catches a new caller
++    too, which a per-caller test would not.
++    """
++    import ast
++
++    src = Path(__file__).parent.parent / "src"
++    missing: list[str] = []
++
++    for path in src.rglob("*.py"):
++        tree = ast.parse(path.read_text(encoding="utf-8"))
++
++        for node in ast.walk(tree):
++            if not isinstance(node, ast.Call):
++                continue
++            if not isinstance(node.func, ast.Name):
++                continue
++            if node.func.id not in {"dbnp", "remote_dbnp"}:
++                continue
++
++            if not any(kw.arg == "ws_id" for kw in node.keywords):
++                missing.append(f"{path.relative_to(src)}:{node.lineno}")
++
++    assert missing == [], f"call sites missing ws_id: {missing}"
+diff --git a/tests/test_print_upload_logs.py b/tests/test_print_upload_logs.py
+new file mode 100644
+index 00000000..c17cd9e2
+--- /dev/null
++++ b/tests/test_print_upload_logs.py
+@@ -0,0 +1,180 @@
++from typing import TYPE_CHECKING, Optional
++
++import click
++import pytest
++
++from latch_cli.services.register.register import print_upload_logs
++
++if TYPE_CHECKING:
++    from latch_cli.services.register.utils import DockerPushLogItem
++
++
++def test_progress_stream_does_not_exit(capsys: pytest.CaptureFixture[str]):
++    """A stream with no error must run to completion, and render what it read."""
++    logs: list[DockerPushLogItem] = [
++        {"id": "layer_a", "progress": "1/2"},
++        {"id": "layer_a", "progress": "2/2"},
++        {"id": "layer_b", "progress": "1/1"},
++        {"status": "Preparing"},  # type: ignore[typeddict-unknown-key]  # no id
++    ]
++
++    print_upload_logs(logs, "test_image")
++
++    out = capsys.readouterr().out
++    assert "Uploading Docker image" in out  # header prints when not suppressed
++    assert "layer_a ~ 2/2" in out
++    assert "layer_b ~ 1/1" in out
++    assert "None ~" not in out
++
++
++def test_pull_path_reports_errors_too(capsys: pytest.CaptureFixture[str]):
++    """The pull stream uses the same parser, with the header suppressed."""
++    error = "manifest for barcode-analysis/barcode-tools:v1 not found"
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        print_upload_logs([{"error": error}], "test_image", print_header=False)
++
++    assert excinfo.value.exit_code == 1
++
++    out = capsys.readouterr().out
++    assert error in out
++    assert "Uploading Docker image" not in out
++
++
++@pytest.mark.parametrize(
++    ("error", "expected"),
++    [
++        ("denied: Your authorization token has expired.", "is expired"),
++        ("denied: requested access to the resource is denied", "denied: requested"),
++        ("received unexpected HTTP status: 500 Internal Server Error", "500"),
++        ("unauthorized: authentication required", "unauthorized"),
++    ],
++)
++def test_every_error_exits_1_and_is_shown(
++    error: str, expected: str, capsys: pytest.CaptureFixture[str]
++):
++    """Every error is fatal, not just the expired-token case."""
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        print_upload_logs([{"error": error}], "test_image")
++
++    assert excinfo.value.exit_code == 1
++    assert expected in capsys.readouterr().out
++
++
++def test_error_stops_the_stream():
++    """Nothing after the error is read, so the caller cannot report success."""
++    consumed: list[str] = []
++
++    def logs():
++        consumed.append("first")
++        yield {"error": "denied: requested access to the resource is denied"}
++
++        consumed.append("second")
++        yield {"id": "layer_a", "progress": "1/1"}
++
++    with pytest.raises(click.exceptions.Exit):
++        print_upload_logs(logs(), "test_image")
++
++    assert consumed == ["first"]
++
++
++def test_error_after_progress_moves_below_the_progress_block(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """The cursor moves below the progress block so the error is not overwritten.
++
++    `click.echo` strips escape sequences when the output is not a terminal, so record
++    the calls instead of reading the captured output.
++    """
++    written: list[str] = []
++
++    def record(message: object = "", **_kwargs: object) -> None:
++        written.append(str(message))
++
++    monkeypatch.setattr(click, "echo", record)
++    monkeypatch.setattr(click, "secho", record)
++
++    logs = [
++        {"id": "layer_a", "progress": "1/2"},
++        {"error": "denied: requested access to the resource is denied"},
++    ]
++
++    with pytest.raises(click.exceptions.Exit):
++        print_upload_logs(logs, "test_image")
++
++    # match the exact echo: the redraw prefix also contains `\x1b[1E`, so a substring
++    # test would pass with the cursor move deleted as soon as the fixture grows
++    move_below = written.index("\x1b[1E")
++    error = next(i for i, m in enumerate(written) if m.startswith("denied:"))
++
++    assert move_below < error
++
++
++DIGEST = "sha256:8f1a2b3c4d5e6f70819293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8"
++
++
++@pytest.mark.parametrize(
++    ("logs", "expected"),
++    [
++        pytest.param(
++            [
++                {"id": "layer_a", "progress": "1/1"},
++                {"aux": {"Tag": "v1", "Digest": DIGEST, "Size": 1234}},
++            ],
++            DIGEST,
++            id="a push ends with an aux entry, and that digest is returned",
++        ),
++        pytest.param(
++            [{"id": "layer_a", "progress": "1/1"}],
++            None,
++            id="a pull carries no aux, so no digest is invented",
++        ),
++        pytest.param(
++            [{"aux": {"Digest": "sha256:aaa"}}, {"aux": {"Digest": DIGEST}}],
++            DIGEST,
++            id="the last aux entry in the stream wins",
++        ),
++        pytest.param(
++            [{"aux": {"Tag": "v1", "Size": 10}}],
++            None,
++            id="an aux entry without a Digest yields no digest",
++        ),
++        pytest.param(
++            [{"aux": {"Digest": ""}}], None, id="an empty Digest is not a digest"
++        ),
++    ],
++)
++def test_the_digest_is_the_last_aux_digest_in_the_stream(
++    logs: "list[DockerPushLogItem]", expected: Optional[str]
++):
++    assert print_upload_logs(logs, "test_image") == expected
++
++
++def test_the_digest_is_shown_to_the_user(capsys: pytest.CaptureFixture[str]):
++    """A digest the caller never sees is no better than none at all."""
++    print_upload_logs([{"aux": {"Digest": DIGEST}}], "test_image")
++
++    assert DIGEST in capsys.readouterr().out
++
++
++def test_the_digest_is_printed_below_the_progress_block(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """Same hazard as the error path: the cursor is parked at the top of the block."""
++    written: list[str] = []
++
++    def record(message: object = "", **_kwargs: object) -> None:
++        written.append(str(message))
++
++    monkeypatch.setattr(click, "echo", record)
++    monkeypatch.setattr(click, "secho", record)
++
++    print_upload_logs(
++        [{"id": "layer_a", "progress": "1/2"}, {"aux": {"Digest": DIGEST}}],
++        "test_image",
++    )
++
++    move_below = written.index("\x1b[1E")
++    digest_line = next(i for i, m in enumerate(written) if DIGEST in m)
++
++    assert move_below < digest_line
+diff --git a/tests/test_private_images.py b/tests/test_private_images.py
+new file mode 100644
+index 00000000..0986a37e
+--- /dev/null
++++ b/tests/test_private_images.py
+@@ -0,0 +1,609 @@
++from collections.abc import Callable
++from pathlib import Path
++from typing import Any, Optional
++
++import click
++import graphql
++import pytest
++
++from latch_cli.services import private_images
++from latch_cli.services.docker import utils as docker_utils
++from latch_cli.services.private_images import (
++    PrivateImages,
++    is_recorded_in_db,
++    record_failed_exit_code,
++    record_in_db,
++    record_in_db_or_exit,
++    resolve_pull_reference,
++    resolve_workspace_id,
++)
++
++from .conftest import ACTIVE_WS, OTHER_WS, PASSWORD, _MissingImageClient
++
++# one workspace for the whole module, so the stubs and the assertions agree
++WS_ID = ACTIVE_WS
++IMAGE_NAME = f"{ACTIVE_WS}_barcode_tools"
++VERSION = "abc123"
++
++RECORDED_NODE = {"workspaceId": WS_ID, "imageName": IMAGE_NAME, "version": VERSION}
++OTHER_WORKSPACE_NODE = {
++    "workspaceId": "9999",
++    "imageName": IMAGE_NAME,
++    "version": VERSION,
++}
++
++
++def fake_execute(
++    response: Optional[dict[str, Any]], calls: list[tuple[str, Any]]
++) -> Callable[..., dict[str, Any]]:
++    """Return a stand-in for `execute` that records the document and its variables."""
++
++    def execute(
++        document: graphql.DocumentNode,
++        variables: Optional[dict[str, Any]] = None,
++        **_kwargs: object,
++    ) -> dict[str, Any]:
++        calls.append((graphql.print_ast(document), variables))
++
++        return {"privateImages": response}
++
++    return execute
++
++
++OTHER_IMAGE_NODE = {
++    "workspaceId": WS_ID,
++    "imageName": f"{ACTIVE_WS}_other_tool",
++    "version": VERSION,
++}
++OTHER_VERSION_NODE = {
++    "workspaceId": WS_ID,
++    "imageName": IMAGE_NAME,
++    "version": "zzz999",
++}
++
++
++@pytest.mark.parametrize(
++    ("response", "expected"),
++    [
++        ({"nodes": [RECORDED_NODE]}, True),
++        ({"nodes": [OTHER_IMAGE_NODE]}, False),
++        ({"nodes": [OTHER_VERSION_NODE]}, False),
++        ({"nodes": [OTHER_WORKSPACE_NODE]}, False),
++        ({"nodes": [OTHER_IMAGE_NODE, RECORDED_NODE]}, True),
++        ({"nodes": []}, False),
++        ({"nodes": None}, False),
++        (None, False),
++    ],
++)
++def test_is_recorded_in_db(
++    monkeypatch: pytest.MonkeyPatch,
++    response: Optional[dict[str, Any]],
++    *,
++    expected: bool,
++):
++    """Only a node matching both the image and the version counts as recorded."""
++    monkeypatch.setattr(private_images, "execute", fake_execute(response, []))
++
++    assert is_recorded_in_db(WS_ID, IMAGE_NAME, VERSION) is expected
++
++
++def test_record_in_db_creates_the_record_despite_an_unrelated_node(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """The create must still run when the workspace holds only other images."""
++    calls: list[tuple[str, Any]] = []
++    monkeypatch.setattr(
++        private_images, "execute", fake_execute({"nodes": [OTHER_IMAGE_NODE]}, calls)
++    )
++
++    record_in_db(WS_ID, IMAGE_NAME, VERSION)
++
++    assert len(calls) == 2
++    assert "createPrivateImage" in calls[1][0]
++
++
++def test_record_in_db_skips_the_mutation_when_already_recorded(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """A retry of a partly completed upload must not hit the uniqueness constraint."""
++    calls: list[tuple[str, Any]] = []
++    monkeypatch.setattr(
++        private_images, "execute", fake_execute({"nodes": [RECORDED_NODE]}, calls)
++    )
++
++    record_in_db(WS_ID, IMAGE_NAME, VERSION)
++
++    assert len(calls) == 1
++    assert "createPrivateImage" not in calls[0][0]
++
++
++def test_record_in_db_creates_the_record_when_missing(monkeypatch: pytest.MonkeyPatch):
++    calls: list[tuple[str, Any]] = []
++    monkeypatch.setattr(private_images, "execute", fake_execute({"nodes": []}, calls))
++
++    record_in_db(WS_ID, IMAGE_NAME, VERSION)
++
++    assert len(calls) == 2
++    assert "createPrivateImage" in calls[1][0]
++
++
++def test_record_in_db_or_exit_is_silent_on_success(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    monkeypatch.setattr(
++        private_images, "record_in_db", lambda _ws_id, _image_name, _version: None
++    )
++
++    record_in_db_or_exit(WS_ID, IMAGE_NAME, VERSION, full_image_ref="ecr/image:abc123")
++
++    assert capsys.readouterr().out == ""
++
++
++def test_record_in_db_or_exit_uses_a_distinct_exit_code(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """A record failure must not look like a push failure, which exits 1."""
++
++    def raises(_ws_id: str, _image_name: str, _version: str) -> None:
++        raise RuntimeError("uniqueness violation")
++
++    monkeypatch.setattr(private_images, "record_in_db", raises)
++
++    full_image_ref = f"ecr/{IMAGE_NAME}:{VERSION}"
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        record_in_db_or_exit(WS_ID, IMAGE_NAME, VERSION, full_image_ref=full_image_ref)
++
++    # the literal is the promise to callers; asserting the constant is self-referential
++    assert excinfo.value.exit_code == 3
++    assert record_failed_exit_code == 3
++
++    out = capsys.readouterr().out
++    assert full_image_ref in out
++    assert "uniqueness violation" in out
++
++
++def test_record_in_db_or_exit_passes_through_a_click_exit(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """A click exit from below must keep its own code, not be relabelled as 3."""
++
++    def raises(_ws_id: str, _image_name: str, _version: str) -> None:
++        raise click.exceptions.Exit(1)
++
++    monkeypatch.setattr(private_images, "record_in_db", raises)
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        record_in_db_or_exit(
++            WS_ID, IMAGE_NAME, VERSION, full_image_ref="ecr/image:abc123"
++        )
++
++    assert excinfo.value.exit_code == 1
++
++
++def test_record_in_db_or_exit_passes_through_a_click_abort(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """A click abort from below must propagate, not be relabelled as 3."""
++
++    def raises(_ws_id: str, _image_name: str, _version: str) -> None:
++        raise click.Abort
++
++    monkeypatch.setattr(private_images, "record_in_db", raises)
++
++    with pytest.raises(click.Abort):
++        record_in_db_or_exit(
++            WS_ID, IMAGE_NAME, VERSION, full_image_ref="ecr/image:abc123"
++        )
++
++
++def test_record_failure_message_survives_a_multiline_error(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """A multi-line error must not defeat the dedent and skew the whole message."""
++
++    def raises(_ws_id: str, _image_name: str, _version: str) -> None:
++        raise RuntimeError("Transport error:\n{'message': 'duplicate key'}")
++
++    monkeypatch.setattr(private_images, "record_in_db", raises)
++
++    with pytest.raises(click.exceptions.Exit):
++        record_in_db_or_exit(
++            WS_ID, IMAGE_NAME, VERSION, full_image_ref="ecr/image:abc123"
++        )
++
++    out = capsys.readouterr().out
++    assert out.startswith("The image reached the registry")
++    # every line of the template is flush left; only the error body is indented
++    assert "\n`ecr/image:abc123` is pushed" in out
++
++
++def test_is_recorded_in_db_sends_all_three_variables(monkeypatch: pytest.MonkeyPatch):
++    calls: list[tuple[str, Any]] = []
++    monkeypatch.setattr(
++        private_images, "execute", fake_execute({"nodes": [RECORDED_NODE]}, calls)
++    )
++
++    is_recorded_in_db(WS_ID, IMAGE_NAME, VERSION)
++
++    assert calls[0][1] == {"wsId": WS_ID, "imageName": IMAGE_NAME, "version": VERSION}
++
++
++@pytest.mark.parametrize(
++    ("given", "resolved"), [(None, ACTIVE_WS), (OTHER_WS, OTHER_WS)]
++)
++@pytest.mark.usefixtures("_workspaces")
++def test_resolve_workspace_id(given: Optional[str], resolved: str):
++    """An explicit id wins over the ambient one, or the two can disagree."""
++    assert resolve_workspace_id(given) == resolved
++
++
++@pytest.mark.usefixtures("_workspaces")
++def test_resolve_workspace_id_names_an_explicit_target(
++    capsys: pytest.CaptureFixture[str],
++):
++    resolve_workspace_id(OTHER_WS)
++
++    out = capsys.readouterr().out
++    assert "Other Team" in out
++    assert OTHER_WS in out
++
++
++@pytest.mark.usefixtures("_workspaces")
++def test_resolve_workspace_id_rejects_an_unreachable_workspace(
++    capsys: pytest.CaptureFixture[str],
++):
++    """A typo must fail before the push, not push into someone else's namespace."""
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        resolve_workspace_id("9999")
++
++    assert excinfo.value.exit_code == 1
++    assert "9999" in capsys.readouterr().out
++
++
++def test_resolve_workspace_id_does_not_look_up_the_active_workspace(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """A deliberate difference from `latch register`, which checks both paths.
++
++    The active workspace comes from the user's own config, so it is not worth a
++    `get_workspaces` query on every `ls`. If it is wrong, `get_credentials` fails.
++    Change this only together with the docstring on `resolve_workspace_id`.
++    """
++
++    def unreachable() -> dict[str, object]:
++        raise AssertionError("get_workspaces must not be called for the default")
++
++    monkeypatch.setattr(private_images, "current_workspace", lambda: ACTIVE_WS)
++    monkeypatch.setattr(private_images, "get_workspaces", unreachable)
++
++    assert resolve_workspace_id(None) == ACTIVE_WS
++
++
++class _FakeDockerClient:
++    """Minimal stand-in for the pieces of `docker.APIClient` that `upload_image` uses."""
++
++    def __init__(self) -> None:
++        self.tagged: dict[str, str] = {}
++        self.pushed: dict[str, str] = {}
++        self._auth_configs: object = None
++
++    @staticmethod
++    def inspect_image(image_ref: str) -> dict[str, str]:
++        return {"Id": image_ref}
++
++    def tag(self, _image_ref: str, *, repository: str, tag: str) -> bool:
++        self.tagged = {"repository": repository, "tag": tag}
++        return True
++
++    def push(self, *, repository: str, tag: str, **_kwargs: object) -> list[object]:
++        self.pushed = {"repository": repository, "tag": tag}
++        return []
++
++
++@pytest.mark.parametrize("remote", [True, False])
++@pytest.mark.usefixtures("_workspaces")
++def test_build_and_upload_passes_the_workspace_to_the_build(
++    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, remote: bool
++):
++    """Both build paths must be handed the resolved workspace, not resolve their own."""
++    seen: dict[str, str] = {}
++
++    def build(*_args: object, ws_id: str, **_kwargs: object) -> None:
++        seen["ws_id"] = ws_id
++
++    monkeypatch.setattr(private_images, "remote_dbnp", build)
++    monkeypatch.setattr(private_images, "dbnp", build)
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: None)
++    monkeypatch.setattr(
++        private_images, "record_in_db_or_exit", lambda *_args, **_kwargs: None
++    )
++
++    (tmp_path / "Dockerfile").touch()
++
++    private_images.build_and_upload_image(
++        tmp_path,
++        image_name="image",
++        version="v1",
++        workspace_id=OTHER_WS,
++        remote=remote,
++        skip_confirmation=True,
++    )
++
++    assert seen["ws_id"] == OTHER_WS
++
++
++@pytest.mark.parametrize("workspace_id", [None, OTHER_WS])
++@pytest.mark.usefixtures("_workspaces")
++def test_ls_accepts_a_workspace(
++    monkeypatch: pytest.MonkeyPatch, workspace_id: Optional[str]
++):
++    seen: list[str] = []
++
++    def execute(
++        _document: object, variables: dict[str, str], **_kwargs: object
++    ) -> dict:
++        seen.append(variables["wsId"])
++        return {"privateImages": {"nodes": []}}
++
++    monkeypatch.setattr(private_images, "execute", execute)
++
++    private_images.ls(workspace_id=workspace_id)
++
++    assert seen == [workspace_id if workspace_id is not None else ACTIVE_WS]
++
++
++@pytest.mark.usefixtures("_workspaces")
++def test_upload_image_uses_the_workspace_for_every_consumer(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    """The repository name, the credentials and the record must agree on one workspace.
++
++    `upload_image` is the command the workspace flag exists for, so drive it end to
++    end rather than testing the pieces separately.
++    """
++    credentials_call: dict[str, str] = {}
++    recorded: dict[str, str] = {}
++    client = _FakeDockerClient()
++
++    def get_credentials(image: str, *, ws_id: str) -> object:
++        credentials_call.update({"image": image, "ws_id": ws_id})
++        return docker_utils.DockerCredentials(username="u", password=PASSWORD)
++
++    def record(ws_id: str, image_name: str, version: str, **_kwargs: object) -> None:
++        recorded.update({"ws_id": ws_id, "image_name": image_name, "version": version})
++
++    monkeypatch.setattr(private_images, "get_credentials", get_credentials)
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++    monkeypatch.setattr(private_images, "print_upload_logs", lambda *_a, **_k: None)
++    monkeypatch.setattr(private_images, "record_in_db_or_exit", record)
++
++    private_images.upload_image(
++        "some_registry/image:v1", workspace_id=OTHER_WS, skip_confirmation=True
++    )
++
++    namespaced = f"{OTHER_WS}_image"
++
++    assert credentials_call == {"image": namespaced, "ws_id": OTHER_WS}
++    assert client.tagged["repository"].endswith(f"/{namespaced}")
++    assert client.pushed["repository"].endswith(f"/{namespaced}")
++    assert recorded == {"ws_id": OTHER_WS, "image_name": namespaced, "version": "v1"}
++
++
++@pytest.mark.parametrize(
++    ("image_ref", "resolved"),
++    [
++        # unqualified: Docker Hub, in a namespace the caller may not own
++        ("team/tool:v1", "docker.io/team/tool:v1"),
++        ("team/tool", "docker.io/team/tool"),
++        # single component: Docker Hub's official-image namespace
++        ("ubuntu:22.04", "docker.io/library/ubuntu:22.04"),
++        # a real registry is left alone
++        ("ghcr.io/team/tool:v1", "ghcr.io/team/tool:v1"),
++        ("ghcr.io/team/sub/tool:v1", "ghcr.io/team/sub/tool:v1"),
++        ("localhost/tool:v1", "localhost/tool:v1"),
++        # a port in the first component marks it a host, even without a dot
++        ("localhost:5000/tool:v1", "localhost:5000/tool:v1"),
++        # a digest reference keeps its digest
++        ("team/tool@sha256:abc", "docker.io/team/tool@sha256:abc"),
++        ("ubuntu@sha256:abc", "docker.io/library/ubuntu@sha256:abc"),
++        # uppercase cannot appear in a repository path, so it can only be a host
++        ("MyOrg/tool:v1", "MyOrg/tool:v1"),
++    ],
++)
++def test_resolve_pull_reference(image_ref: str, resolved: str):
++    """A host-looking first component is a registry; anything else is Docker Hub."""
++    assert resolve_pull_reference(image_ref) == resolved
++
++
++@pytest.mark.usefixtures("_upload_stubs", "_quiet_upload_logs")
++def test_missing_image_does_not_pull_by_default(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """Publishing a third-party image under our tag must not happen silently."""
++    client = _MissingImageClient()
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        private_images.upload_image("team/tool:v1", skip_confirmation=True)
++
++    assert excinfo.value.exit_code == 1
++    assert client.pulled == []
++    # the invariant, not its proxy: nothing reached our registry
++    assert client.pushed == []
++
++    out = capsys.readouterr().out
++    assert "--pull" in out
++    # the message names where the image would actually come from
++    assert "docker.io/team/tool:v1" in out
++
++
++@pytest.mark.usefixtures("_upload_stubs", "_quiet_upload_logs")
++def test_pull_flag_pulls_the_image(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    client = _MissingImageClient()
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++
++    private_images.upload_image(
++        "team/tool:v1", should_pull=True, skip_confirmation=True
++    )
++
++    # we pull the reference we printed, so the message cannot drift from the call
++    assert client.pulled == ["docker.io/team/tool:v1"]
++    assert "docker.io/team/tool:v1" in capsys.readouterr().out
++
++
++class _LocalImageClient(_MissingImageClient):
++    @staticmethod
++    def inspect_image(image_ref: str) -> dict[str, str]:
++        return {"Id": image_ref}
++
++
++@pytest.mark.usefixtures("_upload_stubs", "_quiet_upload_logs")
++def test_a_local_image_never_pulls(monkeypatch: pytest.MonkeyPatch):
++    """The flag only affects the missing-image path."""
++    client = _LocalImageClient()
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++
++    private_images.upload_image("team/tool:v1", skip_confirmation=True)
++
++    assert client.pulled == []
++    assert client.pushed == [f"{private_images.ecr_base}/{WS_ID}_tool"]
++
++
++def _stub_ls_response(
++    monkeypatch: pytest.MonkeyPatch, response: Optional[PrivateImages]
++) -> list[tuple[str, Any]]:
++    """Stub `execute` for `ls` and return the list that records its calls."""
++    calls: list[tuple[str, Any]] = []
++    monkeypatch.setattr(private_images, "current_workspace", lambda: ACTIVE_WS)
++    monkeypatch.setattr(private_images, "execute", fake_execute(response, calls))
++
++    return calls
++
++
++def test_ls_exits_0_on_an_empty_workspace(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """An empty workspace must be distinguishable from an auth or network failure."""
++    _stub_ls_response(monkeypatch, {"nodes": []})
++
++    # returning rather than raising is the exit-0 contract
++    assert private_images.ls() is None
++
++    captured = capsys.readouterr()
++    # nothing on stdout, so a caller can parse it without special-casing empty
++    assert captured.out == ""
++    assert "No private images" in captured.err
++
++
++@pytest.mark.parametrize("response", [None, {"nodes": None}])
++def test_ls_exits_1_when_the_workspace_cannot_be_read(
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++    response: Optional[PrivateImages],
++):
++    """A null connection or a null node list is a failed read, not an empty workspace.
++
++    Postgraphile returns a non-null `nodes` whenever the connection is non-null, so
++    either null is a malformed response.
++    """
++    _stub_ls_response(monkeypatch, response)
++
++    with pytest.raises(click.exceptions.Exit) as excinfo:
++        private_images.ls()
++
++    assert excinfo.value.exit_code == 1
++
++    captured = capsys.readouterr()
++    # the failure must not land in the stream a caller redirects to a file
++    assert captured.out == ""
++    assert "Could not read" in captured.err
++
++
++@pytest.mark.usefixtures("_workspaces")
++def test_ls_queries_the_given_workspace(monkeypatch: pytest.MonkeyPatch):
++    calls = _stub_ls_response(monkeypatch, {"nodes": []})
++
++    private_images.ls(workspace_id=OTHER_WS)
++
++    assert calls[0][1] == {"wsId": OTHER_WS}
++
++
++def test_ls_lists_images_on_stdout(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """The listing itself goes to stdout, where a caller can read it."""
++    _stub_ls_response(
++        monkeypatch,
++        {
++            "nodes": [
++                {
++                    "imageName": IMAGE_NAME,
++                    "version": VERSION,
++                    "creationTime": "2026-08-12T00:00:00Z",
++                }
++            ]
++        },
++    )
++
++    private_images.ls()
++
++    captured = capsys.readouterr()
++    assert f"{IMAGE_NAME}:{VERSION}" in captured.out
++    # the listing must not leak a spurious note to the stream a caller redirects
++    assert captured.err == ""
++
++
++class _DigestPushClient(_MissingImageClient):
++    """A daemon with the image present, whose push reports a digest."""
++
++    digest = "sha256:8f1a2b3c4d5e6f70819293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8"
++
++    @staticmethod
++    def inspect_image(image_ref: str) -> dict[str, str]:
++        return {"Id": image_ref}
++
++    def push(self, **kwargs: object) -> list[object]:
++        self.pushed.append(kwargs.get("repository"))
++        return [{"aux": {"Digest": self.digest}}]
++
++
++class _NoDigestPushClient(_DigestPushClient):
++    def push(self, **kwargs: object) -> list[object]:
++        self.pushed.append(kwargs.get("repository"))
++        return [{"id": "layer_a", "progress": "1/1"}]
++
++
++@pytest.mark.usefixtures("_upload_stubs")
++def test_upload_reports_the_pushed_digest(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    client = _DigestPushClient()
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++
++    private_images.upload_image("team/tool:v1", skip_confirmation=True)
++
++    captured = capsys.readouterr()
++    assert client.digest in captured.out
++    assert "did not report a digest" not in captured.err
++
++
++@pytest.mark.usefixtures("_upload_stubs")
++def test_upload_says_so_when_no_digest_is_reported(
++    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
++):
++    """Success without a digest is a weaker claim, and must not be stated as a strong one."""
++    client = _NoDigestPushClient()
++    monkeypatch.setattr(private_images, "get_local_docker_client", lambda: client)
++
++    private_images.upload_image("team/tool:v1", skip_confirmation=True)
++
++    captured = capsys.readouterr()
++    assert "did not report a digest" in captured.err
++    # the push itself did succeed, so the success line still stands - but it must carry
++    # the caveat rather than imply a confirmed push
++    assert "Successfully pushed" in captured.out
++    assert "(digest unconfirmed)" in captured.out

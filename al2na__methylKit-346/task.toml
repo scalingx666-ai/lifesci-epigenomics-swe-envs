@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/al2na__methylKit-346"
+description = "\"key<-, marked as deprecated since 2012 and unusable since v1.15.0, h…"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "methylKit",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "al2na/methylKit"
+ref = "d244b0b975db230bba856a8bbda5e726b7df7964"
+reference = "https://github.com/al2na/methylKit/pull/346"
+source_access = "auto"
+built_at = "2026-11-14T07:14:20.373574+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:a36ead33f3f97c2bf1b170a751ba6c8cb87e2a15ab7f284674f1e7cd92c9bc13"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-02-28T08:26:50Z"
+diff_format = "unified"
+context_files = [
+    "NAMESPACE",
+    "R/methylKit.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 3
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

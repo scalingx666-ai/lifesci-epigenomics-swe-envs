@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/ParkerLab__ataqv-15"
+description = "Update Debian changelog for 1.2.0"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "ataqv",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "ParkerLab/ataqv"
+ref = "468def93c12c8f8fde098ca2e106cc3067871980"
+reference = "https://github.com/ParkerLab/ataqv/pull/15"
+source_access = "auto"
+built_at = "2026-11-14T07:17:28.905127+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:db6830547cee12df4258dd05ea65c8469ee298dc69e03f8d6d8c2a7ca0e7da0a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-07-07T14:06:28Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    "debian/changelog",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

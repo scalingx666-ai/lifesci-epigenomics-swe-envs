@@ -1,0 +1,718 @@
+diff --git a/workflow/rules/figures.smk b/workflow/rules/figures.smk
+index 99d3974..bb1fc63 100644
+--- a/workflow/rules/figures.smk
++++ b/workflow/rules/figures.smk
+@@ -4,12 +4,14 @@ rule CorcesRNA_figures:
+     input:
+         umap_coords = os.path.join("results/CorcesRNA/unsupervised_analysis/normCQN_integrated/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
+         dea_ova = os.path.join("results/CorcesRNA/dea_limma/normCQN_OvA_cell_type/results.csv"),
+-        enrichment_results = os.path.join("results/CorcesRNA/enrichment_analysis/cell_types/preranked_GSEApy/Azimuth_2023/cell_types_Azimuth_2023_all.csv"),
++        enrichment_results_azimuth = os.path.join("results/CorcesRNA/enrichment_analysis/cell_types/preranked_GSEApy/Azimuth_2023/cell_types_Azimuth_2023_all.csv"),
++        enrichment_results_reactome = os.path.join("results/CorcesRNA/enrichment_analysis/cell_types/preranked_GSEApy/ReactomePathways/cell_types_ReactomePathways_all.csv"),
+         crossprediction_adj_mtx = os.path.join("results/CorcesRNA/special_analyses/crossprediction/adjacency_matrix.csv"),
+     output:
+         umap_plot = os.path.join("paper/CorcesRNA/umap.pdf"),
+         dea_heatmap_plot = os.path.join("paper/CorcesRNA/differential_heatmap.pdf"),
+-        enrichment_plot = os.path.join("paper/CorcesRNA/enrichment.pdf"),
++        enrichment_azimuth_plot = os.path.join("paper/CorcesRNA/enrichment_azimuth.pdf"),
++        enrichment_reactome_plot = os.path.join("paper/CorcesRNA/enrichment_reactome.pdf"),
+         crossprediction_plot = os.path.join("paper/CorcesRNA/crossprediction.pdf"),
+         crossprediction_coordinates = os.path.join("paper/CorcesRNA/crossprediction_coordinates.csv"),
+     params:
+@@ -36,12 +38,14 @@ rule CorcesATAC_figures:
+     input:
+         umap_coords = os.path.join("results/CorcesATAC/unsupervised_analysis/normCQN_integrated/UMAP/UMAP_correlation_15_0.1_2_data.csv"),
+         dea_ova = os.path.join("results/CorcesATAC/dea_limma/normCQN_OvA_cell_type/results.csv"),
+-        enrichment_results = os.path.join("results/CorcesATAC/enrichment_analysis/cell_types_up/GREAT/Azimuth_2023/cell_types_up_Azimuth_2023_all.csv"),
++        enrichment_results_azimuth = os.path.join("results/CorcesATAC/enrichment_analysis/cell_types_up/GREAT/Azimuth_2023/cell_types_up_Azimuth_2023_all.csv"),
++        enrichment_results_reactome = os.path.join("results/CorcesATAC/enrichment_analysis/cell_types_up/GREAT/ReactomePathways/cell_types_up_ReactomePathways_all.csv"),
+         crossprediction_adj_mtx = os.path.join("results/CorcesATAC/special_analyses/crossprediction/adjacency_matrix.csv"),
+     output:
+         umap_plot = os.path.join("paper/CorcesATAC/umap.pdf"),
+         dea_heatmap_plot = os.path.join("paper/CorcesATAC/differential_heatmap.pdf"),
+-        enrichment_plot = os.path.join("paper/CorcesATAC/enrichment.pdf"),
++        enrichment_azimuth_plot = os.path.join("paper/CorcesATAC/enrichment_azimuth.pdf"),
++        enrichment_reactome_plot = os.path.join("paper/CorcesATAC/enrichment_reactome.pdf"),
+         crossprediction_plot = os.path.join("paper/CorcesATAC/crossprediction.pdf"),
+         crossprediction_coordinates = os.path.join("paper/CorcesATAC/crossprediction_coordinates.csv"),
+     params:
+diff --git a/workflow/scripts/CorcesATAC_figures.R b/workflow/scripts/CorcesATAC_figures.R
+index 68ae14a..27e69c2 100644
+--- a/workflow/scripts/CorcesATAC_figures.R
++++ b/workflow/scripts/CorcesATAC_figures.R
+@@ -8,26 +8,18 @@
+ source(snakemake@params[["figure_theme_path"]])
+ source(snakemake@params[["figure_utils_path"]])
+ 
+-# FIXME snakemakeify
+-# ## libraries are loaded in the source files
+-# source(snakemake@params[["figure_theme_path"]])
+-# ## input
+-# enrichment_results_path <- snakemake@input[["enrichment_results"]]
+-# ## output
+-# enrichment_plot_path <- snakemake@output[["enrichment_plot"]]
+-# ## params
+-# fdr_threshold <- snakemake@params[["fdr_threshold"]]
+-
+ # inputs
+ CorcesATAC_umap_coords_path <- snakemake@input[["umap_coords"]]
+ CorcesATAC_dea_OvA_path <- snakemake@input[["dea_ova"]]
+-CorcesATAC_enrichment_results_path <- snakemake@input[["enrichment_results"]]
++CorcesATAC_enrichment_results_azimuth_path <- snakemake@input[["enrichment_results_azimuth"]]
++CorcesATAC_enrichment_results_reactome_path <- snakemake@input[["enrichment_results_reactome"]]
+ CorcesATAC_crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
+ 
+ # outputs
+ atac_umap_path <- snakemake@output[["umap_plot"]]
+ atac_dea_heatmap_path <- snakemake@output[["dea_heatmap_plot"]]
+-atac_enrichment_path <- snakemake@output[["enrichment_plot"]]
++atac_enrichment_azimuth_path <- snakemake@output[["enrichment_azimuth_plot"]]
++atac_enrichment_reactome_path <- snakemake@output[["enrichment_reactome_plot"]]
+ atac_crossprediction_path <- snakemake@output[["crossprediction_plot"]]
+ atac_crossprediction_coordinates_path <- snakemake@output[["crossprediction_coordinates"]]
+ 
+@@ -38,7 +30,7 @@ lineage_tree_cut_off <- snakemake@params[["lineage_tree_cut_off"]]
+ hierarchy_coordinates <- snakemake@params[["hierarchy_coordinates"]]
+ ######### UMAPs (from unsupervised analysis) ############
+ # Create UMAP plots
+-atac_umap_plot <- umap_plot(CorcesATAC_umap_coords_path, atac_umap_path, title = "ATAC")
++atac_umap_plot <- umap_plot(CorcesATAC_umap_coords_path, atac_umap_path, title = "Chromatin accessibility")
+ 
+ 
+ ######### DEA HEATMAP ############
+@@ -47,7 +39,7 @@ atac_dea_heatmap_plot <- plot_differential_features_heatmap(
+     fig_path = atac_dea_heatmap_path,
+     fdr_threshold = fdr_threshold,
+     log2FC_threshold = log2FC_threshold,
+-    title = "ATAC",
++    title = "Chromatin accessibility",
+     feature = 'Regions',
+     ct_clst_dist = "euclidean",
+     ct_clst_method = "ward.D2",
+@@ -73,19 +65,31 @@ create_atac_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0
+     return(df_formatted)
+ }
+ 
+-atac_df_formatted <- create_atac_enrichment_df(CorcesATAC_enrichment_results_path, fdr_threshold)
++atac_df_formatted <- create_atac_enrichment_df(CorcesATAC_enrichment_results_azimuth_path, fdr_threshold)
+ atac_heatmap_df <- prepare_for_heatmap(df_formatted = atac_df_formatted,
+                                       fdr_threshold = fdr_threshold,
+                                       tissues_to_keep = c("PBMC", "Bone Marrow"))
+-atac_enrichment_plot <- plot_enrichment_heatmap(
++atac_enrichment_azimuth_plot <- plot_enrichment_heatmap(
+     heatmap_df = atac_heatmap_df, 
+-    fig_path = atac_enrichment_path,
+-    fill_lab = "log2(FE)",
++    fig_path = atac_enrichment_azimuth_path,
++    fill_lab = "log2(fold change)",
+     size_lab = "-log10(p-adj.)",
+-    title = "ATAC",
++    title = "Chromatin accessibility",
+     ylabel = "Enrichment term\n(GREAT, Azimuth 2023)"
+ )
+ 
++atac_df_formatted <- create_atac_enrichment_df(CorcesATAC_enrichment_results_reactome_path, fdr_threshold)
++atac_heatmap_df <- prepare_for_heatmap(df_formatted = atac_df_formatted,
++                                      fdr_threshold = fdr_threshold,
++                                      tissues_to_keep = NULL)
++atac_enrichment_reactome_plot <- plot_enrichment_heatmap(
++    heatmap_df = atac_heatmap_df, 
++    fig_path = atac_enrichment_reactome_path,
++    fill_lab = "log2(fold change)",
++    size_lab = "-log10(p-adj.)",
++    title = "Chromatin accessibility",
++    ylabel = "Enrichment term\n(GREAT, Reactome)"
++)
+ 
+ ######### Lineage reconstruction using crossprediction ############
+ # plot adapted from: https://gist.github.com/dsparks/4331058
+@@ -97,5 +101,5 @@ atac_crosspred_p <- plot_crossprediction_from_adjacency(
+     coordinates_out_path = atac_crossprediction_coordinates_path,
+     lineage_tree_cut_off = lineage_tree_cut_off,
+     hierarchy_coordinates = hierarchy_coordinates,
+-    modality_label = "ATAC",
++    modality_label = "Chromatin accessibility",
+ )
+\ No newline at end of file
+diff --git a/workflow/scripts/CorcesINT_figures.R b/workflow/scripts/CorcesINT_figures.R
+index 1ae5185..50abd7c 100644
+--- a/workflow/scripts/CorcesINT_figures.R
++++ b/workflow/scripts/CorcesINT_figures.R
+@@ -23,10 +23,7 @@ fdr_threshold <- snakemake@params[["fdr_threshold"]]
+ lfc_th <- snakemake@params[["lfc_th"]]
+ ave_expr_th <- snakemake@params[["ave_expr_th"]]
+ max_genes_tf_plot <- snakemake@params[["max_genes_tf_plot"]]
+-TFs_in_papalexi <- c(
+-  "ATF2", "BRD4", "CAV1", "CD86", "CMTM6", "CUL3", "ETV7", "IFNGR1", "IFNGR2", "IRF1", "IRF7", "JAK2", "CMIR", "MARCH8",
+-  "MYC", "NFKB1A", "PDCD1LG2", "POU2F2", "SMAD4", "SPI1", "STAT1", "STAT2", "STAT3", "STAT5A", "TNFRSF14", "UBE2L6"
+-)
++
+ # outputs
+ unintegrated_cfa_plot_path <- snakemake@output[["unintegrated_cfa_plot"]]
+ integrated_cfa_plot_path <- snakemake@output[["integrated_cfa_plot"]]
+@@ -36,6 +33,11 @@ epigenetic_scatter_dir <- snakemake@output[["epigenetic_scatter_dir"]]
+ GO_enrichment_path <- snakemake@output[["GO_enrichment_plot"]]
+ Reactome_enrichment_path <- snakemake@output[["Reactome_enrichment_plot"]]
+ TF_plot_path <- snakemake@output[["TF_plot"]]
++
++TFs_in_papalexi <- c(
++  "ATF2", "BRD4", "CAV1", "CD86", "CMTM6", "CUL3", "ETV7", "IFNGR1", "IFNGR2", "IRF1", "IRF7", "JAK2", "CMIR", "MARCH8",
++  "MYC", "NFKB1A", "PDCD1LG2", "POU2F2", "SMAD4", "SPI1", "STAT1", "STAT2", "STAT3", "STAT5A", "TNFRSF14", "UBE2L6"
++)
+ ########################################################################################################################
+ ### LOAD DATA ##########################################################################################################
+ ########################################################################################################################
+@@ -57,81 +59,67 @@ integrated_cfa_data <- V1_to_rowname(data.frame(fread(file.path(integrated_cfa_p
+ ########################################################################################################################
+ ### UMAP PLOT ##########################################################################################################
+ ########################################################################################################################
+-unintegrated_umap_plot <- umap_plot(unintegrated_umap_coords_path, unintegrated_umap_plot_path, title = "Unintegrated",
+-                                    modality_by_shape = TRUE)
+-integrated_umap_plot <- umap_plot(integrated_umap_coords_path, integrated_umap_plot_path, title = "Integrated",
++unintegrated_umap_plot <- umap_plot(unintegrated_umap_coords_path, unintegrated_umap_plot_path,
++                                    title = "Before integration of modalities (normalized)",
+                                     modality_by_shape = TRUE)
++integrated_umap_plot <- umap_plot(integrated_umap_coords_path, integrated_umap_plot_path,
++                                  title = "After integration of modalities",
++                                  modality_by_shape = TRUE)
+ 
+ ########################################################################################################################
+ ### CFA PLOT ##########################################################################################################
+ ########################################################################################################################
+-plot_cfa_heatmap <- function(cfa_mat, title, path, var_max=NULL, nPCs=10, 
+-                             metadata_rows=c('cell_type', 'modality', 'donor')
++plot_cfa_heatmap <- function(cfa_mat, title, path, fill_max=NULL, nPCs=10, 
++                             metadata_rows=c('donor', 'modality', 'cell_type')
+                              ){
+   var_explained_df <- t(cfa_mat['var_explained', 1:nPCs]) %>%
+       as.data.frame() %>%
+       rownames_to_column(var = 'PC') %>%
+-      mutate(PC = factor(PC, levels = rev(colnames(cfa_mat))))
++      mutate(PC = factor(PC, levels = colnames(cfa_mat)))
+   cfa_mat <- cfa_mat[metadata_rows, 1:nPCs]
+ 
+-  if (is.null(var_max)) {
+-      x_max <- max(var_explained_df$var_explained, na.rm = TRUE)
+-  } else {
+-      x_max <- var_max
+-  }
++  # build PC axis labels including variance explained (percent if in [0,1])
++  is_fraction <- max(var_explained_df$var_explained, na.rm = TRUE) <= 1.00001
++  pc_lab_df <- var_explained_df %>%
++      mutate(var_pct = if (is_fraction) 100 * var_explained else var_explained) %>%
++      mutate(label = paste0(PC, " (", formatC(var_pct, format = "f", digits = 1), "%)") )
++  pc_labels <- setNames(pc_lab_df$label, pc_lab_df$PC)
+ 
+   # unstack cfa_mat, remembering rownames and colnames
+   cfa_mat_long <- cfa_mat %>%
+       rownames_to_column(var = "metadata_type") %>%
+       pivot_longer(cols = -metadata_type, names_to = "PC", values_to = "stat") %>%
+-      mutate(PC = factor(PC, levels = rev(colnames(cfa_mat))),
++      mutate(PC = factor(PC, levels = colnames(cfa_mat)),
+               metadata_type = factor(metadata_type, levels = metadata_rows),
+               text_color = ifelse(stat > (min(stat) + 0.75 * (max(stat) - min(stat))), "white", "black"),
+               text_fontface = ifelse(stat > (min(stat) + 0.75 * (max(stat) - min(stat))), "bold", "plain")
+               )
+ 
+-  # barplot of var_explained
+-  var_explained_plot <- ggplot(var_explained_df, aes(y = PC, x = var_explained)) +
+-      geom_bar(stat = "identity", fill = 'grey80') +
+-      MrBiomics_theme() +
+-      scale_x_continuous(limits = c(0, x_max), breaks = c(0, x_max/2, x_max),
+-                          labels = function(x) format(x, digits = 2)) +
+-      theme(
+-          axis.text.y = element_blank(),
+-          axis.title.y = element_blank(),
+-          panel.grid.minor = element_blank(),
+-          panel.grid.major.y = element_blank(),
+-          panel.grid.major.x = element_line(),
+-          panel.border = element_blank(),
+-          plot.margin = margin(5.5, 5.5, 5.5, 5.5)
+-      ) +
+-      labs(title = NULL, x = "Variance explained", y = NULL)
+-
+-  cfa_heatmap <- ggplot(cfa_mat_long, aes(x = metadata_type, y = PC, fill = stat)) +
++  # transposed heatmap (PC on x, metadata on y)
++  cfa_heatmap <- ggplot(cfa_mat_long, aes(x = PC, y = metadata_type, fill = stat)) +
+       geom_tile(linewidth = 0) +
+       geom_text(aes(label = round(stat, 1), color = text_color, fontface = text_fontface)) +
+-      scale_fill_gradient(low = "white", high = as.character(RdBu_extremes["up"]), name='-log10(p-adj.)\nfor association\nof PC &\nmetadata') +
++      scale_fill_gradient(low = "white", high = as.character(RdBu_extremes["up"]), 
++                          name='-log10(p-adj.)\nfor association\nof PC &\nmetadata',
++                          limits = c(0, fill_max)) +
+       scale_color_identity(guide = "none") +
+-      scale_x_discrete(labels = function(x) tools::toTitleCase(gsub("_", " ", x)), expand = c(0, 0)) +
+-      scale_y_discrete(expand = c(0, 0)) +
++      scale_x_discrete(labels = function(x) pc_labels[x], expand = c(0, 0)) +
++      scale_y_discrete(labels = function(x) tools::toTitleCase(gsub("_", " ", x)), expand = c(0, 0)) +
+       MrBiomics_theme() +
+       theme(
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+-          axis.text.y = element_blank(),
++          axis.text.y = element_text(),
+           axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+           plot.title = element_text(hjust = 0.5),
+           legend.position = "right",
+           plot.margin = margin(5.5, 5.5, 5.5, 5.5)
+       ) +
+       coord_fixed() +
+-      labs(title = title, y = paste0("PC(1-", ncol(cfa_mat), ")"), x = NULL)
++      labs(title = title, x = NULL, y = NULL)
+ 
+-  cfa_plot <- cfa_heatmap + var_explained_plot + plot_spacer() + guide_area() +
+-      plot_layout(ncol = 4, widths = c(2, 2, 0.2, 1.4), guides = "collect") +
+-      plot_annotation(theme = theme(plot.margin = margin(10, 20, 10, 10))) &
+-      theme(plot.margin = margin(5.5, 5.5, 5.5, 5.5), legend.box.margin = margin(5.5, 5.5, 5.5, 10),
+-              legend.margin = margin(5.5, 5.5, 5.5, 5.5))
++  # no bar chart; return the heatmap directly
++  cfa_plot <- cfa_heatmap
+ 
+   ggsave_all_formats(path = path,
+                       plot = cfa_plot,
+@@ -140,12 +128,19 @@ plot_cfa_heatmap <- function(cfa_mat, title, path, var_max=NULL, nPCs=10,
+   return(cfa_plot)
+ }
+ 
+-var_max <- max(unintegrated_cfa_data['var_explained',], integrated_cfa_data['var_explained',])
++# unified fill scale across unintegrated and integrated
++nPCs_to_show <- 5
++metadata_rows_for_cfa <- c('cell_type', 'modality', 'donor')
++fill_max <- max(
++    suppressWarnings(as.numeric(unlist(unintegrated_cfa_data[metadata_rows_for_cfa, 1:nPCs_to_show]))),
++    suppressWarnings(as.numeric(unlist(integrated_cfa_data[metadata_rows_for_cfa, 1:nPCs_to_show]))),
++    na.rm = TRUE
++)
+ 
+-unintegrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=unintegrated_cfa_data, title='Unintegrated',
+-     path=unintegrated_cfa_plot_path, var_max=var_max, nPCs=10)
+-integrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=integrated_cfa_data, title='Integrated',
+-     path=integrated_cfa_plot_path, var_max=var_max, nPCs=10)
++unintegrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=unintegrated_cfa_data, title='Before integration',
++     path=unintegrated_cfa_plot_path, fill_max=fill_max, nPCs=nPCs_to_show)
++integrated_cfa_plot <- plot_cfa_heatmap(cfa_mat=integrated_cfa_data, title='After integration',
++     path=integrated_cfa_plot_path, fill_max=fill_max, nPCs=nPCs_to_show)
+ 
+ 
+ 
+@@ -236,10 +231,16 @@ for(ct in unique(metadata$cell_type)){
+              stroke = 0,
+              show.legend = FALSE)) +
+     # overlay divergent classes (larger, more opaque – foreground)
++    # split into unlabeled and labeled points to ensure geom_text_repel coordinates match
+     rasterise(geom_point(data = df_div %>% filter(markers == ""),
+              aes(colour = category, size = log10_adjp),
+              alpha = 0.5,
+              stroke = 0)) +
++    # plot labeled points separately (must match geom_text_repel data for proper alignment)
++    geom_point(data = df_div %>% filter(markers != ""),
++             aes(colour = category, size = log10_adjp),
++             alpha = 0.5,
++             stroke = 0) +
+     # colour palette 
+     scale_colour_manual(
+     values = cat_cols,
+@@ -262,25 +263,29 @@ for(ct in unique(metadata$cell_type)){
+     ) +
+     # annotate divergent HAEMATOPOIESIS_MARKERS
+     geom_text_repel(
++        data = df_div %>% filter(markers != ""),
+         color = "black",
+-        box.padding = 0.15,
++        box.padding = 0.3,
++        label.padding = 0.15,
++        point.size = 1e-6,
++        point.padding = 0,
+         min.segment.length = 0,
+         max.overlaps = Inf,
++        force = 2,
++        force_pull = 1.5,
+         seed = 42,
++        segment.colour = "black",
++        segment.size = 0.3,
++        segment.alpha = 0.95,
++        segment.linetype = 1,
++        arrow = NULL,
+         show.legend = FALSE
+     ) +
+-    # # redraw labeled points on top so labels don't occlude points
+-    # geom_point(
+-    #     data = df %>% filter(markers != ""),
+-    #     aes(colour = category, size = log10_adjp),
+-    #     alpha = 0.5,
+-    #     stroke = 0
+-    # ) +
+     # axis titles
+     labs(
+-    title = paste0(ct,"\n",sprintf("Pearson's R = %.2f", r_val)),
+-    x = "Chromatin accessibility\n(normalized & integrated)",
+-    y = "Gene expression\n(normalized & integrated)"
++      title = paste0(ct,"\n",sprintf("Pearson's R = %.2f", r_val)),
++      x = "Chromatin accessibility\n(normalized & integrated)",
++      y = "Gene expression\n(normalized & integrated)"
+     ) +
+     MrBiomics_theme() + 
+     theme(aspect.ratio = 1)
+@@ -312,7 +317,7 @@ GO_enrichment_plot <- plot_clustered_enrichment_heatmap(
+     heatmap_df = GO_heatmap_df,
+     fig_path = GO_enrichment_path,
+     fill_lab = "NES",
+-    size_lab = "-log10(q-adj.)",
++    size_lab = "-log10(p-adj.)",
+     title = "",
+     ylabel = "Enrichment term\n(preranked GSEA,\nGOBP 2025)",
+     ct_clst_dist = "euclidean",
+@@ -330,7 +335,7 @@ Reactome_enrichment_plot <- plot_clustered_enrichment_heatmap(
+     heatmap_df = Reactome_heatmap_df,
+     fig_path = Reactome_enrichment_path,
+     fill_lab = "NES",
+-    size_lab = "-log10(q-adj.)",
++    size_lab = "-log10(p-adj.)",
+     title = "",
+     ylabel = "Enrichment term\n(preranked GSEA, Reactome)",
+     ct_clst_dist = "euclidean",
+diff --git a/workflow/scripts/CorcesRNA_figures.R b/workflow/scripts/CorcesRNA_figures.R
+index a7f30b4..abddeb8 100644
+--- a/workflow/scripts/CorcesRNA_figures.R
++++ b/workflow/scripts/CorcesRNA_figures.R
+@@ -9,32 +9,18 @@
+ source(snakemake@params[["figure_theme_path"]])
+ source(snakemake@params[["figure_utils_path"]])
+ 
+-# FIXME snakemakeify
+-# ## libraries are loaded in the source files
+-# source(snakemake@params[["figure_theme_path"]])
+-# figure_utils.R
+-# ## input
+-# enrichment_results_path <- snakemake@input[["enrichment_results"]]
+-# crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
+-# ## output
+-# enrichment_plot_path <- snakemake@output[["enrichment_plot"]]
+-# crossprediction_plot_path <- snakemake@output[["crossprediction_plot"]]
+-# ## params
+-# # enrichment analysis
+-# fdr_threshold <- snakemake@params[["fdr_threshold"]]
+-# # lineage reconstructions
+-# cut_off <- snakemake@params[["cut_off"]]
+-
+ # inputs
+ CorcesRNA_umap_coords_path <- snakemake@input[["umap_coords"]]
+ CorcesRNA_dea_OvA_path <- snakemake@input[["dea_ova"]]
+-CorcesRNA_enrichment_results_path <- snakemake@input[["enrichment_results"]]
++CorcesRNA_enrichment_results_azimuth_path <- snakemake@input[["enrichment_results_azimuth"]]
++CorcesRNA_enrichment_results_reactome_path <- snakemake@input[["enrichment_results_reactome"]]
+ CorcesRNA_crossprediction_adj_mtx_path <- snakemake@input[["crossprediction_adj_mtx"]]
+ 
+ # outputs
+ rna_umap_path <- snakemake@output[["umap_plot"]]
+ rna_dea_heatmap_path <- snakemake@output[["dea_heatmap_plot"]]
+-rna_enrichment_path <- snakemake@output[["enrichment_plot"]]
++rna_enrichment_azimuth_path <- snakemake@output[["enrichment_azimuth_plot"]]
++rna_enrichment_reactome_path <- snakemake@output[["enrichment_reactome_plot"]]
+ rna_crossprediction_path <- snakemake@output[["crossprediction_plot"]]
+ rna_crossprediction_coordinates_path <- snakemake@output[["crossprediction_coordinates"]]
+ 
+@@ -46,8 +32,7 @@ hierarchy_coordinates <- snakemake@params[["hierarchy_coordinates"]]
+ 
+ ######### UMAPs (from unsupervised analysis) ############
+ # Create UMAP plots
+-rna_umap_plot <- umap_plot(CorcesRNA_umap_coords_path, rna_umap_path, title = "RNA")
+-
++rna_umap_plot <- umap_plot(CorcesRNA_umap_coords_path, rna_umap_path, title = "Gene expression")
+ 
+ ######### DEA HEATMAP ############
+ rna_dea_heatmap_plot <- plot_differential_features_heatmap(
+@@ -55,14 +40,14 @@ rna_dea_heatmap_plot <- plot_differential_features_heatmap(
+     fig_path = rna_dea_heatmap_path,
+     fdr_threshold = fdr_threshold,
+     log2FC_threshold = log2FC_threshold,
+-    title = "RNA",
++    title = "Gene expression",
+     feature = 'Genes',
+     ct_clst_dist = "euclidean",
+     ct_clst_method = "ward.D2",
+     feature_clst_dist = "maximum",  # maximum to focus on the most differentially expressed groups when sorting genes
+     feature_clst_method = "ward.D2",
+     q_mask = 0.025,
+-    label_box_size_factor = 0.8
++    label_box_size_factor = 1
+ )
+ 
+ ######### ENRICHMENT HEATMAP ############
+@@ -79,19 +64,32 @@ create_rna_enrichment_df <- function(enrichment_results_path, fdr_threshold = 0.
+ }
+ 
+ # Create enrichment heatmaps
+-rna_df_formatted <- create_rna_enrichment_df(CorcesRNA_enrichment_results_path, fdr_threshold)
+-rna_heatmap_df <- prepare_for_heatmap(df_formatted = rna_df_formatted,
++rna_df_formatted_azimuth <- create_rna_enrichment_df(CorcesRNA_enrichment_results_azimuth_path, fdr_threshold)
++rna_heatmap_df_azimuth <- prepare_for_heatmap(df_formatted = rna_df_formatted_azimuth,
+                                       fdr_threshold = fdr_threshold,
+                                       tissues_to_keep = c("PBMC", "Bone Marrow"))
+-rna_enrichment_plot <- plot_enrichment_heatmap(
+-    heatmap_df = rna_heatmap_df,
+-    fig_path = rna_enrichment_path,
++rna_enrichment_azimuth_plot <- plot_enrichment_heatmap(
++    heatmap_df = rna_heatmap_df_azimuth,
++    fig_path = rna_enrichment_azimuth_path,
+     fill_lab = "NES",
+-    size_lab = "-log10(q-adj.)",
+-    title = "RNA",
++    size_lab = "-log10(p-adj.)",
++    title = "Gene expression",
+     ylabel = "Enrichment term\n(preranked GSEA, Azimuth 2023)"
+ )
+ 
++rna_df_formatted_reactome <- create_rna_enrichment_df(CorcesRNA_enrichment_results_reactome_path, fdr_threshold)
++rna_heatmap_df_reactome <- prepare_for_heatmap(df_formatted = rna_df_formatted_reactome,
++                                               fdr_threshold = fdr_threshold)
++rna_enrichment_reactome_plot <- plot_enrichment_heatmap(
++    heatmap_df = rna_heatmap_df_reactome,
++    fig_path = rna_enrichment_reactome_path,
++    fill_lab = "NES",
++    size_lab = "-log10(p-adj.)",
++    title = "Gene expression",
++    ylabel = "Enrichment term\n(preranked GSEA, Reactome)"
++)
++
++
+ ######### Lineage reconstruction using crossprediction ############
+ # plot adapted from: https://gist.github.com/dsparks/4331058
+ 
+@@ -101,5 +99,5 @@ crosspred_p <- plot_crossprediction_from_adjacency(
+     coordinates_out_path = rna_crossprediction_coordinates_path,
+     lineage_tree_cut_off = lineage_tree_cut_off,
+     hierarchy_coordinates = hierarchy_coordinates,
+-    modality_label = "RNA"
++    modality_label = "Gene expression"
+ )
+\ No newline at end of file
+diff --git a/workflow/scripts/Papalexi_figures.R b/workflow/scripts/Papalexi_figures.R
+index f92bb7b..3880503 100644
+--- a/workflow/scripts/Papalexi_figures.R
++++ b/workflow/scripts/Papalexi_figures.R
+@@ -105,7 +105,7 @@ ko_enrichment_plot_gobp <- plot_clustered_enrichment_heatmap(
+     heatmap_df = ko_heatmap_df_gobp,
+     fig_path = ko_enrichment_GOBP_fig_path,
+     fill_lab = "NES",
+-    size_lab = "-log10(q-adj.)",
++    size_lab = "-log10(p-adj.)",
+     title = "",
+     ylabel = "Enrichment term\n(preranked GSEA, GOBP 2025)",
+     xlabel = "Knockout",
+@@ -135,7 +135,7 @@ ko_enrichment_plot_gobp <- plot_clustered_enrichment_heatmap(
+ #     heatmap_df = ko_heatmap_df_reactome,
+ #     fig_path = ko_enrichment_Reactome_fig_path,
+ #     fill_lab = "NES",
+-#     size_lab = "-log10(q-adj.)",
++#     size_lab = "-log10(p-adj.)",
+ #     title = "",
+ #     ylabel = "Enrichment term\n(preranked GSEA, Reactome)",
+ #     xlabel = "Knockout",
+diff --git a/workflow/scripts/figure_utils.R b/workflow/scripts/figure_utils.R
+index 979fb72..b72f33f 100644
+--- a/workflow/scripts/figure_utils.R
++++ b/workflow/scripts/figure_utils.R
+@@ -193,7 +193,7 @@ umap_panels_ko_and_phase_highlights <- function(data_path,
+         ggplot(df, aes(x = UMAP_1, y = UMAP_2)) +
+             rasterise(geom_point(color = background_grey, size = point_size_all, alpha = 0.5, shape = 16)) +
+             rasterise(geom_point(data = df_phase, color = phase_col, size = point_size_highlight, alpha = 0.5, shape = 16)) +
+-            labs(subtitle = phase_name) +
++            labs(subtitle = paste0("Cell cycle phase ", phase_name)) +
+             panel_theme
+     }
+ 
+@@ -546,6 +546,9 @@ plot_differential_features_heatmap <- function(dea_results_path, fig_path, fdr_t
+         heatmap_df$logFC <- ifelse(heatmap_df$logFC > upper_limit, upper_limit, heatmap_df$logFC)
+     }
+ 
++    # Replace non-finite values with zeros so tiles are drawn instead of blank gaps
++    heatmap_df$logFC[!is.finite(heatmap_df$logFC)] <- 0
++
+     plot_limits <- c(-1, 1) * max(abs(heatmap_df$logFC), na.rm=TRUE)
+ 
+     dendro_plot <- ann_plots$dendro_plot
+@@ -556,7 +559,7 @@ plot_differential_features_heatmap <- function(dea_results_path, fig_path, fdr_t
+             palette = "RdBu",
+             limits = plot_limits,
+             guide = guide_colorbar(direction = "vertical"),  # , barheight = grid::unit(2, "cm"), barwidth = grid::unit(0.25, "cm")
+-            name = "log2(FC)"
++            name = "log2(fold change)"
+         ) +
+         scale_x_discrete(expand = c(0, 0)) +
+         scale_y_discrete(expand = c(0, 0)) +
+@@ -686,7 +689,7 @@ plot_differential_features_heatmap <- function(dea_results_path, fig_path, fdr_t
+ 
+     ggsave_all_formats(path = fig_path,
+                        plot = gp,
+-                       width = PLOT_SIZE_3_PER_ROW,
++                       width = PLOT_SIZE_3_PER_ROW+1,
+                        height = PLOT_SIZE_3_PER_ROW, 
+                        dpi = 1000)
+     
+@@ -792,17 +795,32 @@ plot_ko_logfc_heatmap <- function(dea_results_path,
+         heatmap_df$logFC <- ifelse(heatmap_df$logFC > upper_limit, upper_limit, heatmap_df$logFC)
+     }
+ 
++    # Replace non-finite values with zeros to avoid blank tiles/artifacts in PDF output
++    heatmap_df$logFC[!is.finite(heatmap_df$logFC)] <- 0
++
+     # Color scale limits based on masked data
+     plot_limits <- c(-1, 1) * max(abs(heatmap_df$logFC), na.rm = TRUE)
+ 
++    # Ensure complete tile grid: add missing (group, feature) pairs with logFC = 0
++    all_pairs <- expand.grid(
++        group = levels(heatmap_df$group),
++        feature = levels(heatmap_df$feature),
++        stringsAsFactors = FALSE
++    )
++    all_pairs$group <- factor(all_pairs$group, levels = levels(heatmap_df$group))
++    all_pairs$feature <- factor(all_pairs$feature, levels = levels(heatmap_df$feature))
++    heatmap_df_plot <- all_pairs %>%
++        dplyr::left_join(heatmap_df %>% dplyr::select(group, feature, logFC), by = c("group", "feature")) %>%
++        dplyr::mutate(logFC = ifelse(is.na(logFC), 0, logFC))
++
+     # Core heatmap (group on x, feature on y)
+-    heatmap_plot <- ggplot(heatmap_df, aes(x = group, y = feature, fill = logFC)) +
++    heatmap_plot <- ggplot(heatmap_df_plot, aes(x = group, y = feature, fill = logFC)) +
+         rasterise(geom_tile(linewidth = 0)) +
+         scale_fill_distiller(
+             palette = "RdBu",
+             limits = plot_limits,
+             guide = guide_colorbar(direction = "vertical"),
+-            name = "log2(FC)"
++            name = "log2(fold change)"
+         ) +
+         scale_x_discrete(expand = c(0, 0)) +
+         scale_y_discrete(expand = c(0, 0)) +
+@@ -867,17 +885,16 @@ plot_ko_logfc_heatmap <- function(dea_results_path,
+         coord_cartesian(clip = "off") +
+         theme(plot.margin = margin(0, 0, 0, 10))
+ 
+-    # Assemble
++    # Assemble (use 3-row layout; remove zero-height spacer row to avoid PDF artifacts)
+     plot_list <- list(
+         plot_spacer(),              ann_plots$dendro_plot,
+         ann_plots$ko_label_plot,    ann_plots$ko_plot,
+-        plot_spacer(),              plot_spacer(),
+         marker_label_plot,          heatmap_plot
+     )
+ 
+     gp <- wrap_plots(plot_list, ncol = 2,
+                      widths = c(1.2, 3),
+-                     heights = c(0.6, 0.35, 0.001, 10)) +
++                     heights = c(0.6, 0.35, 10)) +
+         plot_layout(guides = "collect") +
+         plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0))) &
+         theme(
+@@ -899,7 +916,7 @@ plot_ko_logfc_heatmap <- function(dea_results_path,
+ ########################################################################################################################
+ #### ENRICHMENT HEATMAP #################################################################################################
+ ########################################################################################################################
+-split_long_label_at_middle <- function(labels, threshold = 30, longer_first_margin = 5) {
++split_long_label_at_middle <- function(labels, threshold = 35, longer_first_margin = 5) {
+     vapply(labels, function(s) {
+         s <- as.character(s)
+         if (is.na(s)) return(NA_character_)
+@@ -940,10 +957,16 @@ split_long_label_at_middle <- function(labels, threshold = 30, longer_first_marg
+ }
+ 
+ filter_top_terms <- function(df, fdr_threshold, tissues_to_keep = NULL, top_n_per_name = 2, pos_and_neg = FALSE,
+-                             dict_to_sort_by = CELL_TYPE_COLORS) {
++                             dict_to_sort_by = CELL_TYPE_COLORS, max_term_length = 70, max_terms = 20) {
+     df_sig <- df %>%
+       filter(statistic < fdr_threshold) 
+ 
++    # Filter out terms that are too long
++    if (!is.null(max_term_length) && is.finite(max_term_length)) {
++        df_sig <- df_sig %>%
++            filter(nchar(as.character(Term)) <= max_term_length)
++    }
++
+     if (!is.null(tissues_to_keep)) {
+         df_sig <- df_sig %>%
+             filter(grepl(paste(tissues_to_keep, collapse = "|"), Term))
+@@ -980,9 +1003,16 @@ filter_top_terms <- function(df, fdr_threshold, tissues_to_keep = NULL, top_n_pe
+         top_hits <- rbind(top_hits, current_top_hits)
+     }
+ 
++    # Randomly sample terms if there are more than max_terms
++    if (!is.null(max_terms) && is.finite(max_terms) && length(top_term_strings) > max_terms) {
++        set.seed(42)
++        top_term_strings <- sample(top_term_strings, size = max_terms, replace = FALSE)
++    }
++
+     # Create a mapping from term to the cell type for which it's a top hit
+     term_to_top_name_map <- top_hits %>%
+-      select(Term, top_for_name = name)
++      select(Term, top_for_name = name) %>%
++      filter(Term %in% top_term_strings)
+ 
+     # Filter original dataframe for top terms and add the 'top_for_name' info
+     df_top <- df %>%
+@@ -997,10 +1027,10 @@ filter_top_terms <- function(df, fdr_threshold, tissues_to_keep = NULL, top_n_pe
+ }
+ 
+ prepare_for_heatmap <- function(df_formatted, fdr_threshold, tissues_to_keep = NULL, top_n_per_name = 2,
+-                                dict_to_sort_by = CELL_TYPE_COLORS, pos_and_neg = FALSE) {
++                                dict_to_sort_by = CELL_TYPE_COLORS, pos_and_neg = FALSE, max_term_length = 50, max_terms = 20) {
+     df_top <- filter_top_terms(df = df_formatted, fdr_threshold = fdr_threshold, tissues_to_keep = tissues_to_keep,
+                                top_n_per_name = top_n_per_name, pos_and_neg = pos_and_neg, 
+-                               dict_to_sort_by = dict_to_sort_by)
++                               dict_to_sort_by = dict_to_sort_by, max_term_length = max_term_length, max_terms = max_terms)
+ 
+     mat_df <- df_top %>%
+       select(name, Term, score) %>%
+@@ -1109,7 +1139,7 @@ plot_enrichment_heatmap <- function(heatmap_df, fig_path, fill_lab, size_lab, ti
+         name = fill_lab,
+         guide = guide_colorbar(direction = "vertical")
+       ) +
+-      scale_size_continuous(name = size_lab, range = c(0.5, 3)) +
++      scale_size_continuous(name = size_lab, range = c(0.5, 2.5)) +
+     #   guides(size = guide_legend(keyheight = grid::unit(0.4, "lines"), keywidth = grid::unit(0.6, "lines"))) +
+       labs(title = title, x = "Cell type", y = ylabel) +
+       # ensure square tiles
+@@ -1117,11 +1147,11 @@ plot_enrichment_heatmap <- function(heatmap_df, fig_path, fill_lab, size_lab, ti
+       MrBiomics_theme() + 
+       theme(
+         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), 
+-        axis.text.y = element_text(size = FONT_SIZE_SMALL),
++        axis.text.y = element_text(size = FONT_SIZE_SMALL, lineheight = 0.6),
+       )
+ 
+     if (is.null(width)) {
+-        width <- PLOT_SIZE_3_PER_ROW + 2
++        width <- PLOT_SIZE_3_PER_ROW + 3
+     }
+ 
+     # Save plot
+@@ -1207,7 +1237,7 @@ plot_clustered_enrichment_heatmap <- function(heatmap_df,
+             name = fill_lab,
+             guide = guide_colorbar(direction = "vertical")
+         ) +
+-        scale_size_continuous(name = size_lab, range = c(0.5, 2.3)) +
++        scale_size_continuous(name = size_lab, range = c(0.5, 2)) +
+         scale_x_discrete(expand = expansion(add = 0.6)) +
+         scale_y_discrete(expand = expansion(add = 0.6)) +
+         labs(title = NULL, x = xlabel, y = NULL) +
+@@ -1237,7 +1267,7 @@ plot_clustered_enrichment_heatmap <- function(heatmap_df,
+     n_rows <- length(term_levels)
+     term_labels_df <- data.frame(Term = term_levels, y = seq_len(n_rows))
+     term_label_plot <- ggplot(term_labels_df, aes(y = y)) +
+-        geom_text(aes(x = 0.98, label = Term), hjust = 1) +
++        geom_text(aes(x = 0.98, label = Term), hjust = 1, lineheight = 0.8) +
+         scale_y_continuous(limits = c(0.5, n_rows + 0.5), expand = c(0, 0)) +
+         scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+         labs(y = ylabel) +
+@@ -1718,9 +1748,9 @@ plot_ko_ta_lollipop <- function(results_csv_path,
+             high = as.character(RdBu_extremes["up"]),
+             name = "NES"
+         ) +
+-        scale_size_continuous(name = "-log10(q-adj.)", range = c(0.5, 5)) +
++        scale_size_continuous(name = "-log10(p-adj.)", range = c(0.5, 5)) +
+         scale_alpha_continuous(name = "NES", range = c(0.2, 1), guide = "none") +
+-        scale_linewidth_continuous(name = "-log10(q-adj.)", range = c(0.3, 3), guide = "none") +
++        scale_linewidth_continuous(name = "-log10(p-adj.)", range = c(0.3, 3), guide = "none") +
+         labs(x = "NES", y = NULL, title = title) +
+         MrBiomics_theme() +
+         theme(

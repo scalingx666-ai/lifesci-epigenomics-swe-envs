@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/caleblareau__gchromVAR-8"
+description = "Fixed issue with single trait"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "gchromVAR",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "caleblareau/gchromVAR"
+ref = "ff7d92819f876956816858dc4c193d38b40a725e"
+reference = "https://github.com/caleblareau/gchromVAR/pull/8"
+source_access = "auto"
+built_at = "2026-11-14T07:18:01.278426+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fbf0f2a736a450bd221810a97f6bca3f88fb0eb7c8aa78f18cae4ebba09e8797"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2019-08-02T15:14:13Z"
+diff_format = "unified"
+context_files = [
+    "R/computeWeightedDeviations.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

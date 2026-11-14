@@ -1,0 +1,498 @@
+diff --git a/MACS3/IO/Parser.py b/MACS3/IO/Parser.py
+index 9c29be2d..02b9fbb2 100644
+--- a/MACS3/IO/Parser.py
++++ b/MACS3/IO/Parser.py
+@@ -759,6 +759,23 @@ def fw_parse_line(self, thisline: bytes) -> tuple:
+                     0)
+ 
+ 
++@cython.cfunc
++def _fragment_coordinate(field: bytes, name: str, line: bytes) -> cython.int:
++    """Parse a complete signed decimal coordinate within the track's int32 range."""
++    token: bytes = field.strip()
++    digits: bytes = token[1:] if token[:1] in (b"+", b"-") else token
++    if not digits.isdigit():
++        raise ValueError(f"Invalid {name} coordinate {field!r}: expected an integer at line: {line!r}")
++    # Check the range before conversion to a C int; never wrap large values.
++    digits = digits.lstrip(b"0") or b"0"
++    if len(digits) > 10:
++        raise ValueError(f"Invalid {name} coordinate {field!r}: outside the signed 32-bit range at line: {line!r}")
++    value = int((b"-" if token[:1] == b"-" else b"") + digits)
++    if value < -2147483648 or value > 2147483647:
++        raise ValueError(f"Invalid {name} coordinate {field!r}: outside the signed 32-bit range at line: {line!r}")
++    return value
++
++
+ @cython.cclass
+ class BEDPEParser(GenericParser):
+     """Parser for three-column BEDPE-style fragments (chrom, left, right)."""
+@@ -793,8 +810,8 @@ def pe_parse_line(self, thisline: bytes):
+         thisfields = thisline.split(b'\t')
+         try:
+             return (thisfields[0],
+-                    atoi(thisfields[1]),
+-                    atoi(thisfields[2]))
++                    _fragment_coordinate(thisfields[1], "start", thisline),
++                    _fragment_coordinate(thisfields[2], "end", thisline))
+         except IndexError:
+             raise Exception("Less than 3 columns found at this line: %s\n" %
+                             thisline)
+@@ -839,7 +856,8 @@ def build_petrack(self):
+                 (chromosome, left_pos, right_pos) = self.pe_parse_line(thisline)
+                 if left_pos < 0 or not chromosome:
+                     continue
+-                assert right_pos > left_pos, "Right position must be larger than left position, check your BED file at line: %s" % thisline
++                if right_pos <= left_pos:
++                    raise ValueError("Right position must be larger than left position, check your BED file at line: %s" % thisline)
+                 m += right_pos - left_pos
+                 i += 1
+                 if i % 1000000 == 0:
+@@ -849,7 +867,8 @@ def build_petrack(self):
+         if tmp:
+             (chromosome, left_pos, right_pos) = self.pe_parse_line(tmp)
+             if left_pos >= 0 and chromosome:
+-                assert right_pos > left_pos, "Right position must be larger than left position, check your BED file at line: %s" % tmp
++                if right_pos <= left_pos:
++                    raise ValueError("Right position must be larger than left position, check your BED file at line: %s" % tmp)
+                 i += 1
+                 m += right_pos - left_pos
+                 add_loc(chromosome, left_pos, right_pos)
+@@ -893,7 +912,8 @@ def append_petrack(self, petrack):
+                 (chromosome, left_pos, right_pos) = self.pe_parse_line(thisline)
+                 if left_pos < 0 or not chromosome:
+                     continue
+-                assert right_pos > left_pos, "Right position must be larger than left position, check your BED file at line: %s" % thisline
++                if right_pos <= left_pos:
++                    raise ValueError("Right position must be larger than left position, check your BED file at line: %s" % thisline)
+                 m += right_pos - left_pos
+                 i += 1
+                 if i % 1000000 == 0:
+@@ -903,7 +923,8 @@ def append_petrack(self, petrack):
+         if tmp:
+             (chromosome, left_pos, right_pos) = self.pe_parse_line(tmp)
+             if left_pos >= 0 and chromosome:
+-                assert right_pos > left_pos, "Right position must be larger than left position, check your BED file at line: %s" % tmp
++                if right_pos <= left_pos:
++                    raise ValueError("Right position must be larger than left position, check your BED file at line: %s" % tmp)
+                 i += 1
+                 m += right_pos - left_pos
+                 add_loc(chromosome, left_pos, right_pos)
+@@ -2929,8 +2950,8 @@ def pe_parse_line(self, thisline: bytes):
+                 thiscount = 65535
+                 warn(f"The count in this line is over 65535, and will be capped at 65535: {thisline}")
+             return (thisfields[0],
+-                    atoi(thisfields[1]),
+-                    atoi(thisfields[2]),
++                    _fragment_coordinate(thisfields[1], "start", thisline),
++                    _fragment_coordinate(thisfields[2], "end", thisline),
+                     thisfields[3],
+                     thiscount)
+         except IndexError:
+@@ -2952,7 +2973,8 @@ def add_line(self, add_loc, thisline: bytes, max_count,
+         (chromosome, left_pos, right_pos, barcode, count) = self.pe_parse_line(thisline)
+         if left_pos < 0 or not chromosome:
+             return False
+-        assert right_pos > left_pos, "Right position must be larger than left position, check your BED file at line: %s" % thisline
++        if right_pos <= left_pos:
++            raise ValueError("Right position must be larger than left position, check your BED file at line: %s" % thisline)
+         flen[0] = right_pos - left_pos
+         if max_count:
+             count = min(count, max_count)
+@@ -3254,13 +3276,13 @@ def load_petrack(self, petrack, max_count,
+                             if nt >= 4:
+                                 f4end = tabs[4] if nt == 5 else e
+                                 clen = tabs[0] - p
+-                                left = _frag_atoi(tabs[0] + 1, tabs[1])
+-                                if clen == 0 or left < 0:
+-                                    # skipped, as add_line skips it
+-                                    p = nl + 1
+-                                    continue
+-                                right = _frag_atoi(tabs[1] + 1, tabs[2])
+-                                if right > left:
++                                # Only complete decimal fields are accepted
++                                # here. Signs, long fields and malformed values
++                                # go through add_line for checked conversion.
++                                t = _frag_digits(tabs[0] + 1, cython.address(left))
++                                s = _frag_digits(tabs[1] + 1, cython.address(right))
++                                if (t == tabs[1] and s == tabs[2] and
++                                        clen > 0 and right > left):
+                                     count = _frag_atoi(tabs[3] + 1, f4end)
+                                     bstart = tabs[2] + 1
+                                     blen = tabs[3] - bstart
+diff --git a/test/issue_815_verification.md b/test/issue_815_verification.md
+new file mode 100644
+index 00000000..bc71021b
+--- /dev/null
++++ b/test/issue_815_verification.md
+@@ -0,0 +1,118 @@
++# BEDPE/FRAG coordinate validation verification
++
++Issue: [#815](https://github.com/macs3-project/MACS/issues/815),
++part of [#757](https://github.com/macs3-project/MACS/issues/757), item 18.
++Branch: `fix/macs/815-nonnumeric-fragment-coordinates`.
++Baseline: current upstream `main` at
++`b7929196a98032219afbef43b00ce3e0996aacb7`.
++
++## Compiled baseline
++
++Rebuilt the unchanged source using the `macs3dev` Python 3.14 interpreter
++with `python setup.py build_ext --inplace` (Python 3.14.6, Cython 3.3.0,
++NumPy 2.5.1, pytest 9.2.0). The imported parser was the
++in-place `MACS3/IO/Parser.cpython-314-darwin.so`.
++`uv run` could not run in the sandbox (cache permissions, then a macOS
++system-configuration panic with a temporary cache), so verification uses
++Python directly from the required conda environment.
++
++Ran 192 public-API probes, each in a subprocess with a 20-second timeout,
++the parent's interpreter and MACS3 installation, and a temporary working
++directory. The matrix covers BEDPE and FRAG, build and append, normal
++Python and `-O`, and records with and without a final newline.
++
++| Input | Baseline result in both formats |
++| --- | --- |
++| `chrom start end barcode count` (tab-separated) | Misleading interval-order `AssertionError`; under `-O`, accepted as a zero-length fragment |
++| Start `start` or an empty start, end `20` | Accepted with start zero, including without `-O` |
++| Start `10`, end `end` | Interval-order `AssertionError`; under `-O`, accepted with negative fragment length |
++| Start `10junk` or end `20junk` | Numeric prefix accepted |
++| Equal/reversed coordinates | Interval-order `AssertionError`; under `-O`, accepted |
++| Empty/comment-only file | `ValueError: No valid fragments found in BEDPE/FRAG input` |
++| Leading `#` header followed by a valid row | Correctly skipped; valid fragment retained |
++| Valid row | Correct coordinates, count, and mean fragment length |
++
++These reproduce both the inaccurate diagnostic and optimization-dependent
++validation on current `main`, rather than relying on the original report's
++older revision. Temporary baseline evidence is in `/tmp/macs815_verify.py`,
++`/tmp/macs815-results.json`, `/tmp/macs815-summary.txt`, and
++`/tmp/macs-815-build.log`.
++
++## Changes and coverage
++
++BEDPE and FRAG now check complete ASCII decimal coordinate fields before
++converting them to signed 32-bit track positions. Existing optional signs,
++surrounding ASCII whitespace, and leading zeros remain accepted. Negative
++starts and empty chromosomes are still skipped when their coordinates are
++valid. Invalid or out-of-range coordinates raise `ValueError` identifying
++the start/end field, its value, and the offending row. Interval-order checks
++also raise explicit `ValueError`, including under `python -O`.
++
++FRAG's usual digit-only C paths remain in place. Its general C walk now
++accepts only complete digit fields; signs, longer fields, and malformed
++coordinates fall back to the checked line parser. Fragment count parsing
++and capping are unchanged.
++
++`test_Parser_fragment_coordinates.py` adds 40 public-API subprocess tests.
++All validation assertions run in the parent, so optimized child Python
++cannot remove them. Each child uses `sys.executable`, `macs3_env`, a
++`tmp_path` script and working directory, and a 60-second timeout. The
++parent also checks that the child imported the exact same compiled parser.
++
++Coverage includes both formats and build/append operations, normal and
++optimized Python, plain/gzip/BGZF input, first/later rows, complete lines
++and EOF tails, empty and partial coordinates, column headers, decimal and
++exponent notation, signs without digits, underscores, NUL bytes, int32
++overflow/underflow, very long fields, and equal/reversed intervals. Valid
++controls verify coordinates, counts, parser statistics, barcode assignment,
++existing append records, signed/padded coordinates, int32 limits, skipped
++records, empty/comment-only input, and incomplete rows. A >64 KiB BGZF
++control exercises serial and two-thread FRAG parsing, with malformed
++records in the middle and at EOF. Existing parser/EOF/singleton regressions
++expect the new explicit exception type for invalid intervals. Two callpeak
++regression modules now require the accurate non-numeric-coordinate
++diagnostic instead of the old interval-order message.
++
++## Validation
++
++- In-place build: passed.
++- Initial parser/EOF run: **314 passed, 99 skipped** in 79.68 seconds.
++- Final in-place coordinate and singleton regressions: **46 passed** in
++  32.32 seconds.
++- Installed-wheel run of every parser module plus singleton FRAG regressions:
++  **444 passed, 99 skipped** in 147.65 seconds.
++- Both affected callpeak CLI modules: **75 passed** in-place (62.30 seconds)
++  and **75 passed** against the installed wheel (59.47 seconds).
++- Final parser source and all changed tests match the clean source snapshot.
++- `git diff --check`: passed.
++- Full `python -m pytest -q test` run: **5,476 passed, 491 skipped,
++  4 failed** in 1,073.85 seconds. All four failures were stale diagnostic
++  or exception expectations in tests already imported before their updates:
++  two callpeak `--llocal 0` malformed-input cases, the callpeak local-window
++  malformed-input case, and the singleton FRAG invalid-interval case.
++  The final versions of their complete modules pass in-place and against
++  the installed wheel, as recorded above. The full run reported no other
++  failures.
++- `python -m pytest -q test --lf`: **4 passed, 434 deselected** in 6.96
++  seconds (pytest limits collection to the previously failing modules).
++  All four full-suite failures are resolved; the entire suite was not
++  rerun a second time.
++- Existing skips were retained; no new skip was added.
++
++The wheel is built from a temporary clean source snapshot containing the
++tracked baseline and these changes, with the bundled SIMDe headers supplied
++from the workspace. Installation goes into a separate temporary target.
++The wheel runner starts with `python -P`, imports MACS3 from that target,
++checks the compiled parser path and source equality, and verifies that the
++clean source's `MACS3/` tree contains no in-place extensions before invoking
++pytest on the clean source tests. This exercises pytest's subprocess
++launcher against the installed wheel, rather than probing an extracted
++wheel alone.
++
++Final evidence: `/tmp/macs815-fix-build.log`,
++`/tmp/macs815-targeted.log`, `/tmp/macs815-final-inplace.log`,
++`/tmp/macs815-singleton.log`, `/tmp/macs815-cli-tests.log`,
++`/tmp/macs815-full-suite.log`, `/tmp/macs815-full-suite-rerun.log`, and
++`/tmp/macs815-release/` (`build-wheel.log`, `install-wheel.log`,
++`wheel-tests.log`, `wheel-cli-tests.log`, the clean source snapshot,
++installed package, and built wheel).
+diff --git a/test/test_Parser.py b/test/test_Parser.py
+index ce4739c1..5f6c81af 100644
+--- a/test/test_Parser.py
++++ b/test/test_Parser.py
+@@ -686,7 +686,7 @@ def test_bedpe_right_not_after_left_raises(write_bedpe, left, right):
+     line = ("chr1\t%d\t%d" % (left, right)).encode()
+     msg = ("Right position must be larger than left position, check your "
+            "BED file at line: " + repr(line))
+-    with pytest.raises(AssertionError, match=re.escape(msg)):
++    with pytest.raises(ValueError, match=re.escape(msg)):
+         BEDPEParser(path).build_petrack()
+ 
+ 
+@@ -1385,7 +1385,7 @@ def test_frag_right_not_after_left_raises(write_frag, left, right):
+     line = ("chr1\t%d\t%d\tB\t1" % (left, right)).encode()
+     msg = ("Right position must be larger than left position, check your "
+            "BED file at line: " + repr(line))
+-    with pytest.raises(AssertionError, match=re.escape(msg)):
++    with pytest.raises(ValueError, match=re.escape(msg)):
+         FragParser(path).build_petrack()
+ 
+ 
+diff --git a/test/test_Parser_frag_eof.py b/test/test_Parser_frag_eof.py
+index 56ededc2..ea42df02 100644
+--- a/test/test_Parser_frag_eof.py
++++ b/test/test_Parser_frag_eof.py
+@@ -96,7 +96,7 @@ def load(path):
+         else:
+             raise AssertionError('malformed record accepted')
+     assert errors[0] == errors[1], errors
+-    assert errors[0][0] == ('Exception' if cap == 0 else 'AssertionError')
++    assert errors[0][0] == ('Exception' if cap == 0 else 'ValueError')
+     assert ('Less than 5 columns' if cap == 0 else
+             'Right position must be larger') in errors[0][1]
+ 
+diff --git a/test/test_Parser_fragment_coordinates.py b/test/test_Parser_fragment_coordinates.py
+new file mode 100644
+index 00000000..86bd559b
+--- /dev/null
++++ b/test/test_Parser_fragment_coordinates.py
+@@ -0,0 +1,156 @@
++"""Bounded public BEDPE/FRAG coordinate regressions for #815 / #757 item 18."""
++
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from conftest import macs3_env
++from test_Parser_frag_eof import write_frag
++
++
++SCRIPT = r'''
++import json
++from pathlib import Path
++import sys
++import MACS3.IO.Parser as parser_module
++from MACS3.IO.Parser import BEDPEParser, FragParser
++from MACS3.Signal.PairedEndTrack import PETrackI, PETrackII
++
++fmt, operation, threads, manifest = sys.argv[1:]
++cls = BEDPEParser if fmt == 'BEDPE' else FragParser
++track_cls = PETrackI if fmt == 'BEDPE' else PETrackII
++results = []
++for path in json.loads(Path(manifest).read_text()):
++    parser = cls(path, buffer_size=2, threads=int(threads))
++    try:
++        if operation == 'build':
++            track = parser.build_petrack()
++        else:
++            track = track_cls(buffer_size=2)
++            if fmt == 'BEDPE':
++                track.add_loc(b'chr0', 1, 11)
++            else:
++                track.add_loc(b'chr0', 1, 11, b'OLD', 1)
++            returned = parser.append_petrack(track)
++            if returned is not track:
++                raise RuntimeError('append did not return the supplied track')
++        track.finalize()
++        records = {chrom.decode(): track.get_locations_by_chr(chrom).tolist()
++                   for chrom in track.get_chr_names()}
++        barcodes = ({bc.decode(): i for bc, i in track.barcode_dict.items()}
++                    if fmt == 'FRAG' else None)
++        results.append(dict(n=parser.n, d=parser.d, records=records,
++                            barcodes=barcodes))
++    except Exception as exc:
++        results.append(dict(error=type(exc).__name__, message=str(exc)))
++    finally:
++        parser.close()
++print(json.dumps(dict(extension=parser_module.__file__, results=results)))
++'''
++
++
++def probe(tmp_path, fmt, operation, optimized, encoding, rows, threads=1):
++    paths = [str(write_frag(tmp_path / f'input-{i}', data, encoding))
++             for i, data in enumerate(rows)]
++    manifest = tmp_path / 'manifest.json'
++    manifest.write_text(json.dumps(paths))
++    script = tmp_path / 'probe.py'
++    script.write_text(SCRIPT)
++    result = subprocess.run(
++        [sys.executable, *(['-O'] if optimized else []), str(script), fmt,
++         operation, str(threads), str(manifest)], cwd=tmp_path,
++        env=macs3_env(tmp_path), capture_output=True, text=True, timeout=60)
++    assert result.returncode == 0, result.stdout + result.stderr
++    output = json.loads(result.stdout)
++    import MACS3.IO.Parser as parser_module
++    assert Path(output['extension']).resolve() == Path(parser_module.__file__).resolve()
++    assert Path(output['extension']).suffix != '.py', 'a compiled build is required'
++    assert len(output['results']) == len(paths)
++    return output['results']
++
++
++# No assertions live inside the probe: -O must exercise the same checks.
++@pytest.mark.parametrize('fmt', ['BEDPE', 'FRAG'])
++@pytest.mark.parametrize('operation', ['build', 'append'])
++@pytest.mark.parametrize('optimized', [False, True], ids=['normal', 'optimized'])
++@pytest.mark.parametrize('encoding', ['plain', 'gzip', 'bgzf'])
++def test_fragment_coordinates(tmp_path, fmt, operation, optimized, encoding):
++    bad_fields = [b'start', b'', b'10junk', b'1.5', b'1e2', b'+', b'--1',
++                  b'1_0', b'\x0010', b'2147483648', b'-2147483649',
++                  b'9' * 100]
++    cases = []
++    for field in ('start', 'end'):
++        for value in bad_fields:
++            left, right = (value, b'20') if field == 'start' else (b'10', value)
++            line = b'chr1\t' + left + b'\t' + right + b'\tBC\t1'
++            cases.append((line, field, value))
++    cases.extend([(b'chrom\tstart\tend\tbarcode\tcount', 'start', b'start'),
++                  (b'chr1\t10\t10\tBC\t1', 'interval', None),
++                  (b'chr1\t20\t10\tBC\t1', 'interval', None)])
++    inputs = []
++    for line, _, _ in cases:
++        # First row and later row; complete line and EOF tail use distinct paths.
++        for prefix in (b'', b'chr1\t1\t5\tBC\t1\n'):
++            for ending in (b'\n', b''):
++                inputs.append(prefix + line + ending)
++    actual = probe(tmp_path, fmt, operation, optimized, encoding, inputs)
++    for (line, field, value), group in zip(cases, range(0, len(actual), 4)):
++        for result in actual[group:group + 4]:
++            assert result.get('error') == 'ValueError', result
++            if field == 'interval':
++                assert 'Right position must be larger' in result['message']
++            else:
++                assert f'Invalid {field} coordinate {value!r}' in result['message']
++            assert repr(line) in result['message']
++
++
++@pytest.mark.parametrize('fmt', ['BEDPE', 'FRAG'])
++@pytest.mark.parametrize('operation', ['build', 'append'])
++@pytest.mark.parametrize('optimized', [False, True], ids=['normal', 'optimized'])
++def test_fragment_coordinate_controls(tmp_path, fmt, operation, optimized):
++    valid = (b'#chrom\tstart\tend\tbarcode\tcount\n'
++             b'chr1\t  +00010 \t00020\tBC\t2\n'
++             b'chr1\t2147483600\t2147483647\tBC\t3\n'
++             b'chr1\t-2147483648\t20\tSKIP\t1\n'
++             b'\t10\t20\tSKIP\t1\n')
++    data = [valid, valid.rstrip(b'\n'), b'', b'#comment', b'#comment\n',
++            b'chr1\t10', b'chr1\t10\t20\tBC' if fmt == 'FRAG' else b'chr1']
++    results = probe(tmp_path, fmt, operation, optimized, 'plain', data)
++    expected = {'chr1': [[10, 20], [2147483600, 2147483647]]}
++    if fmt == 'FRAG':
++        expected['chr1'] = [[10, 20, 2], [2147483600, 2147483647, 3]]
++    if operation == 'append':
++        expected['chr0'] = [[1, 11, 1]] if fmt == 'FRAG' else [[1, 11]]
++    for result in results[:2]:
++        assert result['n'] == 2 and result['d'] == 28.5
++        assert result['records'] == expected
++        if fmt == 'FRAG':
++            assert result['barcodes'] == ({'OLD': 0, 'BC': 1} if operation == 'append'
++                                          else {'BC': 0})
++    for result in results[2:5]:
++        assert result == dict(error='ValueError', message=f'No valid fragments found in {fmt} input')
++    for result in results[5:]:
++        assert result['error'] == 'Exception'
++        assert f'Less than {5 if fmt == "FRAG" else 3} columns' in result['message']
++
++
++@pytest.mark.parametrize('operation', ['build', 'append'])
++@pytest.mark.parametrize('optimized', [False, True], ids=['normal', 'optimized'])
++@pytest.mark.parametrize('threads', [1, 2])
++def test_frag_coordinate_after_large_bgzf_prefix(tmp_path, operation, optimized, threads):
++    # >64 KiB triggers the threaded FRAG line walk with two threads. Include
++    # a malformed row before more valid rows as well as an EOF-tail variant.
++    prefix = b'chr1\t10\t20\tBC\t1\n' * 10000
++    bad = b'chr1\t10junk\t20\tBC\t1'
++    inputs = [prefix + bad + b'\n' + prefix, prefix + bad, prefix]
++    results = probe(tmp_path, 'FRAG', operation, optimized, 'bgzf', inputs, threads)
++    for result in results[:2]:
++        assert result.get('error') == 'ValueError', result
++        assert "Invalid start coordinate b'10junk'" in result['message']
++        assert repr(bad) in result['message']
++    assert results[2]['n'] == 10000
++    assert results[2]['d'] == 10.0
++    assert len(results[2]['records']['chr1']) == 10000
+diff --git a/test/test_Parser_text_eof.py b/test/test_Parser_text_eof.py
+index f851e62a..18cd7532 100644
+--- a/test/test_Parser_text_eof.py
++++ b/test/test_Parser_text_eof.py
+@@ -79,7 +79,7 @@ def load(path):
+     assert errors[0] == errors[1], errors
+     expected = (('IndexError' if fmt == 'BED' else 'Exception')
+                 if mode == 'malformed' else
+-                ('StrandFormatError' if fmt == 'BED' else 'AssertionError'))
++                ('StrandFormatError' if fmt == 'BED' else 'ValueError'))
+     assert errors[0][0] == expected, errors
+     if mode == 'malformed' and fmt == 'BEDPE':
+         assert 'broken' in errors[0][1], errors
+diff --git a/test/test_callpeak_llocal_zero.py b/test/test_callpeak_llocal_zero.py
+index 5dc87494..f7a9862c 100644
+--- a/test/test_callpeak_llocal_zero.py
++++ b/test/test_callpeak_llocal_zero.py
+@@ -94,7 +94,7 @@ def test_llocal_zero_invalid_input_terminates(run_macs3, tmp_path, fmt, empty):
+         diagnostic = 'Strand'
+     else:
+         content = 'chr1\tbad\tend' + ('\tbarcode\t1' if fmt == 'FRAG' else '') + '\n'
+-        diagnostic = 'Right position'
++        diagnostic = "Invalid start coordinate b'bad'"
+     treatment = tmp_path / ('invalid.' + fmt.lower())
+     treatment.write_text(content)
+     result = run_macs3(['callpeak', '-f', fmt, '-t', treatment, '-g', '100000',
+diff --git a/test/test_callpeak_local_windows.py b/test/test_callpeak_local_windows.py
+index dae787b2..19d5acf8 100644
+--- a/test/test_callpeak_local_windows.py
++++ b/test/test_callpeak_local_windows.py
+@@ -124,7 +124,8 @@ def test_invalid_fragments_terminate(run_macs3, tmp_path, content):
+     result = run_macs3(['callpeak', '-f', 'BEDPE', '-t', treatment,
+                         '-c', control, '-g', '100000', '-n', 'invalid'], timeout=30)
+     assert result.returncode > 0, result.stderr
+-    assert 'No valid fragments' in result.stderr or 'Right position' in result.stderr
++    diagnostic = "Invalid start coordinate b'bad'" if content else 'No valid fragments'
++    assert diagnostic in result.stderr
+ 
+ 
+ @pytest.mark.parametrize('paired', [False, True])
+diff --git a/test/test_singleton_frag.py b/test/test_singleton_frag.py
+index 8cc41e69..0df9a7bf 100644
+--- a/test/test_singleton_frag.py
++++ b/test/test_singleton_frag.py
+@@ -108,9 +108,9 @@ def test_frag_empty_and_malformed_inputs(tmp_path):
+ 
+         cases = [('', ValueError, 'No valid fragments'),
+                  ('chr1\\t10\\t30\\tBC0\\n', Exception, 'Less than 5 columns'),
+-                 ('chr1\\t30\\t10\\tBC0\\t1\\n', AssertionError,
++                 ('chr1\\t30\\t10\\tBC0\\t1\\n', ValueError,
+                   'Right position must be larger'),
+-                 ('chr1\\t10\\t10\\tBC0\\t1\\n', AssertionError,
++                 ('chr1\\t10\\t10\\tBC0\\t1\\n', ValueError,
+                   'Right position must be larger')]
+         for text, error, message in cases:
+             path = Path('invalid.tsv')

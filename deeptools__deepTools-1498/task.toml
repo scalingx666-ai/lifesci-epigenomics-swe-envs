@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/deeptools__deepTools-1498"
+description = "docs: docs update, preprint citation, drop retired MPI galaxy server references, contribution instruction fix"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "deepTools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "deeptools/deepTools"
+ref = "eb4d8b62480c5f40ba8c3c8a260520112dce9f4c"
+reference = "https://github.com/deeptools/deepTools/pull/1498"
+source_access = "auto"
+built_at = "2026-11-14T06:56:20.836254+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5c12613b2f1210bfdfa5c6ccd8649ae7a30302b21945d0f627dac3c0aa658cd0"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-14T04:27:15Z"
+diff_format = "unified"
+context_files = [
+    ".github/CONTRIBUTING.md",
+    "README.md",
+    "docs/conf.py",
+    "docs/content/about.rst",
+    "docs/content/example_step_by_step.rst",
+    "docs/content/help_faq_galaxy.rst",
+    "docs/content/help_galaxy_dataup.rst",
+    "docs/content/help_galaxy_deeptools.rst",
+    "docs/content/help_galaxy_intro.rst",
+    "docs/content/tools/multiBigwigSummary.rst",
+    "docs/index.rst",
+    "galaxy/workflows/readme.rst",
+    "galaxy/wrapper/deepTools_macros.xml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 166
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

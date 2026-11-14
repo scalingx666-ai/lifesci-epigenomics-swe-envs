@@ -1,0 +1,83 @@
+diff --git a/docs/content/News.rst b/docs/content/News.rst
+index 05e952a96..75dc6be2e 100644
+--- a/docs/content/News.rst
++++ b/docs/content/News.rst
+@@ -1,6 +1,12 @@
+ snakePipes News
+ ===============
+ 
++snakePipes 3.5.1
++----------------
++
++* rule eisaR in createIndices workflow as well as the corresponding conda environment file were updated.
++
++
+ snakePipes 3.5.0
+ ----------------
+ 
+diff --git a/snakePipes/shared/rscripts/extractIntronSeqs.R b/snakePipes/shared/rscripts/extractIntronSeqs.R
+index 5a7f62d08..128cf018b 100644
+--- a/snakePipes/shared/rscripts/extractIntronSeqs.R
++++ b/snakePipes/shared/rscripts/extractIntronSeqs.R
+@@ -14,7 +14,8 @@
+ extractIntronSeqs <- function(gtf, genome, type = "collapse", flanklength = 90,
+                               joinOverlappingIntrons = FALSE) {
+   ## Construct TxDb from gtf file
+-  txdb <- GenomicFeatures::makeTxDbFromGFF(gtf, format = "gtf")
++  txdb <- txdbmaker::makeTxDbFromGFF(gtf, format = "gtf")
++
+ 
+   if (type == "separate") {
+     ## Group exons by transcript
+@@ -24,10 +25,13 @@ extractIntronSeqs <- function(gtf, genome, type = "collapse", flanklength = 90,
+     grl <- GenomicFeatures::exonsBy(txdb, by = "gene")
+ 
+     ## Collapse the exons of each gene
+-    grl <- GenomicRanges::reduce(grl)
++    grl <- GenomicRanges::reduce(GenomicRanges::trim(grl))
+   } else {
+     stop("Unknown 'type' argument")
+   }
++  common_chromosomes <- intersect(seqlevels(grl), seqlevels(genome))
++  grl <- GenomeInfoDb::keepSeqlevels(grl, common_chromosomes, pruning.mode = "coarse")
++  genome <- genome[names(genome) %in% common_chromosomes]
+ 
+   ## Get introns as the set difference between the range and the exons,
+   ## for each transcript/gene
+diff --git a/snakePipes/shared/rscripts/extractTxSeqs.R b/snakePipes/shared/rscripts/extractTxSeqs.R
+index 79b08fbb8..bf9b04b22 100644
+--- a/snakePipes/shared/rscripts/extractTxSeqs.R
++++ b/snakePipes/shared/rscripts/extractTxSeqs.R
+@@ -10,13 +10,15 @@
+ #'
+ extractTxSeqs <- function(gtf, genome, type = "spliced") {
+   ## Construct TxDb from gtf file.
+-  txdb <- GenomicFeatures::makeTxDbFromGFF(gtf, format = "gtf")
++  txdb <- txdbmaker::makeTxDbFromGFF(gtf, format = "gtf")
+ 
+   ## Group exons by transcript. When using exonsBy with by = "tx",
+   ## the returned exons are ordered by ascending rank for each transcript,
+   ## that is, by their position in the transcript.
+   grl <- GenomicFeatures::exonsBy(txdb, by = "tx", use.names = TRUE)
+ 
++  common_chromosomes <- intersect(seqlevels(grl), seqlevels(genome))
++  grl <- GenomeInfoDb::keepSeqlevels(grl, common_chromosomes, pruning.mode = "coarse")
+   ## Extract transcript sequences.
+   ## Here, it's important that for each transcript, the exons must be ordered
+   ## by ascending rank, that is, by ascending position in the transcript.
+diff --git a/snakePipes/shared/rules/envs/sc_rna_seq_eisaR.yaml b/snakePipes/shared/rules/envs/sc_rna_seq_eisaR.yaml
+index 08ef9f4ab..dbf560468 100644
+--- a/snakePipes/shared/rules/envs/sc_rna_seq_eisaR.yaml
++++ b/snakePipes/shared/rules/envs/sc_rna_seq_eisaR.yaml
+@@ -11,9 +11,11 @@ dependencies:
+  - bioconductor-bsgenome
+  - bioconductor-genomicranges
+  - bioconductor-tximeta
++ - bioconductor-txdbmaker
+  - bioconductor-summarizedexperiment
+  - bioconductor-singlecellexperiment
+  - bioconductor-scater
+  - bioconductor-biocparallel
+  - bioconductor-biocsingular
+  - bioconductor-fishpond
++ - bioconductor-genomeinfodb

@@ -1,0 +1,1207 @@
+diff --git a/.gitignore b/.gitignore
+index c05155f..010566a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,8 +1,11 @@
+ build
+ dist
+-pyproject.toml
+ SEACells.egg-info
+ **/__pycache__
+ **/.ipynb_checkpoints/
+ **/.DS_Store
+ **/.idea
++data/
++docs/
++s41587-023-01716-9.pdf
++uv.lock
+diff --git a/.python-version b/.python-version
+new file mode 100644
+index 0000000..2c07333
+--- /dev/null
++++ b/.python-version
+@@ -0,0 +1 @@
++3.11
+diff --git a/README.md b/README.md
+index 21f844a..92d614a 100644
+--- a/README.md
++++ b/README.md
+@@ -2,60 +2,72 @@
+ 
+ **S**ingle-c**E**ll **A**ggregation for High Resolution **Cell S**tates
+ 
+-#### Installation and dependencies
++SEACells identifies **metacells**: groups of cells in the same biological state, found by
++archetypal analysis on a nearest-neighbor kernel built from a low-dimensional embedding
++(`X_pca` for scRNA-seq, `X_svd` for scATAC-seq). This denoises the data while preserving
++heterogeneity, giving a high-resolution set of cell states for downstream analysis. See the
++[paper](https://www.nature.com/articles/s41587-023-01716-9) for the method.
+ 
+-1.  SEACells has been implemented in Python3.8 can be installed via pip:
+-    $> pip install cmake
+-    $> pip install SEACells
+-    It can also be installed directly from source.
++#### Installation
+ 
+-        $> git clone https://github.com/dpeerlab/SEACells.git
+-        $> cd SEACells
+-        $> python setup.py install
+-
+-2.  If you are using `conda`, you can use the `environment.yaml` to create a new environment and install SEACells.
++Uses [**uv**](https://docs.astral.sh/uv/). Install uv once with
++`curl -LsSf https://astral.sh/uv/install.sh | sh`, then:
+ 
+ ```
+-conda env create -n seacells --file environment.yaml
+-conda activate seacells
++git clone https://github.com/dpeerlab/SEACells.git && cd SEACells
++uv sync                 # CPU — works anywhere
++uv sync --extra gpu     # + RAPIDS/CuPy/FAISS (NVIDIA GPU, CUDA 13, Linux/x86_64)
++uv sync --extra dev     # + linting/pre-commit hooks
+ ```
+ 
+-3. You can also use `pip` to install the requirements
+-
+-```
+-pip install -r requirements.txt
+-```
++This builds a `.venv` with SEACells installed editable. Run code with
++`uv run python ...` or `source .venv/bin/activate`. The GPU wheels come from the
++NVIDIA pip index (preconfigured in `pyproject.toml`); validated on A100 80GB.
+ 
+-And then follow step (1)
++#### Running SEACells (CPU & GPU)
+ 
+-4. MulticoreTSNE issues can be solved using
++The core API is unchanged. A minimal run:
+ 
+-```
+-conda create --name seacells -c conda-forge -c bioconda cython python=3.8
+-conda activate seacells
+-pip install git+https://github.com/settylab/Palantir@removeTSNE
+-git clone https://github.com/dpeerlab/SEACells.git
+-cd SEACells
+-python setup.py install
+-```
++```python
++import SEACells
+ 
+-4. SEACells depends on a number of `python3` packages available on pypi and these dependencies are listed in `setup.py`.
+-
+-    All the dependencies will be automatically installed using the above commands
+-
+-5. To uninstall:
+-   $> pip uninstall SEACells
+-
+-6. To install the developer installation of SEACells, run
++# ad: AnnData with a low-dim embedding in ad.obsm ('X_pca' for RNA, 'X_svd' for ATAC)
++model = SEACells.core.SEACells(
++    ad,
++    build_kernel_on='X_pca',   # 'X_svd' for scATAC
++    n_SEACells=90,             # number of metacells (heuristic: ~1 per 75 cells)
++)
++model.construct_kernel_matrix()
++model.fit(min_iter=10, max_iter=100)   # converges in ~15-50 iterations
+ 
++# metacell assignments are written to ad.obs['SEACell']; aggregate raw counts:
++meta_ad = SEACells.core.summarize_by_SEACell(ad, SEACells_label='SEACell', summarize_layer='raw')
+ ```
+-git clone https://github.com/dpeerlab/SEACells.git
+-cd SEACells.git
+ 
+-pip install -e ".[dev]"
+-pre-commit install
++**GPU acceleration (optimized).** Pass `use_gpu=True, use_unified=True` to run the
++end-to-end GPU implementation (`SEACells.model.SEACellsModel`) — everything else is
++identical:
++
++```python
++model = SEACells.core.SEACells(
++    ad, build_kernel_on='X_pca', n_SEACells=90,
++    use_gpu=True,        # run on GPU (needs cupy + cuML / RAPIDS)
++    use_unified=True,    # use the optimized unified backend
++)
++model.construct_kernel_matrix()
++model.fit(min_iter=10, max_iter=100)
+ ```
+ 
++It keeps the kernel and weight matrices resident on the GPU, uses exact GPU kNN
++(cuML) and a memory-scalable reconstruction error, and scales to ~100k cells in a few GB
++(a full 100k-cell fit runs in ~10 min on one A100; see
++[`docs/gpu_speed_and_scale.md`](docs/gpu_speed_and_scale.md)).
++`use_unified=True` also works with `use_gpu=False` (an optimized, single-source CPU path).
++
++**Backward compatible.** `use_unified` defaults to `False`, so existing code is unchanged:
++the default CPU path (`use_gpu=False`) and the legacy `use_gpu=True` / `use_sparse=True`
++backends all behave exactly as before. `use_unified` is strictly opt-in.
++
+ #### Usage
+ 
+ 1. <b>ATAC preprocessing</b>:
+diff --git a/SEACells/build_graph.py b/SEACells/build_graph.py
+index ebf17fd..cad0309 100644
+--- a/SEACells/build_graph.py
++++ b/SEACells/build_graph.py
+@@ -5,7 +5,7 @@
+ import numpy as np
+ from joblib import Parallel, delayed
+ from scipy.sparse import lil_matrix
+-from tqdm.notebook import tqdm
++from tqdm.auto import tqdm
+ 
+ # get number of cores for multiprocessing
+ NUM_CORES = cpu_count()
+diff --git a/SEACells/core.py b/SEACells/core.py
+index 9b61c22..6d847b2 100644
+--- a/SEACells/core.py
++++ b/SEACells/core.py
+@@ -22,6 +22,7 @@ def SEACells(
+     l2_penalty: float = 0,
+     max_franke_wolfe_iters: int = 50,
+     use_sparse: bool = False,
++    use_unified: bool = False,
+ ):
+     """Core SEACells class.
+ 
+@@ -37,9 +38,34 @@ def SEACells(
+     :param l2_penalty: (float) L2 penalty for Franke-Wolfe algorithm
+     :param max_franke_wolfe_iters: (int) maximum number of iterations for Franke-Wolfe algorithm
+     :param use_sparse: (bool) whether to use sparse matrix operations. Currently only supported for CPU implementation.
++    :param use_unified: (bool) use the optimized unified CPU/GPU implementation (``model.SEACellsModel``)
++                        instead of the legacy ``cpu``/``cpu_dense``/``gpu`` backends. Honors ``use_gpu``.
++                        Recommended for GPU runs and large datasets; the legacy backends are retained
++                        for backward compatibility. Not compatible with ``use_sparse``.
+ 
+-    See cpu.py or gpu.py for descriptions of model attributes and methods.
++    See model.py (unified) or cpu.py/gpu.py (legacy) for descriptions of model attributes and methods.
+     """
++    if use_unified:
++        assert (
++            not use_sparse
++        ), "use_sparse is a legacy CPU-only option; the unified backend does not support it."
++        try:
++            from . import model as _model
++        except ImportError:
++            import model as _model
++        return _model.SEACellsModel(
++            ad,
++            build_kernel_on,
++            n_SEACells,
++            use_gpu=use_gpu,
++            verbose=verbose,
++            n_waypoint_eigs=n_waypoint_eigs,
++            n_neighbors=n_neighbors,
++            convergence_epsilon=convergence_epsilon,
++            l2_penalty=l2_penalty,
++            max_franke_wolfe_iters=max_franke_wolfe_iters,
++        )
++
+     if use_sparse:
+         assert (
+             not use_gpu
+diff --git a/SEACells/gpu.py b/SEACells/gpu.py
+index 6ffc449..a2ffdb4 100644
+--- a/SEACells/gpu.py
++++ b/SEACells/gpu.py
+@@ -423,7 +423,7 @@ def _updateA(self, B, A_prev):
+ 
+         Ag = cp.array(A)
+         Bg = cp.array(B)
+-        Kg = cupyx.scipy.sparse.csc_matrix(self.K)
++        Kg = cupyx.scipy.sparse.csc_matrix(self.K)  # self.K sits on CPU, so it is re-uploaded to the GPU every call. The upload itself is cheap (<1% of an iteration); the real cost of keeping K on the host is that compute_RSS then builds the n x n reconstruction on the CPU (see model.py for the resident, reduced-form version)
+ 
+         # precompute some gradient terms
+         t2g = Kg.dot(Bg).T
+diff --git a/SEACells/model.py b/SEACells/model.py
+new file mode 100644
+index 0000000..1fd7f40
+--- /dev/null
++++ b/SEACells/model.py
+@@ -0,0 +1,604 @@
++"""Unified CPU/GPU implementation of the SEACells kernel-archetypal-analysis algorithm.
++
++A single :class:`SEACellsModel` holds all algorithm and orchestration logic. The only
++differences between the CPU and GPU code paths are:
++
++* ``self.xp`` / ``self.sp`` -- the array + sparse modules (numpy/scipy vs cupy/cupyx),
++  which cover ~90% of the work (Frank-Wolfe updates, RSS, greedy init, kernel arithmetic);
++* a small number of explicitly-marked backend hooks for operations that need different
++  *libraries* rather than a different array module (exact kNN, diffusion-map waypoints,
++  host/device transfer).
++
++This removes the duplication (and the silent CPU/GPU drift bugs) of the old
++``cpu_dense`` / ``cpu`` / ``gpu`` modules while keeping one algorithm implementation.
++
++Design notes
++------------
++* On the GPU path the kernel ``M``, its Gram matrix ``K = M @ M.T``, and the ``A``/``B``
++  weight matrices stay resident on the device for the whole fit; only the final
++  assignments are copied back to the host.
++* RSS is computed in a memory-scalable reduced form (``O(n*s)`` memory) rather than by
++  materializing the ``n x n`` reconstruction, which is infeasible on the GPU at scale.
++* Exact kNN is the default on both backends (reproducible, and a strict accuracy upgrade
++  over the previous approximate scanpy/pynndescent path). Approximate ANN can be added as
++  an opt-in for very large ``n``.
++"""
++
++import numpy as np
++import pandas as pd
++from tqdm import tqdm
++
++
++class SEACellsModel:
++    """Unified kernel-archetypal-analysis metacell solver (CPU or GPU)."""
++
++    def __init__(
++        self,
++        ad,
++        build_kernel_on: str,
++        n_SEACells: int,
++        use_gpu: bool = False,
++        verbose: bool = True,
++        n_waypoint_eigs: int = 10,
++        n_neighbors: int = 15,
++        convergence_epsilon: float = 1e-3,
++        l2_penalty: float = 0,
++        max_franke_wolfe_iters: int = 50,
++        dtype=np.float32,
++    ):
++        """Create a SEACells model.
++
++        :param ad: (AnnData) annotated data matrix.
++        :param build_kernel_on: (str) key in ``ad.obsm`` used to build the kernel
++            (``'X_pca'`` for scRNA, ``'X_svd'`` for scATAC).
++        :param n_SEACells: (int) number of metacells (archetypes) to compute.
++        :param use_gpu: (bool) run on GPU (cupy/cuml) if True, else CPU (numpy/scipy).
++        :param verbose: (bool) verbose logging.
++        :param n_waypoint_eigs: (int) number of eigenvectors for waypoint initialization.
++        :param n_neighbors: (int) number of nearest neighbors for graph construction.
++        :param convergence_epsilon: (float) convergence threshold multiplier on initial RSS.
++        :param l2_penalty: (float) L2 penalty in the A update.
++        :param max_franke_wolfe_iters: (int) Frank-Wolfe inner iterations for A and B.
++        :param dtype: numpy dtype used for kernel construction (default float32).
++        """
++        print("Welcome to SEACells!" + (" [GPU]" if use_gpu else ""))
++        self.ad = ad
++        self.build_kernel_on = build_kernel_on
++        self.n_cells = ad.shape[0]
++
++        if not isinstance(n_SEACells, int):
++            try:
++                n_SEACells = int(n_SEACells)
++            except ValueError:
++                raise ValueError(
++                    f"The number of SEACells specified must be an integer type, not {type(n_SEACells)}"
++                )
++        self.k = n_SEACells
++
++        self.use_gpu = use_gpu
++        self.dtype = dtype
++        if use_gpu:
++            import cupy as cp
++            import cupyx.scipy.sparse as csp
++
++            self.xp = cp
++            self.sp = csp
++        else:
++            import scipy.sparse as ssp
++
++            self.xp = np
++            self.sp = ssp
++
++        self.n_waypoint_eigs = n_waypoint_eigs
++        self.waypoint_proportion = 1
++        self.n_neighbors = n_neighbors
++
++        self.max_FW_iter = max_franke_wolfe_iters
++        self.verbose = verbose
++        self.l2_penalty = l2_penalty
++
++        self.RSS_iters = []
++        self.convergence_epsilon = convergence_epsilon
++        self.convergence_threshold = None
++
++        self.kernel_matrix = None  # M  (n x n, backend sparse)
++        self.K = None  # M @ M.T  (n x n, backend sparse)
++        self._Mnorm2 = None  # ||M||_F^2 cached for reduced RSS
++
++        self.archetypes = None
++        self.A_ = None
++        self.B_ = None
++        self.B0 = None
++
++    # ------------------------------------------------------------------ #
++    # Backend hooks (the only library-level CPU/GPU differences)
++    # ------------------------------------------------------------------ #
++    def _to_host(self, x):
++        """Return a numpy version of a backend array (no-op on CPU)."""
++        if self.use_gpu:
++            return self.xp.asnumpy(x)
++        return np.asarray(x)
++
++    def _knn(self, X, k):
++        """Exact k-nearest-neighbors on the active backend.
++
++        :param X: (n, d) embedding (numpy array).
++        :param k: number of neighbors (includes self).
++        :return: (dist, idx) as backend arrays of shape (n, k); Euclidean distances.
++        """
++        if self.use_gpu:
++            from cuml.neighbors import NearestNeighbors
++
++            Xb = self.xp.asarray(X, dtype=self.dtype)
++            nn = NearestNeighbors(n_neighbors=k, algorithm="brute", metric="euclidean")
++            nn.fit(Xb)
++            dist, idx = nn.kneighbors(Xb)
++            return self.xp.asarray(dist), self.xp.asarray(idx)
++        else:
++            from sklearn.neighbors import NearestNeighbors
++
++            Xb = np.asarray(X, dtype=self.dtype)
++            nn = NearestNeighbors(n_neighbors=k, algorithm="brute", metric="euclidean")
++            nn.fit(Xb)
++            dist, idx = nn.kneighbors(Xb)
++            return np.asarray(dist), np.asarray(idx)
++
++    # ------------------------------------------------------------------ #
++    # Kernel construction
++    # ------------------------------------------------------------------ #
++    def add_precomputed_kernel_matrix(self, K):
++        """Provide a precomputed kernel matrix ``M`` (moves it to the active backend)."""
++        assert K.shape == (self.n_cells, self.n_cells), (
++            f"Dimension of kernel matrix must be n_cells = "
++            f"({self.n_cells},{self.n_cells}), not {K.shape}"
++        )
++        M = self.sp.csr_matrix(K)
++        self.kernel_matrix = M
++        self.K = (M @ M.T).tocsr()
++        self._Mnorm2 = float(self._to_host(M.multiply(M).sum()))
++
++    def construct_kernel_matrix(self, n_neighbors: int = None, graph_construction="union"):
++        """Build the adaptive-bandwidth RBF affinity kernel ``M`` from ``ad.obsm``.
++
++        Uses exact kNN, an adaptive Gaussian width (distance to the ``k//2``-th neighbor),
++        a symmetric neighbor graph, and evaluates the kernel only on graph edges
++        (``O(nnz * d)`` rather than the old dense ``O(n^2 * d)`` per-row loop).
++
++        :param n_neighbors: neighbors for the graph (defaults to ``self.n_neighbors``).
++        :param graph_construction: ``'union'`` or ``'intersection'`` symmetrization.
++        """
++        xp, sp = self.xp, self.sp
++        k = n_neighbors if n_neighbors is not None else self.n_neighbors
++        n = self.n_cells
++
++        if self.verbose:
++            print(f"Building kernel on {self.build_kernel_on} (exact kNN, k={k}) ...")
++
++        X = np.asarray(self.ad.obsm[self.build_kernel_on], dtype=self.dtype)
++        Xb = xp.asarray(X)
++        dist, idx = self._knn(X, k)
++
++        # adaptive bandwidth: distance to the (k//2)-th nearest neighbor
++        sigma = dist[:, k // 2]
++
++        # binary kNN adjacency (each cell -> its k neighbors, self included)
++        rows = xp.repeat(xp.arange(n), k)
++        cols = idx.ravel()
++        ones = xp.ones(n * k, dtype=self.dtype)
++        G = sp.csr_matrix((ones, (rows, cols)), shape=(n, n))
++
++        if graph_construction == "union":
++            sym = (G + G.T).astype(bool).astype(self.dtype)
++        elif graph_construction in ("intersect", "intersection"):
++            Gb = G.astype(bool).astype(self.dtype)
++            sym = Gb.multiply(Gb.T)
++        else:
++            raise ValueError(
++                f"graph_construction = {graph_construction} is not valid; use 'union' or 'intersection'."
++            )
++
++        # evaluate the RBF kernel only on the edges of the symmetric graph
++        sym = sym.tocoo()
++        r, c = sym.row, sym.col
++        diff = Xb[r] - Xb[c]
++        sq = (diff * diff).sum(axis=1)
++        denom = sigma[r] * sigma[c]
++        vals = xp.exp(-sq / denom)
++
++        M = sp.csr_matrix((vals, (r, c)), shape=(n, n))
++        self.kernel_matrix = M
++        self.K = (M @ M.T).tocsr()
++        self._Mnorm2 = float(self._to_host(M.multiply(M).sum()))
++        if self.verbose:
++            print(f"Kernel M: {n}x{n}, nnz={int(M.nnz)}; K nnz={int(self.K.nnz)}")
++
++    # ------------------------------------------------------------------ #
++    # Initialization
++    # ------------------------------------------------------------------ #
++    def initialize_archetypes(self):
++        """Select initial archetype cell indices via waypoint + greedy selection."""
++        k = self.k
++        if self.waypoint_proportion > 0:
++            waypoint_ix = self._get_waypoint_centers(k)
++            waypoint_ix = np.random.choice(
++                waypoint_ix,
++                int(len(waypoint_ix) * self.waypoint_proportion),
++                replace=False,
++            )
++            from_greedy = self.k - len(waypoint_ix)
++            if self.verbose:
++                print(f"Selecting {len(waypoint_ix)} cells from waypoint initialization.")
++        else:
++            from_greedy = self.k
++
++        greedy_ix = self._get_greedy_centers(n_mcs=from_greedy + 10)
++        if self.verbose:
++            print(f"Selecting {from_greedy} cells from greedy initialization.")
++
++        if self.waypoint_proportion > 0:
++            all_ix = np.hstack([waypoint_ix, greedy_ix])
++        else:
++            all_ix = np.hstack([greedy_ix])
++
++        unique_ix, ind = np.unique(all_ix, return_index=True)
++        all_ix = unique_ix[np.argsort(ind)][:k]
++        self.archetypes = all_ix
++
++    def _get_waypoint_centers(self, n_waypoints=None):
++        """Waypoint (max-min) sampling on diffusion components (Palantir).
++
++        The diffusion-map eigendecomposition is the dominant cost of this one-time init
++        step. When ``use_gpu`` is set and the installed Palantir exposes the ``use_gpu``
++        option (with cupy available), that eigendecomposition runs on the GPU while the
++        kNN kernel stays on the host, so results match the CPU path to ~1e-7. Otherwise
++        it transparently falls back to the CPU solver.
++        """
++        import inspect
++
++        import palantir
++
++        k = n_waypoints if n_waypoints is not None else self.k
++        ad = self.ad
++        pca_components = pd.DataFrame(ad.obsm[self.build_kernel_on]).set_index(ad.obs_names)
++
++        dm_kwargs = {}
++        if self.use_gpu:
++            try:
++                sig = inspect.signature(palantir.utils.run_diffusion_maps)
++                if "use_gpu" in sig.parameters:
++                    from palantir._gpu import is_gpu_available
++
++                    if is_gpu_available():
++                        dm_kwargs["use_gpu"] = True
++            except Exception:
++                pass
++
++        if self.verbose:
++            where = "GPU eig" if dm_kwargs.get("use_gpu") else "CPU"
++            print(f"Computing diffusion components from {self.build_kernel_on} for waypoints ({where}) ...")
++        dm_res = palantir.utils.run_diffusion_maps(
++            pca_components, n_components=self.n_neighbors, **dm_kwargs
++        )
++        dc_components = palantir.utils.determine_multiscale_space(dm_res, n_eigs=self.n_waypoint_eigs)
++
++        if self.verbose:
++            print("Sampling waypoints ...")
++        waypoint_init = palantir.core._max_min_sampling(data=dc_components, num_waypoints=k)
++        dc_components["iix"] = np.arange(len(dc_components))
++        waypoint_ix = dc_components.loc[waypoint_init]["iix"].values
++        return waypoint_ix
++
++    def _get_greedy_centers(self, n_mcs=None):
++        """Greedy adaptive column subset selection (CSSP) on the Gram matrix ``K``.
++
++        Runs on the active backend. The inner projection is vectorized (two matmuls)
++        instead of the old Python ``for r in range(j)`` loop.
++        """
++        xp = self.xp
++        K = self.K
++        n = self.n_cells
++        k = n_mcs if n_mcs is not None else self.k
++
++        if self.verbose:
++            print("Initializing residual matrix using greedy column selection")
++
++        f = xp.asarray(K.multiply(K).sum(axis=0)).ravel()
++        g = xp.asarray(K.diagonal()).ravel()
++
++        omega = xp.zeros((k, n), dtype=f.dtype)
++        centers = np.zeros(k, dtype=int)
++
++        for j in tqdm(range(k), disable=not self.verbose):
++            score = f / g
++            p = int(self._to_host(xp.argmax(score)))
++
++            # p-th column of K (K is symmetric) via one-hot matvec (backend-agnostic)
++            ep = xp.zeros(n, dtype=K.dtype)
++            ep[p] = 1
++            delta_term1 = K.dot(ep).ravel()
++
++            # projection onto previously selected directions (vectorized)
++            if j > 0:
++                omega_j = omega[:j]  # (j, n)
++                delta_term2 = omega_j.T.dot(omega_j[:, p])
++            else:
++                delta_term2 = xp.zeros(n, dtype=f.dtype)
++            delta = delta_term1 - delta_term2
++
++            delta_p = delta[p]
++            delta_p = delta_p if delta_p > 0 else xp.asarray(0.0, dtype=delta.dtype)
++            o = delta / xp.maximum(xp.sqrt(delta_p), 1e-6)
++
++            omega_square_norm = xp.linalg.norm(o) ** 2
++            omega_hadamard = o * o
++            term1 = omega_square_norm * omega_hadamard
++
++            if j > 0:
++                omega_j = omega[:j]
++                pl = omega_j.T.dot(omega_j.dot(o))
++            else:
++                pl = xp.zeros(n, dtype=f.dtype)
++            ATAo = K.dot(o).ravel()
++            term2 = o * (ATAo - pl)
++
++            f = f - 2.0 * term2 + term1
++            g = g + omega_hadamard
++            omega[j, :] = o
++            centers[j] = p
++
++        return centers
++
++    def initialize(self, initial_archetypes=None, initial_assignments=None):
++        """Initialize ``B`` (archetypes) and ``A`` (assignments) given the kernel."""
++        if self.K is None:
++            raise RuntimeError("Must first construct kernel matrix before initializing SEACells.")
++        xp = self.xp
++        n = self.n_cells
++
++        if initial_archetypes is not None:
++            if self.verbose:
++                print("Using provided list of initial archetypes")
++            self.archetypes = np.asarray(initial_archetypes)
++
++        if self.archetypes is None:
++            self.initialize_archetypes()
++
++        self.k = len(self.archetypes)
++        k = self.k
++
++        # B0: one-hot columns at archetype cells
++        B0 = xp.zeros((n, k), dtype=self.xp.float64 if not self.use_gpu else self.xp.float32)
++        arch = xp.asarray(self.archetypes)
++        B0[arch, xp.arange(k)] = 1.0
++        self.B0 = B0
++        B = B0.copy()
++
++        if initial_assignments is not None:
++            A0 = xp.asarray(initial_assignments)
++            assert A0.shape == (k, n), f"Initial assignment matrix should be of shape (k={k} x n={n})"
++        else:
++            A0 = xp.asarray(np.random.random((k, n)))
++            A0 /= A0.sum(0)
++            if self.verbose:
++                print("Randomly initialized A matrix.")
++
++        self.A0 = A0
++        A = self._updateA(B, A0.copy())
++
++        self.A_ = A
++        self.B_ = B
++
++        RSS = self.compute_RSS(A, B)
++        self.RSS_iters.append(RSS)
++        if self.convergence_threshold is None:
++            self.convergence_threshold = self.convergence_epsilon * RSS
++            if self.verbose:
++                print(f"Setting convergence threshold at {self.convergence_threshold:.5f}")
++
++    # ------------------------------------------------------------------ #
++    # Frank-Wolfe updates
++    # ------------------------------------------------------------------ #
++    def _updateA(self, B, A_prev):
++        """Frank-Wolfe update of the assignment matrix ``A`` (k x n) given ``B``.
++
++        The FW step ``A <- A + f (e - A) = (1-f) A + f e`` (with ``e`` a one-hot column
++        selector) is applied in place via a scatter-add, avoiding materializing the dense
++        ``k x n`` selector every inner iteration.
++        """
++        xp = self.xp
++        n, k = B.shape
++        A = A_prev
++
++        t2 = (self.K.dot(B)).T  # (k, n)
++        t1 = t2.dot(B)  # (k, k)
++
++        cols = xp.arange(n)
++        t = 0
++        while t < self.max_FW_iter:
++            G = 2.0 * (t1.dot(A) - t2) - self.l2_penalty * A
++            amins = xp.argmin(G, axis=0)
++            f = 2.0 / (t + 2.0)
++            A = (1.0 - f) * A
++            A[amins, cols] += f
++            t += 1
++        return A
++
++    def _updateB(self, A, B_prev):
++        """Frank-Wolfe update of the archetype matrix ``B`` (n x k) given ``A``.
++
++        Dense update: recomputes ``K @ B`` each inner iteration. The scatter step
++        ``B <- (1-f) B + f e`` is applied in place via a scatter-add.
++        """
++        xp = self.xp
++        k, n = A.shape
++        B = B_prev
++        t1 = A.dot(A.T)
++        t2 = self.K.dot(A.T)
++        cols = xp.arange(k)
++        t = 0
++        while t < self.max_FW_iter:
++            G = 2.0 * (self.K.dot(B).dot(t1) - t2)
++            amins = xp.argmin(G, axis=0)
++            f = 2.0 / (t + 2.0)
++            B = (1.0 - f) * B
++            B[amins, cols] += f
++            t += 1
++        return B
++
++    # ------------------------------------------------------------------ #
++    # Objective
++    # ------------------------------------------------------------------ #
++    def compute_RSS(self, A=None, B=None):
++        """Reconstruction error ``||M - MBA||_F`` in memory-scalable reduced form.
++
++        Uses ``||M - MBA||^2 = ||M||^2 - 2 tr(KBA) + tr(B^T K B  A A^T)`` (with
++        ``K = M^T M`` and symmetric ``M``), which needs only ``O(n*s)`` memory instead
++        of forming the ``n x n`` reconstruction.
++        """
++        xp = self.xp
++        if A is None:
++            A = self.A_
++        if B is None:
++            B = self.B_
++        if A is None or B is None:
++            raise RuntimeError("Either assignment matrix A or archetype matrix B is None.")
++
++        KB = self.K.dot(B)  # (n, k)
++        cross = float(self._to_host((KB * A.T).sum()))
++        C = B.T.dot(KB)  # (k, k) = B^T K B
++        D = A.dot(A.T)  # (k, k) = A A^T
++        quad = float(self._to_host((C * D).sum()))
++        val = self._Mnorm2 - 2.0 * cross + quad
++        return float(np.sqrt(max(val, 0.0)))
++
++    def compute_reconstruction(self, A=None, B=None):
++        """Return the (dense) reconstruction ``M B A``. Warning: ``n x n``; use for small data."""
++        if A is None:
++            A = self.A_
++        if B is None:
++            B = self.B_
++        if A is None or B is None:
++            raise RuntimeError("Either assignment matrix A or archetype matrix B is None.")
++        return (self.kernel_matrix.dot(B)).dot(A)
++
++    # ------------------------------------------------------------------ #
++    # Fitting
++    # ------------------------------------------------------------------ #
++    def step(self):
++        """One alternating-minimization iteration (update A then B)."""
++        if self.K is None:
++            raise RuntimeError("Kernel matrix has not been computed. Run construct_kernel_matrix() first.")
++        if self.A_ is None or self.B_ is None:
++            raise RuntimeError("Model not initialized. Run initialize() first.")
++
++        A = self._updateA(self.B_, self.A_)
++        B = self._updateB(A, self.B_)
++        self.RSS_iters.append(self.compute_RSS(A, B))
++        self.A_ = A
++        self.B_ = B
++
++        labels = self.get_hard_assignments()
++        self.ad.obs["SEACell"] = labels["SEACell"]
++
++    def _fit(self, max_iter=50, min_iter=10, initial_archetypes=None, initial_assignments=None):
++        self.initialize(initial_archetypes=initial_archetypes, initial_assignments=initial_assignments)
++
++        converged = False
++        n_iter = 0
++        while (not converged and n_iter < max_iter) or n_iter < min_iter:
++            n_iter += 1
++            if self.verbose and (n_iter == 1 or n_iter % 10 == 0):
++                print(f"Starting iteration {n_iter}.")
++            self.step()
++            if self.verbose and (n_iter == 1 or n_iter % 10 == 0):
++                print(f"Completed iteration {n_iter}.")
++            if np.abs(self.RSS_iters[-2] - self.RSS_iters[-1]) < self.convergence_threshold:
++                if self.verbose:
++                    print(f"Converged after {n_iter} iterations.")
++                converged = True
++
++        self.Z_ = self.B_.T @ self.K
++        labels = self.get_hard_assignments()
++        self.ad.obs["SEACell"] = labels["SEACell"]
++        if not converged:
++            raise RuntimeWarning(
++                "Warning: Algorithm has not converged - you may need to increase the maximum number of iterations"
++            )
++
++    def fit(self, max_iter=100, min_iter=10, initial_archetypes=None, initial_assignments=None):
++        """Fit the model (alternating Frank-Wolfe until convergence)."""
++        if max_iter < min_iter:
++            raise ValueError("max_iter is lower than min_iter.")
++        self._fit(
++            max_iter=max_iter,
++            min_iter=min_iter,
++            initial_archetypes=initial_archetypes,
++            initial_assignments=initial_assignments,
++        )
++
++    # ------------------------------------------------------------------ #
++    # Outputs
++    # ------------------------------------------------------------------ #
++    def get_archetype_matrix(self):
++        """Return the archetype matrix ``Z = B^T K`` (as a host array)."""
++        return self._to_host(self.Z_)
++
++    def get_hard_assignments(self):
++        """Return a DataFrame assigning each cell to its argmax SEACell."""
++        amax = self._to_host(self.A_.argmax(0)).astype(int)
++        df = pd.DataFrame({"SEACell": [f"SEACell-{i}" for i in amax]})
++        df.index = self.ad.obs_names
++        df.index.name = "index"
++        return df
++
++    def get_hard_archetypes(self):
++        """Return the names of the cells most strongly identified as archetypes."""
++        return self.ad.obs_names[self._to_host(self.B_.argmax(0))]
++
++    def get_soft_assignments(self):
++        """Return top-5 soft SEACell labels and weights per cell."""
++        archetype_labels = self.get_hard_archetypes()
++        A = np.array(self._to_host(self.A_).T, copy=True)
++
++        labels, weights = [], []
++        for _ in range(5):
++            l = A.argmax(1)
++            labels.append(archetype_labels[l])
++            weights.append(A[np.arange(A.shape[0]), l])
++            A[np.arange(A.shape[0]), l] = -1
++
++        weights = np.vstack(weights).T
++        labels = np.vstack(labels).T
++        soft_labels = pd.DataFrame(labels)
++        soft_labels.index = self.ad.obs_names
++        return soft_labels, weights
++
++    def plot_convergence(self, save_as=None, show=True):
++        """Plot RSS over iterations."""
++        import matplotlib.pyplot as plt
++
++        plt.figure()
++        plt.plot(self.RSS_iters)
++        plt.title("Reconstruction Error over Iterations")
++        plt.xlabel("Iterations")
++        plt.ylabel("Squared Error")
++        if save_as is not None:
++            plt.savefig(save_as, dpi=150)
++        if show:
++            plt.show()
++        plt.close()
++
++    def save_assignments(self, outdir):
++        """Save kernel, A, B (as scipy sparse ``.npz``) and hard assignments (csv)."""
++        import os
++
++        from scipy.sparse import csr_matrix, save_npz
++
++        os.makedirs(outdir, exist_ok=True)
++        M = csr_matrix(self._to_host(self.kernel_matrix))
++        A = csr_matrix(self._to_host(self.A_)).T
++        B = csr_matrix(self._to_host(self.B_))
++        save_npz(outdir + "/kernel_matrix.npz", M)
++        save_npz(outdir + "/A.npz", A)
++        save_npz(outdir + "/B.npz", B)
++        self.get_hard_assignments().to_csv(outdir + "/SEACells.csv")
+diff --git a/docs/gpu_speed_and_scale.md b/docs/gpu_speed_and_scale.md
+new file mode 100644
+index 0000000..505eec1
+--- /dev/null
++++ b/docs/gpu_speed_and_scale.md
+@@ -0,0 +1,52 @@
++# GPU SEACells: speed and scale
++
++Two changes let SEACells run end-to-end on the GPU. They change only *where* the
++computation runs and *how* the objective is evaluated. The model and its results
++are unchanged.
++
++## #1 — Keep the kernel resident on the GPU (speed)
++
++The original `gpu.py` left the kernel `K` on the host and re-uploaded it every
++iteration; worse, it evaluated the reconstruction error (RSS) on the CPU by
++building a dense `n x n` matrix. Keeping `K` (and `M`, `A`, `B`) resident on the
++GPU lets the whole iteration, including the RSS, run on the device.
++
++*Example (15k cells):* per-iteration time drops from **10.4 s to 0.58 s (~18x)**,
++because the RSS moves off the CPU. End-to-end on cd34: **110 s to 6.5 s (~17x)**.
++
++## #2 — Evaluate the RSS without the `n x n` matrix (scale)
++
++The RSS is `||M - MBA||`. Forming the reconstruction `MBA` is a dense `n x n`
++matrix (174 GB at 208k cells, far past a GPU's memory).
++
++The trick is to expand the norm and use `K = MᵀM` (M symmetric):
++
++```
++||M - MBA||²  =  ||M||²  -  2·tr(KBA)  +  tr(BᵀKB · AAᵀ)
++```
++
++Every term needs only `n x s` arrays, so the RSS costs `O(n·s)` memory instead of
++`O(n²)`. Nothing is approximated: this equals the direct Frobenius norm exactly.
++
++*Example (208k cells):* peak memory **~10 GB instead of 174 GB**, so it fits on one
++GPU and runs where the original runs out of memory.
++
++## The result is unchanged
++
++Same math, same optimum. On cd34, with the same kernel and initialization, CPU and
++GPU converge along the same RSS curve; the final RSS matches to `3e-5` and 94% of
++metacells are identical (the rest are boundary cells with equal RSS — CPU vs GPU
++float ordering, not a change in the result).
++
++## Usage
++
++The GPU path is opt-in and backward compatible (`use_unified` defaults to `False`):
++
++```python
++model = SEACells.core.SEACells(
++    ad, build_kernel_on="X_pca", n_SEACells=90,
++    use_gpu=True, use_unified=True,   # GPU: needs cupy + cuML / RAPIDS
++)
++model.construct_kernel_matrix()
++model.fit(min_iter=10, max_iter=100)
++```
+diff --git a/environment.yaml b/environment.yaml
+deleted file mode 100644
+index 3a5ae3e..0000000
+--- a/environment.yaml
++++ /dev/null
+@@ -1,20 +0,0 @@
+-name: seacells
+-channels:
+-    - conda-forge
+-    - bioconda
+-dependencies:
+-    - python=3.5
+-    - cython
+-    - ipython
+-    - scanpy=1.8.2
+-    - loompy=3.0.6
+-    - python-igraph
+-    - louvain>=0.6,!=0.6.2
+-    - fa2
+-    - leidenalg
+-    - seaborn
+-    - pip
+-    - pip:
+-          - dfply
+-          - git+https://github.com/dpeerlab/Palantir
+-          - git+https://github.com/dpeerlab/SEACells
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..09f19ea
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,71 @@
++[build-system]
++requires = ["setuptools>=64", "wheel"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "SEACells"
++version = "0.3.3"
++description = "SEACells: Single-cell aggregation of cell states (GPU-accelerated fork)"
++readme = "README.md"
++requires-python = ">=3.11"
++license = { file = "LICENSE.txt" }
++authors = [{ name = "Pe'er Lab", email = "scp2152@columbia.edu" }]
++classifiers = [
++    "Programming Language :: Python :: 3",
++    "License :: OSI Approved :: MIT License",
++    "Operating System :: POSIX :: Linux",
++]
++
++# Core (CPU) dependencies — enough to run SEACells anywhere.
++dependencies = [
++    "numpy",
++    "pandas",
++    "scipy>=1.5",
++    "scanpy>1.8",
++    "anndata",
++    "palantir",
++    "numba>=0.51.2",
++    "scikit-learn",
++    "pyranges",
++    "matplotlib",
++    "seaborn",
++    "tqdm",
++]
++
++[project.optional-dependencies]
++# GPU acceleration (RAPIDS + CuPy + FAISS). Requires an NVIDIA GPU and the
++# NVIDIA pip index (configured under [tool.uv] below). Linux/x86_64 only —
++# on other platforms these markers make the extra resolve to nothing instead
++# of hard-failing. Versions pinned to the validated CUDA-13 / CUDA-12 mix.
++gpu = [
++    "cuml-cu13==26.6.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
++    "cudf-cu13==26.6.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
++    "cupy-cuda13x==14.1.1 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
++    "faiss-gpu-cu12==1.14.1.post1 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
++]
++dev = ["ruff", "pre-commit"]
++
++[project.urls]
++Homepage = "https://github.com/dpeerlab/SEACells"
++
++[tool.setuptools.packages.find]
++include = ["SEACells*"]
++
++[tool.setuptools.package-data]
++SEACells = ["Rscripts/*", "*.r", "*.R"]
++
++# ---- uv configuration -------------------------------------------------------
++# RAPIDS / CuPy wheels live on the NVIDIA index in addition to PyPI.
++# unsafe-best-match lets uv pick the best version across both indexes
++# (equivalent to pip's --extra-index-url behavior).
++[tool.uv]
++index-strategy = "unsafe-best-match"
++
++[[tool.uv.index]]
++name = "pypi"
++url = "https://pypi.org/simple"
++default = true
++
++[[tool.uv.index]]
++name = "nvidia"
++url = "https://pypi.nvidia.com"
+diff --git a/requirements.txt b/requirements.txt
+deleted file mode 100644
+index ece01fd..0000000
+--- a/requirements.txt
++++ /dev/null
+@@ -1,35 +0,0 @@
+-alabaster==0.7.12
+-anndata==0.8.0
+-cmake==3.22.3
+-Cython==0.29
+-h5py==3.6
+-joblib==1.2.0
+-kiwisolver==1.3.2
+-legacy-api-wrap==0.0.0
+-leidenalg==0.8.9
+-llvmlite==0.38.0
+-louvain==0.7.1
+-matplotlib
+-munkres==1.1.4
+-ncls==0.0.64
+-numba==0.55
+-numpy
+-palantir==1.0.1
+-pandas==1.4.1
+-PhenoGraph==1.5.7
+-psutil==5.9.0
+-pyranges==0.0.115
+-pyrle==0.0.34
+-scanpy
+-scikit-learn
+-scipy
+-seaborn
+-six==1.16
+-sorted-nearest==0.0.33
+-statsmodels==0.13
+-tables==3.6
+-tabulate==0.8.9
+-tqdm==4.64
+-tzdata==2022.1
+-tzlocal==4.1
+-umap-learn>0.5.1
+diff --git a/setup.py b/setup.py
+deleted file mode 100644
+index ed88538..0000000
+--- a/setup.py
++++ /dev/null
+@@ -1,36 +0,0 @@
+-import setuptools
+-
+-with open("README.md") as fh:
+-    long_description = fh.read()
+-
+-setuptools.setup(
+-    name="SEACells",
+-    version="0.3.3",
+-    author="Pe'er Lab",
+-    author_email="scp2152@columbia.edu",
+-    description=" ",
+-    long_description=long_description,
+-    long_description_content_type="text/markdown",
+-    url="https://github.com/dpeerlab/SEACells",
+-    packages=setuptools.find_packages(),
+-    install_requires=[
+-        "numpy",
+-        "pandas",
+-        "palantir",
+-        "scanpy>1.8",
+-        "anndata",
+-        "numba>=0.51.2",
+-        "scipy>=1.5",
+-        "pyranges",
+-    ],
+-    extras_require={"dev": ["ruff", "pre-commit"]},
+-    classifiers=[
+-        "Programming Language :: Python :: 3",
+-        "License :: OSI Approved :: MIT License",
+-        "Operating System :: OS Independent",
+-    ],
+-    python_requires=">=3.8.0",
+-    include_package_data=True,
+-    package_data={"": ["SEACells/Rscripts/*", "*.r", "*.R"]},
+-    zip_safe=False,
+-)
+diff --git a/tests/test_unified_parity.py b/tests/test_unified_parity.py
+new file mode 100644
+index 0000000..1947e7f
+--- /dev/null
++++ b/tests/test_unified_parity.py
+@@ -0,0 +1,133 @@
++"""Parity + correctness tests for the unified ``SEACells.model.SEACellsModel``.
++
++These encode the guarantees established during the GPU rewrite:
++
++* the unified CPU backend reproduces the legacy ``cpu_dense`` optimizer exactly given the
++  same kernel and initialization;
++* the memory-scalable reduced-form RSS equals the direct ``||M - MBA||_F``;
++* the GPU backend matches the CPU backend, per stage, when both use the same kernel + init
++  (GPU tests are skipped automatically when no CUDA device / cupy is available).
++
++Note on the full pipeline: when the CPU and GPU backends each build their *own* kNN kernel,
++sklearn and cuML differ at ~1e-6 (dtype-independent), and because kernel archetypal analysis
++is non-convex this can amplify to a different-but-equally-valid optimum. Exact CPU/GPU
++agreement is therefore only asserted for the *shared-kernel + shared-init* case, which
++isolates the optimizer.
++"""
++
++import os
++
++import numpy as np
++import pytest
++import scanpy as sc
++
++from SEACells import core
++from SEACells.model import SEACellsModel
++
++DATA = os.path.join(
++    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
++    "SEACells",
++    "data",
++    "sample_data.h5ad",
++)
++
++try:
++    import cupy as cp  # noqa: F401
++
++    _HAS_GPU = cp.cuda.runtime.getDeviceCount() > 0
++except Exception:  # noqa: BLE001
++    _HAS_GPU = False
++
++gpu_required = pytest.mark.skipif(not _HAS_GPU, reason="no CUDA GPU / cupy available")
++
++K_SEACELLS = 10
++N_ITERS = 20
++
++
++@pytest.fixture(scope="module")
++def ad():
++    return sc.read(DATA)
++
++
++@pytest.fixture(scope="module")
++def fixed_init(ad):
++    """A deterministic kernel + archetypes + assignment shared across backends."""
++    m = SEACellsModel(ad.copy(), "X_pca", K_SEACELLS, use_gpu=False, verbose=False)
++    m.construct_kernel_matrix()
++    M = m.kernel_matrix
++    n = M.shape[0]
++    rng = np.random.RandomState(42)
++    arch = rng.choice(n, K_SEACELLS, replace=False)
++    A0 = rng.random((K_SEACELLS, n))
++    A0 /= A0.sum(0)
++    return M, arch, A0
++
++
++def _fit(use_gpu, M, arch, A0, ad, **kw):
++    m = SEACellsModel(
++        ad.copy(), "X_pca", K_SEACELLS, use_gpu=use_gpu, verbose=False,
++        convergence_epsilon=1e-5, **kw,
++    )
++    m.add_precomputed_kernel_matrix(M)
++    m.fit(min_iter=N_ITERS, max_iter=N_ITERS, initial_archetypes=arch, initial_assignments=A0)
++    return m
++
++
++def test_reduced_rss_matches_frobenius(fixed_init, ad):
++    """Reduced-form RSS equals the direct ||M - MBA||_F to machine precision."""
++    M, arch, A0 = fixed_init
++    m = _fit(False, M, arch, A0, ad)
++    A, B = m.A_, m.B_
++    R = (M.dot(B)).dot(A)
++    direct = np.linalg.norm((M - R))
++    assert abs(direct - m.compute_RSS(A, B)) < 1e-8 * direct
++
++
++def test_unified_cpu_matches_legacy(fixed_init, ad):
++    """Unified CPU backend reproduces legacy cpu_dense given identical kernel + init."""
++    from SEACells import cpu_dense
++
++    M, arch, A0 = fixed_init
++    ref = cpu_dense.SEACellsCPUDense(
++        ad.copy(), "X_pca", K_SEACELLS, verbose=False, convergence_epsilon=1e-5
++    )
++    ref.add_precomputed_kernel_matrix(M)
++    ref.fit(min_iter=N_ITERS, max_iter=N_ITERS, initial_archetypes=arch, initial_assignments=A0)
++
++    new = _fit(False, M, arch, A0, ad)
++    assert np.abs(np.asarray(new.A_) - np.asarray(ref.A_)).max() < 1e-10
++    assert np.abs(np.asarray(new.B_) - np.asarray(ref.B_)).max() < 1e-10
++    assert np.abs(np.array(new.RSS_iters) - np.array(ref.RSS_iters)).max() < 1e-9
++
++
++@gpu_required
++def test_gpu_matches_cpu_shared_kernel(fixed_init, ad):
++    """GPU optimizer matches CPU given the same kernel + init: identical hard labels."""
++    M, arch, A0 = fixed_init
++    mc = _fit(False, M, arch, A0, ad)
++    mg = _fit(True, M, arch, A0, ad)
++    lc = mc.get_hard_assignments()["SEACell"].values
++    lg = mg.get_hard_assignments()["SEACell"].values
++    assert (lc == lg).mean() == 1.0
++    assert abs(mc.RSS_iters[-1] - mg.RSS_iters[-1]) < 1e-3
++
++
++@gpu_required
++def test_gpu_kernel_close_to_cpu(ad):
++    """GPU and CPU exact-kNN kernels agree to ~float precision and same sparsity."""
++    mc = SEACellsModel(ad.copy(), "X_pca", K_SEACELLS, use_gpu=False, verbose=False)
++    mc.construct_kernel_matrix()
++    mg = SEACellsModel(ad.copy(), "X_pca", K_SEACELLS, use_gpu=True, verbose=False)
++    mg.construct_kernel_matrix()
++    Mc = mc.kernel_matrix
++    Mg = mg.kernel_matrix.get()
++    assert Mc.nnz == Mg.nnz
++    assert np.abs((Mc - Mg)).max() < 1e-4
++
++
++def test_core_factory_routes_to_unified(ad):
++    """core.SEACells(use_unified=True) returns the unified model; default stays legacy."""
++    m = core.SEACells(ad.copy(), "X_pca", K_SEACELLS, use_unified=True, verbose=False)
++    assert isinstance(m, SEACellsModel)
++    legacy = core.SEACells(ad.copy(), "X_pca", K_SEACELLS, verbose=False)
++    assert type(legacy).__name__ == "SEACellsCPUDense"

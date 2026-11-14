@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/harbourlab__SparK-5"
+description = "Added custom labels for bed tracks"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SparK",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "harbourlab/SparK"
+ref = "50b29d8ae9433fcdde2b9fcd5e8693ce0878afe4"
+reference = "https://github.com/harbourlab/SparK/pull/5"
+source_access = "auto"
+built_at = "2026-11-14T07:16:24.690053+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:4d52f6745b8c72ac0b9c2b5ccf20d7284a665c783215e3814dc6eecce3e71c24"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2020-06-06T01:56:29Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "SparK.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 98
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

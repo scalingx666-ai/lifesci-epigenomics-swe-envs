@@ -1,0 +1,76 @@
+version = "1.0"
+
+[task]
+name = "default/rollroyces__deepcatch-3"
+description = "📄 Paper + strand scoring fix + validation docs (v2.2.0 final)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "deepcatch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "rollroyces/deepcatch"
+ref = "3244e9f976ac4dbf9608a14dab9852a04c3d71c0"
+reference = "https://github.com/rollroyces/deepcatch/pull/3"
+source_access = "auto"
+built_at = "2026-11-14T07:16:54.763411+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:06af74d9bfc3fa89d1aca905f7b7146b32768669bb2c2df048a7a3fba28bcc67"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-09-13T15:35:47Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/compile-paper.yml",
+    "NEXT_STEPS.md",
+    "README.md",
+    "REVIEWERS.md",
+    "data/JIANG_DATA_REQUEST.md",
+    "docs/PATH_TO_IMPACT.md",
+    "docs/PREPRINT_ABSTRACT.md",
+    "paper/PAPER.md",
+    "paper/paper.tex",
+    "real_tcga_validation.py",
+    "results/gse185307_methylation_validation.json",
+    "results/gse185307_region_aware_validation.json",
+    "results/real_tcga_validation.json",
+    "validation/cfdna/validate_gse185307.py",
+    "validation/cfdna/validate_gse185307_regions.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1734
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

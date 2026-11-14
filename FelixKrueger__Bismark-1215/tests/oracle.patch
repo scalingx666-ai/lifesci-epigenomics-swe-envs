@@ -1,0 +1,187 @@
+diff --git a/docs/src/content/docs/options/alignment.md b/docs/src/content/docs/options/alignment.md
+index 02367569..2aaedc58 100644
+--- a/docs/src/content/docs/options/alignment.md
++++ b/docs/src/content/docs/options/alignment.md
+@@ -171,7 +171,7 @@ For non-directional paired-end libraries, the strands identity is encoded by the
+ 
+ - `-o/--output_dir <dir>`
+ 
+-  Write all output files into this directory. By default the output files will be written into the current working directory. If the specified folder does not exist, Bismark will attempt to create it first. The path to the output folder can be either relative or absolute. While an input is being processed, its outputs are written as `<name>.<pid>.partial` and renamed when that input has finished; a failed run removes the partial files of the input it failed on, and leaves any finished outputs of an earlier run in place.
++  Write all output files into this directory. By default the output files will be written into the current working directory. If the specified folder does not exist, Bismark will attempt to create it first. The path to the output folder can be either relative or absolute. While an input is being processed, its outputs are written as `<name>.<pid>.partial` and renamed when that input has finished; a failed run removes the partial files of the input it failed on. Outputs of an earlier run with the same names are replaced as each input finishes.
+ 
+ - `--temp_dir <dir>`
+ 
+@@ -235,7 +235,7 @@ For reads that have multiple alignments a random alignment is written out to a s
+ 
+ - `--nucleotide_coverage`
+ 
+-  Calculates the mono- and di-nucleotide sequence composition of covered positions in the analysed BAM file and compares it to the genomic average composition once alignments are complete, by running `bismark bam2nuc` on each final BAM in the same process. Since this calculation may take a while, `bismark bam2nuc` attempts to write the genomic sequence composition into a file called _genomic_nucleotide_frequencies.txt_ inside the reference genome folder so it can be re-used the next time round instead of calculating it once again. The _nucleotide_stats.txt_ file is written to the output directory, and `bismark report` detects it and adds it to the HTML report. If bam2nuc fails, the run exits with an error after the alignment outputs are complete; an input without usable reads only gets a warning and no stats file.
++  Calculates the mono- and di-nucleotide sequence composition of covered positions in the analysed BAM file and compares it to the genomic average composition once alignments are complete, by running `bismark bam2nuc` on each final BAM in the same process. Since this calculation may take a while, `bismark bam2nuc` attempts to write the genomic sequence composition into a file called _genomic_nucleotide_frequencies.txt_ inside the reference genome folder so it can be re-used the next time round instead of calculating it once again. The _nucleotide_stats.txt_ file is written to the output directory, and `bismark report` detects it and adds it to the HTML report. If bam2nuc fails, the run exits with an error after the alignment outputs are complete; an input without usable reads only gets a warning and no stats file. Stats files of this run's inputs are removed before bam2nuc starts, so a failed run never leaves a stale one behind.
+ 
+ ##### Other:
+ 
+diff --git a/rust/bismark/src/aligner/mod.rs b/rust/bismark/src/aligner/mod.rs
+index 4c4c8ec8..9e49ec2a 100644
+--- a/rust/bismark/src/aligner/mod.rs
++++ b/rust/bismark/src/aligner/mod.rs
+@@ -352,16 +352,25 @@ fn run_nucleotide_coverage(config: &RunConfig) -> Result<()> {
+             "alignment outputs are complete; bam2nuc (--nucleotide_coverage) failed: {e}"
+         ))
+     };
++    let bams: Vec<PathBuf> = reads
++        .iter()
++        .map(|read| {
++            derive_output_path(
++                read,
++                config,
++                &format!("_bismark_{tok}{pe}.bam"),
++                &format!("{pe}.bam"),
++            )
++        })
++        .collect();
++    // Stats from an earlier run must not sit next to a BAM this run rewrote.
++    for bam in &bams {
++        remove_stats_file(&output_dir, bam);
++    }
+     eprintln!("Now calculating observed and expected nucleotide coverage statistics...");
+     let genome = crate::bam2nuc::load_genome(&config.genome.genome_dir).map_err(failed)?;
+     // One BAM per call, so an input without usable reads does not skip the next one.
+-    for read in reads {
+-        let bam = derive_output_path(
+-            read,
+-            config,
+-            &format!("_bismark_{tok}{pe}.bam"),
+-            &format!("{pe}.bam"),
+-        );
++    for bam in bams {
+         let bam2nuc = crate::bam2nuc::ResolvedConfig {
+             inputs: vec![bam.clone()],
+             genome_folder: config.genome.genome_dir.clone(),
+@@ -385,8 +394,8 @@ fn run_nucleotide_coverage(config: &RunConfig) -> Result<()> {
+     Ok(())
+ }
+ 
+-/// Remove `bam`'s stats file after a failed bam2nuc run; a stale one would be read by
+-/// `bismark report`. Anything but a file or symlink at that path is left alone.
++/// Remove `bam`'s stats file, which `bismark report` would otherwise read. A directory
++/// at that path is left alone.
+ fn remove_stats_file(output_dir: &str, bam: &Path) {
+     let Ok(name) = crate::bam2nuc::output_name::derive_output_name(bam) else {
+         return;
+diff --git a/rust/bismark/tests/aligner_cli.rs b/rust/bismark/tests/aligner_cli.rs
+index 9150c7ea..b5d22d95 100644
+--- a/rust/bismark/tests/aligner_cli.rs
++++ b/rust/bismark/tests/aligner_cli.rs
+@@ -1439,10 +1439,65 @@ fn nucleotide_coverage_covers_multicore_basename_and_several_inputs() {
+     );
+ }
+ 
+-/// A bam2nuc write that fails mid-file leaves no stats file behind.
+-#[cfg(target_os = "linux")]
++/// Stats files from an earlier run are replaced on success and gone after a hard failure,
++/// including for inputs bam2nuc never reached.
++#[cfg(unix)]
+ #[test]
+-fn nucleotide_coverage_write_failure_leaves_no_stats_file() {
++fn nucleotide_coverage_leaves_no_stale_stats_file() {
++    let genome = TempDir::new().unwrap();
++    make_genome_all_dinucleotides(genome.path());
++    let bins = TempDir::new().unwrap();
++    make_fake_bowtie2_mapped(bins.path());
++    let input = TempDir::new().unwrap();
++    let (a, b) = (input.path().join("a.fq"), input.path().join("b.fq"));
++    for f in [&a, &b] {
++        fs::write(f, b"@r1\nACGTAC\n+\nFFFFFF\n").unwrap();
++    }
++    let run = |outdir: &Path| {
++        let temp = TempDir::new().unwrap();
++        bin()
++            .arg("--genome")
++            .arg(genome.path())
++            .arg("--path_to_bowtie2")
++            .arg(bins.path())
++            .arg("--no_stream_converted")
++            .arg("--temp_dir")
++            .arg(temp.path())
++            .arg("--output_dir")
++            .arg(outdir)
++            .arg("--nucleotide_coverage")
++            .arg(&a)
++            .arg(&b)
++            .assert()
++    };
++
++    let ok = TempDir::new().unwrap();
++    let b_stats = ok.path().join("b_bismark_bt2.nucleotide_stats.txt");
++    fs::write(&b_stats, b"stale").unwrap();
++    run(ok.path()).success();
++    assert_eq!(
++        fs::read(&b_stats).unwrap(),
++        standalone_bam2nuc_stats(
++            genome.path(),
++            &ok.path().join("b_bismark_bt2.bam"),
++            "b_bismark_bt2.nucleotide_stats.txt"
++        )
++    );
++
++    // A directory at a's stats path stops the loop before b is counted.
++    let failed = TempDir::new().unwrap();
++    fs::create_dir(failed.path().join("a_bismark_bt2.nucleotide_stats.txt")).unwrap();
++    let b_stats = failed.path().join("b_bismark_bt2.nucleotide_stats.txt");
++    fs::write(&b_stats, b"stale").unwrap();
++    run(failed.path()).failure().code(1);
++    assert!(!b_stats.exists());
++}
++
++/// A stale stats symlink is removed before bam2nuc runs, leaving its target alone, and
++/// replaced with a real stats file.
++#[cfg(unix)]
++#[test]
++fn nucleotide_coverage_replaces_a_stale_stats_symlink() {
+     let genome = TempDir::new().unwrap();
+     make_genome_all_dinucleotides(genome.path());
+     let bins = TempDir::new().unwrap();
+@@ -1450,10 +1505,12 @@ fn nucleotide_coverage_write_failure_leaves_no_stats_file() {
+     let input = TempDir::new().unwrap();
+     let read = input.path().join("reads.fq");
+     fs::write(&read, b"@r1\nACGTAC\n+\nFFFFFF\n").unwrap();
++    let target = input.path().join("elsewhere.txt");
++    fs::write(&target, b"stale").unwrap();
+     let temp = TempDir::new().unwrap();
+     let outdir = TempDir::new().unwrap();
+     let stats = outdir.path().join("reads_bismark_bt2.nucleotide_stats.txt");
+-    std::os::unix::fs::symlink("/dev/full", &stats).unwrap();
++    std::os::unix::fs::symlink(&target, &stats).unwrap();
+     bin()
+         .arg("--genome")
+         .arg(genome.path())
+@@ -1467,13 +1524,22 @@ fn nucleotide_coverage_write_failure_leaves_no_stats_file() {
+         .arg("--nucleotide_coverage")
+         .arg(&read)
+         .assert()
+-        .failure()
+-        .code(1)
+-        .stderr(predicate::str::contains(
+-            "bam2nuc (--nucleotide_coverage) failed",
+-        ));
+-    assert!(outdir.path().join("reads_bismark_bt2.bam").exists());
+-    assert!(fs::symlink_metadata(&stats).is_err());
++        .success();
++    assert!(
++        !fs::symlink_metadata(&stats)
++            .unwrap()
++            .file_type()
++            .is_symlink()
++    );
++    assert_eq!(
++        fs::read(&stats).unwrap(),
++        standalone_bam2nuc_stats(
++            genome.path(),
++            &outdir.path().join("reads_bismark_bt2.bam"),
++            "reads_bismark_bt2.nucleotide_stats.txt"
++        )
++    );
++    assert_eq!(fs::read(&target).unwrap(), b"stale");
+ }
+ 
+ /// A bam2nuc failure after a successful alignment exits non-zero and keeps the BAM.

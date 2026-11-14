@@ -1,0 +1,26 @@
+diff --git a/R/OverlapcisTopic.R b/R/OverlapcisTopic.R
+index 4387b1a..c238f12 100644
+--- a/R/OverlapcisTopic.R
++++ b/R/OverlapcisTopic.R
+@@ -273,7 +273,7 @@ signatureCellEnrichment <- function(
+   ...
+ ){
+   # Check info
+-  if(length(cisTopicObject@signatures) < 1){
++  if(length(object@signatures) < 1){
+     stop('Please, run getSignaturesRegions() first.')
+   }
+   
+diff --git a/R/RcisTarget.R b/R/RcisTarget.R
+index 5897733..5cab484 100644
+--- a/R/RcisTarget.R
++++ b/R/RcisTarget.R
+@@ -557,7 +557,7 @@ getCistromeEnrichment <- function(
+   plot=TRUE,
+   ...
+ ){
+-  topicCistromes <- cisTopicObject@cistromes.regions[[topic]]
++  topicCistromes <- object@cistromes.regions[[topic]]
+   
+   if (length(grep(TFname, names(topicCistromes))) < 1){
+     stop(paste0('The specified cistrome cannot be found. Please, check whether there is a cistrome for ', TFname, ' in topic ', topic, ' with ', annotation, '.'))

@@ -1,0 +1,1026 @@
+diff --git a/src/alphagenome_pytorch/cli/predict.py b/src/alphagenome_pytorch/cli/predict.py
+index 4e7f88d8..2635b477 100644
+--- a/src/alphagenome_pytorch/cli/predict.py
++++ b/src/alphagenome_pytorch/cli/predict.py
+@@ -61,6 +61,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
+                    help="Track indices (comma-separated). Default: all")
+     p.add_argument("--track-names", type=str, default=None,
+                    help="Names for output tracks (comma-separated)")
++    p.add_argument("--split-by-chrom", action="store_true",
++                   help="Full-chromosome mode: write one BigWig per chromosome "
++                        "({head}_{chrom}.bw) instead of a single genome-wide file "
++                        "per track. Use it to resume or parallelise a large run.")
+     p.add_argument("--resolution", type=int, default=128, choices=[1, 128],
+                    help="Output resolution in bp (default: 128)")
+     p.add_argument("--crop-bp", type=int, default=0,
+@@ -311,6 +315,10 @@ def _load_model(args, dtype_policy, json_mode):
+     import torch
+     from alphagenome_pytorch import AlphaGenome
+ 
++    # Same gate as run(): loading a model is progress, so --quiet silences it
++    # as well as --json.
++    show_progress = not args.quiet and not json_mode
++
+     if args.checkpoint:
+         from alphagenome_pytorch.extensions.finetuning.checkpointing import load_finetuned_model
+         from alphagenome_pytorch.extensions.serving.bundle import (
+@@ -333,12 +341,13 @@ def _load_model(args, dtype_policy, json_mode):
+         if manifest is not None and args.model:
+             verify_bundle_base_weights_hash(args.model, manifest)
+ 
+-        if not json_mode:
+-            print("Loading finetuned model...")
+-            print(f"  Base: {args.model or '(not needed — self-contained checkpoint)'}")
+-            print(f"  Checkpoint: {args.checkpoint}")
++        if show_progress:
++            print("Loading finetuned model...", file=sys.stderr)
++            print(f"  Base: {args.model or '(not needed — self-contained checkpoint)'}",
++                  file=sys.stderr)
++            print(f"  Checkpoint: {args.checkpoint}", file=sys.stderr)
+             if checkpoint_path != args.checkpoint:
+-                print(f"  Resolved to: {checkpoint_path}")
++                print(f"  Resolved to: {checkpoint_path}", file=sys.stderr)
+ 
+         model, meta = load_finetuned_model(
+             checkpoint_path=checkpoint_path,
+@@ -360,8 +369,8 @@ def _load_model(args, dtype_policy, json_mode):
+             )
+         return model, track_names_from_ckpt, meta.get("track_metadata")
+ 
+-    if not json_mode:
+-        print(f"Loading model from {args.model}...")
++    if show_progress:
++        print(f"Loading model from {args.model}...", file=sys.stderr)
+     model = AlphaGenome.from_pretrained(
+         args.model, device=args.device, dtype_policy=dtype_policy,
+     )
+@@ -405,7 +414,7 @@ def _describe_handling(info, json_mode: bool, quiet: bool) -> None:
+         line = f"  {coord} ({info.length_bp}bp) → {info.handling}"
+         if info.tile_count > 1:
+             line += f" ({info.tile_count} tiles)"
+-        print(line)
++        print(line, file=sys.stderr)
+     if not json_mode:
+         for w in info.warnings:
+             print(f"    WARNING: {w}", file=sys.stderr)
+@@ -490,6 +499,20 @@ def run(args: argparse.Namespace) -> int:
+         if not Path(args.fasta).exists():
+             raise FileNotFoundError(f"FASTA file not found: {args.fasta}")
+ 
++    # --split-by-chrom only shapes full-chromosome BigWig output, so reject the
++    # combinations where it would silently do nothing.
++    if args.split_by_chrom:
++        if effective_mode != "chromosomes":
++            raise ValueError(
++                f"--split-by-chrom cannot be combined with --{effective_mode}; it "
++                "splits full-chromosome BigWig output, so use it with --chromosomes."
++            )
++        if args.anndata:
++            raise ValueError(
++                "--split-by-chrom cannot be combined with --anndata, which writes a "
++                "single gene-count table rather than per-chromosome BigWigs."
++            )
++
+     # Gene-count AnnData output. Validated before the model load so a missing
+     # annotation or extra fails in seconds rather than after loading weights.
+     if args.anndata:
+@@ -559,7 +582,8 @@ def run(args: argparse.Namespace) -> int:
+     organism_index, organism_source = _effective_organism(model, args.organism)
+     if not json_mode and not getattr(args, "quiet", False):
+         _org_name = "mouse" if organism_index == 1 else "human"
+-        print(f"  Organism: {_org_name} ({organism_index}), source: {organism_source}")
++        print(f"  Organism: {_org_name} ({organism_index}), source: {organism_source}",
++              file=sys.stderr)
+ 
+     # Finetuned checkpoint strands are only known now that meta is loaded.
+     if strands_needed and track_strands is None and args.checkpoint:
+@@ -584,7 +608,8 @@ def run(args: argparse.Namespace) -> int:
+         )
+         if track_metadata_for_obs is None and not json_mode and not args.quiet:
+             print("  Note: no per-track metadata for this head — obs will carry "
+-                  "track_index only, and padding tracks cannot be identified.")
++                  "track_index only, and padding tracks cannot be identified.",
++                  file=sys.stderr)
+ 
+     model.eval()
+ 
+@@ -595,7 +620,7 @@ def run(args: argparse.Namespace) -> int:
+ 
+     if args.compile:
+         if not json_mode:
+-            print("Compiling model...")
++            print("Compiling model...", file=sys.stderr)
+         model = torch.compile(model)
+ 
+     config = TilingConfig(
+@@ -664,27 +689,31 @@ def run(args: argparse.Namespace) -> int:
+             organism_index=organism_index,
+             device=args.device,
+             show_progress=show_progress,
++            split_by_chrom=args.split_by_chrom,
+         )
+         if json_mode:
+-            entries = []
+-            for chrom, paths in results.items():
+-                for pth in paths:
+-                    entries.append({
+-                        "path": str(pth),
++            emit_json({
++                "output_files": [
++                    {
++                        "path": str(out.path),
+                         "head": args.head,
+-                        "chromosome": chrom,
++                        "chromosomes": out.chromosomes,
+                         "resolution_bp": args.resolution,
+                         "handling": "tiled",
+-                    })
+-            emit_json({"output_files": entries, "warnings": []})
++                    }
++                    for out in results
++                ],
++                "warnings": [],
++            })
+         else:
+-            total = sum(len(ps) for ps in results.values())
+-            print(f"\nDone! Wrote {total} BigWig file(s) to {args.output}")
++            print(f"\nDone! Wrote {len(results)} BigWig file(s) to {args.output}")
+         return 0
+ 
+     if effective_mode == "locus":
+         chrom, start, end = parse_locus(args.locus)
+-        genome = GenomeSequenceProvider(args.fasta, chromosomes={chrom})
++        genome = GenomeSequenceProvider(
++            args.fasta, chromosomes={chrom}, show_progress=show_progress,
++        )
+         if chrom not in genome.chrom_sizes:
+             raise ValueError(f"Chromosome {chrom!r} not found in {args.fasta}")
+ 
+@@ -729,9 +758,11 @@ def run(args: argparse.Namespace) -> int:
+                 )
+             if not args.quiet and not json_mode:
+                 print(f"Filtered {before} BED rows → {len(regions)} "
+-                      f"(kept chromosomes: {sorted(keep)})")
++                      f"(kept chromosomes: {sorted(keep)})", file=sys.stderr)
+         needed_chroms = {r.chrom for r in regions}
+-        genome = GenomeSequenceProvider(args.fasta, chromosomes=needed_chroms)
++        genome = GenomeSequenceProvider(
++            args.fasta, chromosomes=needed_chroms, show_progress=show_progress,
++        )
+         missing = needed_chroms - set(genome.chrom_sizes)
+         if missing:
+             raise ValueError(
+@@ -742,7 +773,8 @@ def run(args: argparse.Namespace) -> int:
+         region_meta: list = []
+         if not args.quiet and not json_mode:
+             n = len(regions)
+-            print(f"Predicting {n} region{'s' if n != 1 else ''} from {args.bed}...")
++            print(f"Predicting {n} region{'s' if n != 1 else ''} from {args.bed}...",
++                  file=sys.stderr)
+         for r in regions:
+             preds, info = predict_region_auto(
+                 model, genome,
+@@ -802,7 +834,8 @@ def run(args: argparse.Namespace) -> int:
+             raise FileNotFoundError(f"FASTA file not found: {args.sequences}")
+         pairs = read_fasta_sequences(args.sequences)
+         if not args.quiet and not json_mode:
+-            print(f"Predicting {len(pairs)} sequence(s) from {args.sequences}...")
++            print(f"Predicting {len(pairs)} sequence(s) from {args.sequences}...",
++                  file=sys.stderr)
+ 
+         output_files = []
+         for seq_name, seq in pairs:
+diff --git a/src/alphagenome_pytorch/extensions/inference/__init__.py b/src/alphagenome_pytorch/extensions/inference/__init__.py
+index 3d168497..00e95ebb 100644
+--- a/src/alphagenome_pytorch/extensions/inference/__init__.py
++++ b/src/alphagenome_pytorch/extensions/inference/__init__.py
+@@ -28,12 +28,14 @@
+ """
+ 
+ from .full_chromosome import (
++    BigwigOutput,
+     TilingConfig,
+     GenomeSequenceProvider,
+     predict_full_chromosome,
+     predict_full_chromosomes_to_bigwig,
+     predict_full_chromosomes_to_anndata,
+     write_bigwig,
++    write_chromosomes_bigwig,
+     HEAD_CONFIGS,
+ )
+ from .regions import (
+@@ -54,12 +56,14 @@
+ )
+ 
+ __all__ = [
++    'BigwigOutput',
+     'TilingConfig',
+     'GenomeSequenceProvider',
+     'predict_full_chromosome',
+     'predict_full_chromosomes_to_bigwig',
+     'predict_full_chromosomes_to_anndata',
+     'write_bigwig',
++    'write_chromosomes_bigwig',
+     'HEAD_CONFIGS',
+     # Region / locus / sequence prediction
+     'BedRegion',
+diff --git a/src/alphagenome_pytorch/extensions/inference/full_chromosome.py b/src/alphagenome_pytorch/extensions/inference/full_chromosome.py
+index 6c999eb0..f2b095bc 100644
+--- a/src/alphagenome_pytorch/extensions/inference/full_chromosome.py
++++ b/src/alphagenome_pytorch/extensions/inference/full_chromosome.py
+@@ -28,6 +28,8 @@
+ 
+ from __future__ import annotations
+ 
++import sys
++from collections.abc import Callable
+ from dataclasses import dataclass, field
+ from pathlib import Path
+ from typing import Literal
+@@ -42,6 +44,25 @@
+ #: Excludes chrY, chrM and scaffolds. Names not present in the FASTA are dropped.
+ DEFAULT_CHROMOSOMES = [f"chr{i}" for i in range(1, 23)] + ["chrX"]
+ 
++
++def _progress_logger(show_progress: bool) -> Callable[[str], None]:
++    """Return a callable that reports progress on stderr when it is wanted.
++
++    Progress is a diagnostic, not a result. ``agt predict --json`` must leave
++    stdout holding its payload alone, and ``--quiet`` must silence the prose
++    altogether, so every message passes this gate. stderr is also where the
++    tqdm bars these lines interleave with already go.
++
++    Bind the result as ``progress``, not ``log``:
++    :func:`predict_full_chromosomes_to_anndata` already takes a ``log`` flag.
++    """
++    def progress(message: str) -> None:
++        if show_progress:
++            print(message, file=sys.stderr)
++
++    return progress
++
++
+ # Lazy imports
+ pyBigWig = None
+ pyfaidx = None
+@@ -136,6 +157,7 @@ def __init__(
+         source: str | Path,
+         chromosomes: set[str] | None = None,
+         cache: bool = True,
++        show_progress: bool = True,
+     ):
+         """Initialize sequence provider.
+ 
+@@ -143,14 +165,15 @@ def __init__(
+             source: Path to FASTA file or existing CachedGenome.
+             chromosomes: Optional set of chromosomes to load. If None, loads all.
+             cache: Whether to cache chromosomes in memory. Default: True.
++            show_progress: Report loading progress on stderr. Default: True.
+         """
+         self.chrom_sizes: dict[str, int] = {}
+-        print(f"Loading genome from {source}...")
++        _progress_logger(show_progress)(f"Loading genome from {source}...")
+         self._source = GenomeSequenceSource(
+             source,
+             chromosomes=chromosomes,
+             cache=cache,
+-            verbose=True,
++            verbose=show_progress,
+         )
+         self.chrom_sizes = self._source.chrom_sizes
+ 
+@@ -366,7 +389,9 @@ def predict_full_chromosome(
+ 
+     # Setup genome provider
+     if isinstance(genome, (str, Path)):
+-        genome = GenomeSequenceProvider(genome, chromosomes={chrom})
++        genome = GenomeSequenceProvider(
++            genome, chromosomes={chrom}, show_progress=show_progress,
++        )
+ 
+     if chrom not in genome.chrom_sizes:
+         raise ValueError(f"Chromosome {chrom} not found in genome")
+@@ -387,11 +412,11 @@ def predict_full_chromosome(
+     if len(tiles) == 0:
+         return predictions
+ 
+-    if show_progress:
+-        n_batches = (len(tiles) + config.batch_size - 1) // config.batch_size
+-        print(f"  Tiles: {len(tiles)}, Batches: {n_batches}")
+-        print(f"  Output array: {predictions.nbytes / 1e6:.1f} MB "
+-              f"({output_length:,} x {n_output_tracks} float32)")
++    progress = _progress_logger(show_progress)
++    n_batches = (len(tiles) + config.batch_size - 1) // config.batch_size
++    progress(f"  Tiles: {len(tiles)}, Batches: {n_batches}")
++    progress(f"  Output array: {predictions.nbytes / 1e6:.1f} MB "
++             f"({output_length:,} x {n_output_tracks} float32)")
+ 
+     # Stitch each tile's kept region into the full-chromosome array.
+     for out_start, kept in _iter_tile_predictions(
+@@ -471,6 +496,121 @@ def write_bigwig(
+     return written_paths
+ 
+ 
++@dataclass
++class BigwigOutput:
++    """A written BigWig file and the chromosomes whose signal it holds."""
++
++    path: Path
++    chromosomes: list[str]
++
++
++def write_chromosomes_bigwig(
++    chrom_arrays,
++    output_path: str | Path,
++    chrom_sizes: dict[str, int],
++    resolution: int = 128,
++    track_names: list[str] | None = None,
++    chromosome_order: list[str] | None = None,
++) -> list[Path]:
++    """Stream whole-chromosome predictions into one BigWig per track.
++
++    Where :func:`write_bigwig` opens a separate file per chromosome, this keeps
++    one handle open per track and appends each chromosome as it arrives. A
++    BigWig holds a genome-wide signal for a single track, so this is the shape
++    genome browsers expect. Only one chromosome is held in memory at a time,
++    so a genome-wide run costs no more memory than the per-chromosome writer.
++
++    Args:
++        chrom_arrays: Iterable of ``(predictions, chrom)`` pairs, yielded in
++            ``chromosome_order``. ``predictions`` has shape (length, n_tracks).
++            Consumed lazily, so pass a generator to predict one chromosome at
++            a time instead of materialising the whole genome.
++        output_path: Output path. With multiple tracks the track name is
++            appended to the stem, as in :func:`write_bigwig`.
++        chrom_sizes: Dict mapping chromosome names to sizes.
++        resolution: Base pair resolution. Default: 128.
++        track_names: Optional names for each track.
++        chromosome_order: Chromosomes to declare in the header, in the order
++            ``chrom_arrays`` yields them. Default: ``chrom_sizes`` key order.
++            Only these are declared, so header order and write order cannot
++            drift apart -- BigWig requires entries in header order.
++
++    Returns:
++        List of written BigWig file paths, one per track.
++    """
++    _ensure_deps()
++
++    output_path = Path(output_path)
++    if chromosome_order is None:
++        chromosome_order = list(chrom_sizes.keys())
++
++    header = [(c, chrom_sizes[c]) for c in chromosome_order]
++    remaining = list(chromosome_order)
++
++    handles: list = []
++    written_paths: list[Path] = []
++
++    try:
++        for predictions, chrom in chrom_arrays:
++            # Entries must advance through the header, never revisit it.
++            try:
++                position = remaining.index(chrom)
++            except ValueError:
++                raise ValueError(
++                    f"Chromosome {chrom!r} is not in the remaining header order "
++                    f"{remaining!r} -- it is unknown or was already written. "
++                    "BigWig requires entries in header order."
++                ) from None
++            del remaining[: position + 1]
++
++            # Open one handle per track on the first chromosome, which is when
++            # the track count becomes known.
++            if not handles:
++                n_tracks = predictions.shape[1]
++                if track_names is None:
++                    track_names = [f"track_{i}" for i in range(n_tracks)]
++                for track_name in track_names:
++                    if n_tracks > 1:
++                        bw_path = (
++                            output_path.parent
++                            / f"{output_path.stem}_{track_name}{output_path.suffix}"
++                        )
++                    else:
++                        bw_path = output_path
++                    bw = pyBigWig.open(str(bw_path), "w")
++                    bw.addHeader(header)
++                    handles.append(bw)
++                    written_paths.append(bw_path)
++
++            chrom_len = chrom_sizes[chrom]
++
++            for i, bw in enumerate(handles):
++                track_data = predictions[:, i].astype(np.float64)
++
++                # Filter to valid range
++                n_valid = min(len(track_data), chrom_len // resolution)
++
++                # Write in chunks using fixed-step format to avoid
++                # materializing huge Python lists (critical at 1bp resolution
++                # where n_valid can be ~46.7M for chr21)
++                CHUNK_SIZE = 1_000_000
++                for chunk_start in range(0, n_valid, CHUNK_SIZE):
++                    chunk_end = min(chunk_start + CHUNK_SIZE, n_valid)
++                    bw.addEntries(
++                        chrom, chunk_start * resolution,
++                        values=track_data[chunk_start:chunk_end].tolist(),
++                        span=resolution, step=resolution,
++                    )
++    finally:
++        for bw in handles:
++            bw.close()
++
++    if not written_paths:
++        raise ValueError("No chromosomes to write")
++
++    return written_paths
++
++
+ def predict_full_chromosomes_to_bigwig(
+     model,
+     fasta_path: str | Path,
+@@ -483,9 +623,15 @@ def predict_full_chromosomes_to_bigwig(
+     organism_index: int = 0,
+     device: str | torch.device = "cuda",
+     show_progress: bool = True,
+-) -> dict[str, list[Path]]:
++    split_by_chrom: bool = False,
++) -> list[BigwigOutput]:
+     """Generate chromosome-wide predictions and save as BigWig files.
+ 
++    By default each track gets one BigWig spanning every predicted chromosome,
++    which is how a single signal is normally distributed and how genome
++    browsers expect to load it. Chromosomes are still predicted and flushed one
++    at a time, so memory use does not grow with the number of chromosomes.
++
+     Args:
+         model: Loaded AlphaGenome model.
+         fasta_path: Path to reference genome FASTA.
+@@ -498,9 +644,13 @@ def predict_full_chromosomes_to_bigwig(
+         organism_index: Organism index (0=human, 1=mouse). Default: 0.
+         device: PyTorch device. Default: 'cuda'.
+         show_progress: Show progress bars. Default: True.
++        split_by_chrom: Write a separate BigWig per chromosome
++            (``{head}_{chrom}.bw``) instead of one genome-wide file per track.
++            Splits a run into independent files, which suits resuming or
++            parallelising a genome-scale job. Default: False.
+ 
+     Returns:
+-        Dict mapping chromosome names to lists of written BigWig paths.
++        List of written files, each with the chromosomes it covers.
+     """
+     config = config or TilingConfig()
+     output_dir = Path(output_dir)
+@@ -514,6 +664,7 @@ def predict_full_chromosomes_to_bigwig(
+         fasta_path,
+         chromosomes=set(chromosomes),
+         cache=True,
++        show_progress=show_progress,
+     )
+ 
+     # Filter to available chromosomes
+@@ -522,17 +673,15 @@ def predict_full_chromosomes_to_bigwig(
+     if not chromosomes:
+         raise ValueError("No valid chromosomes found in genome")
+ 
+-    n_chroms = len(chromosomes)
+-    print(f"Will predict {n_chroms} "
+-          f"chromosome{'s' if n_chroms != 1 else ''}: {chromosomes}")
+-
+-    # Predict and write each chromosome
+-    results: dict[str, list[Path]] = {}
++    progress = _progress_logger(show_progress)
+ 
+-    for chrom in chromosomes:
+-        print(f"\nProcessing {chrom}...")
++    n_chroms = len(chromosomes)
++    progress(f"Will predict {n_chroms} "
++             f"chromosome{'s' if n_chroms != 1 else ''}: {chromosomes}")
+ 
+-        predictions = predict_full_chromosome(
++    def predict(chrom: str) -> np.ndarray:
++        progress(f"\nProcessing {chrom}...")
++        return predict_full_chromosome(
+             model=model,
+             genome=genome,
+             chrom=chrom,
+@@ -544,21 +693,33 @@ def predict_full_chromosomes_to_bigwig(
+             show_progress=show_progress,
+         )
+ 
+-        # Write to BigWig
+-        output_path = output_dir / f"{head}_{chrom}.bw"
+-        written = write_bigwig(
+-            predictions=predictions,
+-            output_path=output_path,
+-            chrom=chrom,
+-            chrom_sizes=genome.chrom_sizes,
+-            resolution=config.resolution,
+-            track_names=track_names,
+-        )
+-
+-        results[chrom] = written
+-        print(f"  Wrote {len(written)} file(s): {[p.name for p in written]}")
+-
+-    return results
++    if split_by_chrom:
++        outputs: list[BigwigOutput] = []
++        for chrom in chromosomes:
++            written = write_bigwig(
++                predictions=predict(chrom),
++                output_path=output_dir / f"{head}_{chrom}.bw",
++                chrom=chrom,
++                chrom_sizes=genome.chrom_sizes,
++                resolution=config.resolution,
++                track_names=track_names,
++            )
++            progress(f"  Wrote {len(written)} file(s): {[p.name for p in written]}")
++            outputs.extend(BigwigOutput(path, [chrom]) for path in written)
++        return outputs
++
++    # One genome-wide file per track. The generator is consumed lazily by the
++    # writer, so each chromosome is predicted, flushed, and freed in turn.
++    written = write_chromosomes_bigwig(
++        ((predict(chrom), chrom) for chrom in chromosomes),
++        output_path=output_dir / f"{head}.bw",
++        chrom_sizes=genome.chrom_sizes,
++        resolution=config.resolution,
++        track_names=track_names,
++        chromosome_order=chromosomes,
++    )
++    progress(f"\nWrote {len(written)} file(s): {[p.name for p in written]}")
++    return [BigwigOutput(path, list(chromosomes)) for path in written]
+ 
+ 
+ def _metadata_row(entry) -> dict:
+@@ -676,6 +837,7 @@ def predict_full_chromosomes_to_anndata(
+     from ...variant_scoring.annotations import GeneAnnotation
+ 
+     config = config or TilingConfig()
++    progress = _progress_logger(show_progress)
+     if chromosomes is None:
+         chromosomes = list(DEFAULT_CHROMOSOMES)
+ 
+@@ -684,7 +846,12 @@ def predict_full_chromosomes_to_anndata(
+     if isinstance(fasta_path, GenomeSequenceProvider):
+         genome = fasta_path
+     else:
+-        genome = GenomeSequenceProvider(fasta_path, chromosomes=set(chromosomes), cache=True)
++        genome = GenomeSequenceProvider(
++            fasta_path,
++            chromosomes=set(chromosomes),
++            cache=True,
++            show_progress=show_progress,
++        )
+     chromosomes = [c for c in chromosomes if c in genome.chrom_sizes]
+     if not chromosomes:
+         raise ValueError("No valid chromosomes found in genome")
+@@ -711,11 +878,10 @@ def predict_full_chromosomes_to_anndata(
+                 track_names = [track_names[i] for i in keep]
+             if track_strands is not None:
+                 track_strands = [track_strands[i] for i in keep]
+-            if show_progress:
+-                n_kept = len(track_indices)
+-                print(f"Dropped {n_dropped} padding "
+-                      f"track{'s' if n_dropped != 1 else ''}; {n_kept} "
+-                      f"track{'s' if n_kept != 1 else ''} remain")
++            n_kept = len(track_indices)
++            progress(f"Dropped {n_dropped} padding "
++                     f"track{'s' if n_dropped != 1 else ''}; {n_kept} "
++                     f"track{'s' if n_kept != 1 else ''} remain")
+         if not track_indices:
+             raise ValueError(
+                 f"Every track for head '{head}' is padding; nothing to aggregate. "
+@@ -740,9 +906,9 @@ def predict_full_chromosomes_to_anndata(
+         annotation, resolution=config.resolution, over=over, reduce=reduce,
+     )
+ 
+-    print(f"Aggregating {head} over {over} for {len(chromosomes)} chromosomes: {chromosomes}")
++    progress(f"Aggregating {head} over {over} for {len(chromosomes)} chromosomes: {chromosomes}")
+     for chrom in chromosomes:
+-        print(f"\nProcessing {chrom}...")
++        progress(f"\nProcessing {chrom}...")
+         output_length = genome.chrom_sizes[chrom] // config.resolution
+         for out_start, kept in _iter_tile_predictions(
+             model, genome, chrom, head, config, track_indices, output_length,
+@@ -751,13 +917,13 @@ def predict_full_chromosomes_to_anndata(
+             start_bp = out_start * config.resolution
+             end_bp = start_bp + kept.shape[0] * config.resolution
+             accumulator.add_tile(kept, chrom, start_bp, end_bp)
+-        print(f"  Genes so far: {accumulator.n_genes}")
++        progress(f"  Genes so far: {accumulator.n_genes}")
+ 
+     gene_counts = accumulator.to_gene_counts(track_metadata=track_frame, log=log, strand=strand)
+ 
+     if output_path is not None:
+         adata = gene_counts.to_anndata()
+         adata.write_h5ad(str(output_path))
+-        print(f"\nWrote AnnData ({adata.shape[0]} tracks x {adata.shape[1]} genes) to {output_path}")
++        progress(f"\nWrote AnnData ({adata.shape[0]} tracks x {adata.shape[1]} genes) to {output_path}")
+ 
+     return gene_counts
+diff --git a/src/alphagenome_pytorch/genome.py b/src/alphagenome_pytorch/genome.py
+index 63416f9a..39820dba 100644
+--- a/src/alphagenome_pytorch/genome.py
++++ b/src/alphagenome_pytorch/genome.py
+@@ -4,6 +4,7 @@
+ 
+ import os
+ import re
++import sys
+ from dataclasses import dataclass
+ from enum import IntEnum
+ from pathlib import Path
+@@ -309,7 +310,8 @@ def __init__(
+             n_chroms = len(self._cache)
+             cached_mb = sum(arr.nbytes for arr in self._cache.values()) / 1e6
+             print(f"Cached genome: loaded {n_chroms} "
+-                  f"chromosome{'s' if n_chroms != 1 else ''} ({cached_mb:.1f} MB)")
++                  f"chromosome{'s' if n_chroms != 1 else ''} ({cached_mb:.1f} MB)",
++                  file=sys.stderr)
+ 
+     @property
+     def fasta(self) -> "pyfaidx.Fasta":
+diff --git a/tests/unit/test_cli.py b/tests/unit/test_cli.py
+index c6c09c1b..73c4ec88 100644
+--- a/tests/unit/test_cli.py
++++ b/tests/unit/test_cli.py
+@@ -884,6 +884,48 @@ def test_missing_annotation_file_raises(self, tmp_path):
+             predict_cli.run(args)
+ 
+ 
++class TestLoadModelProgressStream:
++    """Loading a model is progress: --quiet silences it, --json never sees it.
++
++    stdout carries the JSON payload, so these messages belong on stderr and
++    must pass the same gate run() uses (`not quiet and not json_mode`).
++    """
++
++    @staticmethod
++    def _args(tmp_path, quiet):
++        model = tmp_path / "m.pth"
++        model.write_text("")
++        argv = ["predict", "--model", str(model), "--output", str(tmp_path),
++                "--head", "dnase", "--device", "cpu"]
++        if quiet:
++            argv.append("--quiet")
++        return build_parser().parse_args(argv)
++
++    def _load(self, tmp_path, capsys, *, quiet, json_mode):
++        import alphagenome_pytorch
++        from alphagenome_pytorch.cli import predict as predict_cli
++
++        with mock.patch.object(alphagenome_pytorch.AlphaGenome, "from_pretrained",
++                               return_value=object()):
++            predict_cli._load_model(self._args(tmp_path, quiet), None, json_mode)
++        return capsys.readouterr()
++
++    def test_reports_on_stderr_by_default(self, tmp_path, capsys):
++        captured = self._load(tmp_path, capsys, quiet=False, json_mode=False)
++        assert captured.out == ""
++        assert "Loading model from" in captured.err
++
++    def test_quiet_silences_it(self, tmp_path, capsys):
++        captured = self._load(tmp_path, capsys, quiet=True, json_mode=False)
++        assert captured.out == ""
++        assert captured.err == ""
++
++    def test_json_silences_it(self, tmp_path, capsys):
++        captured = self._load(tmp_path, capsys, quiet=False, json_mode=True)
++        assert captured.out == ""
++        assert captured.err == ""
++
++
+ class TestPredictAnnDataWiring:
+     """The --aggregate-* flags must map onto the packaged function's kwargs.
+ 
+diff --git a/tests/unit/test_full_chromosome.py b/tests/unit/test_full_chromosome.py
+index 56658ae0..11c3b19c 100644
+--- a/tests/unit/test_full_chromosome.py
++++ b/tests/unit/test_full_chromosome.py
+@@ -5,6 +5,8 @@
+ All pure-logic tests -- no pyBigWig, pyfaidx, GPU, or model weights needed.
+ """
+ 
++from pathlib import Path
++
+ import numpy as np
+ import pytest
+ import torch
+@@ -450,6 +452,80 @@ def test_gene_counts_anndata_write_path(self, tmp_path):
+         assert float(adata.X[0, 0]) == pytest.approx(3.0)  # track 0: 3 exon bins x 1.0
+         assert float(adata.X[1, 0]) == pytest.approx(0.0)  # track 1: mock is 0
+ 
++    def test_gene_counts_anndata_progress_never_reaches_stdout(self, capsys):
++        """`agt predict --json` reads stdout as JSON, so prose must not land there.
++
++        show_progress=False must be silent on both streams; show_progress=True
++        must report on stderr only.
++        """
++        import pandas as pd
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            predict_full_chromosomes_to_anndata,
++            GenomeSequenceProvider,
++        )
++        from alphagenome_pytorch.variant_scoring.annotations import GeneAnnotation
++
++        chrom_len = 131072
++        config = TilingConfig(crop_bp=0, resolution=128, batch_size=1)
++        model = self._MockModel(resolution=128, n_tracks=1)
++        ann = GeneAnnotation(pd.DataFrame([
++            dict(Feature="gene", Chromosome="chr1", Start=256, End=640, Strand="+",
++                 gene_id="ENSX", gene_name="X", gene_type="protein_coding"),
++            dict(Feature="exon", Chromosome="chr1", Start=256, End=640, Strand="+",
++                 gene_id="ENSX", gene_name="X", gene_type="protein_coding"),
++        ]))
++
++        def aggregate(show_progress):
++            provider = self._build_in_memory_provider(GenomeSequenceProvider, chrom_len)
++            predict_full_chromosomes_to_anndata(
++                model, provider, ann, "atac",
++                chromosomes=["chr1"], config=config, track_indices=[0],
++                over="exons", reduce="sum", device="cpu",
++                show_progress=show_progress,
++            )
++            return capsys.readouterr()
++
++        quiet = aggregate(False)
++        assert quiet.out == ""
++        assert quiet.err == ""
++
++        loud = aggregate(True)
++        assert loud.out == ""
++        assert "Aggregating" in loud.err
++
++    def test_gene_counts_anndata_log_flag_survives_the_progress_helper(self):
++        """The progress helper must not shadow this function's `log` (log1p) flag."""
++        import pandas as pd
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            predict_full_chromosomes_to_anndata,
++            GenomeSequenceProvider,
++        )
++        from alphagenome_pytorch.variant_scoring.annotations import GeneAnnotation
++
++        chrom_len = 131072
++        config = TilingConfig(crop_bp=0, resolution=128, batch_size=1)
++        model = self._MockModel(resolution=128, n_tracks=1)
++        ann = GeneAnnotation(pd.DataFrame([
++            dict(Feature="gene", Chromosome="chr1", Start=256, End=640, Strand="+",
++                 gene_id="ENSX", gene_name="X", gene_type="protein_coding"),
++            dict(Feature="exon", Chromosome="chr1", Start=256, End=640, Strand="+",
++                 gene_id="ENSX", gene_name="X", gene_type="protein_coding"),
++        ]))
++
++        def aggregate(log):
++            provider = self._build_in_memory_provider(GenomeSequenceProvider, chrom_len)
++            gc = predict_full_chromosomes_to_anndata(
++                model, provider, ann, "atac",
++                chromosomes=["chr1"], config=config, track_indices=[0],
++                over="exons", reduce="sum", device="cpu", show_progress=False,
++                log=log,
++            )
++            return gc.counts[0, 0, 0].item()
++
++        raw = aggregate(False)
++        assert raw == pytest.approx(3.0)             # 3 exon bins x 1.0
++        assert aggregate(True) == pytest.approx(np.log1p(raw))
++
+ 
+ @pytest.mark.unit
+ class TestHeadConfigs:
+@@ -532,3 +608,235 @@ def test_rna_seq_head_has_padding_to_strip(self):
+         tracks = self._catalog_tracks()
+         assert len(tracks) == 768
+         assert sum(1 for t in tracks if _is_padding(t)) == 101
++
++
++@pytest.mark.unit
++class TestWriteChromosomesBigwig:
++    """One BigWig per track, streamed across chromosomes.
++
++    A BigWig holds one signal for a whole genome, so chromosomes are appended
++    to a single open handle per track instead of each getting its own file.
++    """
++
++    CHROM_SIZES = {"chr1": 1280, "chr2": 640}  # 10 and 5 bins at 128bp
++
++    @staticmethod
++    def _write(*args, **kwargs):
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            write_chromosomes_bigwig,
++        )
++        return write_chromosomes_bigwig(*args, **kwargs)
++
++    def test_single_track_writes_one_file_for_all_chromosomes(self, tmp_path):
++        pyBigWig = pytest.importorskip("pyBigWig")
++        out = tmp_path / "dnase.bw"
++
++        written = self._write(
++            [(np.arange(1, 11, dtype=float).reshape(10, 1), "chr1"),
++             (np.arange(1, 6, dtype=float).reshape(5, 1), "chr2")],
++            output_path=out,
++            chrom_sizes=self.CHROM_SIZES,
++            resolution=128,
++            chromosome_order=["chr1", "chr2"],
++        )
++
++        # One track means no track suffix, and one file rather than one per chromosome.
++        assert written == [out]
++        assert [p.name for p in tmp_path.iterdir()] == ["dnase.bw"]
++
++        bw = pyBigWig.open(str(out))
++        try:
++            assert bw.chroms() == self.CHROM_SIZES
++            assert len(bw.intervals("chr1")) == 10
++            assert len(bw.intervals("chr2")) == 5
++        finally:
++            bw.close()
++
++    def test_values_cover_resolution_sized_spans(self, tmp_path):
++        """Each value spans one bin -- ranges, not one entry per base."""
++        pyBigWig = pytest.importorskip("pyBigWig")
++        out = tmp_path / "atac.bw"
++
++        # Distinct values, so adjacent bins cannot merge into a single interval.
++        self._write(
++            [(np.arange(1, 11, dtype=float).reshape(10, 1), "chr1")],
++            output_path=out,
++            chrom_sizes=self.CHROM_SIZES,
++            resolution=128,
++            chromosome_order=["chr1"],
++        )
++
++        bw = pyBigWig.open(str(out))
++        try:
++            intervals = bw.intervals("chr1")
++        finally:
++            bw.close()
++
++        assert list(intervals) == [
++            (i * 128, (i + 1) * 128, float(i + 1)) for i in range(10)
++        ]
++
++    def test_multiple_tracks_write_one_file_each(self, tmp_path):
++        pyBigWig = pytest.importorskip("pyBigWig")
++        out = tmp_path / "dnase.bw"
++
++        written = self._write(
++            [(np.ones((10, 3)), "chr1"), (np.ones((5, 3)), "chr2")],
++            output_path=out,
++            chrom_sizes=self.CHROM_SIZES,
++            resolution=128,
++            track_names=["k562", "gm12878", "hepg2"],
++            chromosome_order=["chr1", "chr2"],
++        )
++
++        assert [p.name for p in written] == [
++            "dnase_k562.bw", "dnase_gm12878.bw", "dnase_hepg2.bw",
++        ]
++        # Each track file spans both chromosomes, so the output is one file per
++        # track -- not one per (track, chromosome) as the per-chromosome writer gives.
++        for path in written:
++            bw = pyBigWig.open(str(path))
++            try:
++                assert bw.intervals("chr1") and bw.intervals("chr2")
++            finally:
++                bw.close()
++
++    def test_header_declares_only_the_chromosomes_written(self, tmp_path):
++        pyBigWig = pytest.importorskip("pyBigWig")
++        out = tmp_path / "atac.bw"
++
++        self._write(
++            [(np.ones((10, 1)), "chr1")],
++            output_path=out,
++            chrom_sizes=self.CHROM_SIZES,
++            resolution=128,
++            chromosome_order=["chr1"],
++        )
++
++        bw = pyBigWig.open(str(out))
++        try:
++            assert bw.chroms() == {"chr1": 1280}
++        finally:
++            bw.close()
++
++    def test_trailing_partial_bin_is_dropped(self, tmp_path):
++        """chr2 holds 5 whole bins, so a 6th value has nowhere valid to go."""
++        pyBigWig = pytest.importorskip("pyBigWig")
++        out = tmp_path / "atac.bw"
++
++        self._write(
++            [(np.arange(1, 7, dtype=float).reshape(6, 1), "chr2")],
++            output_path=out,
++            chrom_sizes=self.CHROM_SIZES,
++            resolution=128,
++            chromosome_order=["chr2"],
++        )
++
++        bw = pyBigWig.open(str(out))
++        try:
++            intervals = bw.intervals("chr2")
++        finally:
++            bw.close()
++
++        assert len(intervals) == 5
++        assert intervals[-1] == (512, 640, 5.0)
++
++    def test_out_of_order_chromosome_rejected(self, tmp_path):
++        pytest.importorskip("pyBigWig")
++
++        with pytest.raises(ValueError, match="header order"):
++            self._write(
++                [(np.ones((5, 1)), "chr2"), (np.ones((10, 1)), "chr1")],
++                output_path=tmp_path / "atac.bw",
++                chrom_sizes=self.CHROM_SIZES,
++                resolution=128,
++                chromosome_order=["chr1", "chr2"],
++            )
++
++    def test_chromosomes_are_flushed_before_the_next_arrives(self, tmp_path):
++        """Laziness: an eager writer would drain the input before opening a file."""
++        pytest.importorskip("pyBigWig")
++        out = tmp_path / "atac.bw"
++
++        def chrom_arrays():
++            yield np.ones((10, 1)), "chr1"
++            raise RuntimeError("second chromosome failed")
++
++        with pytest.raises(RuntimeError, match="second chromosome failed"):
++            self._write(
++                chrom_arrays(),
++                output_path=out,
++                chrom_sizes=self.CHROM_SIZES,
++                resolution=128,
++                chromosome_order=["chr1", "chr2"],
++            )
++
++        # chr1 reached an open handle, which the finally block then closed.
++        assert out.exists()
++
++
++@pytest.mark.unit
++class TestFullChromosomeBigwigApi:
++    """The genome-wide default, and the flag that restores per-chromosome files."""
++
++    def test_split_by_chrom_defaults_to_one_file_per_track(self):
++        import inspect
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            predict_full_chromosomes_to_bigwig,
++        )
++
++        parameter = inspect.signature(predict_full_chromosomes_to_bigwig).parameters
++        assert parameter["split_by_chrom"].default is False
++
++    def test_bigwig_output_records_the_chromosomes_covered(self):
++        from alphagenome_pytorch.extensions.inference.full_chromosome import BigwigOutput
++
++        out = BigwigOutput(Path("dnase.bw"), ["chr20", "chr21"])
++        assert out.path.name == "dnase.bw"
++        assert out.chromosomes == ["chr20", "chr21"]
++
++
++@pytest.mark.unit
++class TestProgressStreamDiscipline:
++    """Progress prose must never reach stdout, which carries the JSON payload."""
++
++    @staticmethod
++    def _tiny_fasta(tmp_path):
++        fa = tmp_path / "tiny.fa"
++        fa.write_text(">chr1\n" + "ACGT" * 16 + "\n>chr2\n" + "ACGT" * 8 + "\n")
++        return fa
++
++    def test_provider_is_silent_when_progress_is_off(self, tmp_path, capsys):
++        pytest.importorskip("pyfaidx")
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            GenomeSequenceProvider,
++        )
++
++        provider = GenomeSequenceProvider(
++            self._tiny_fasta(tmp_path), chromosomes={"chr1"}, show_progress=False,
++        )
++        try:
++            captured = capsys.readouterr()
++            assert captured.out == ""
++            assert captured.err == ""
++        finally:
++            provider.close()
++
++    def test_provider_reports_on_stderr_not_stdout(self, tmp_path, capsys):
++        """Both messages -- the provider's own and GenomeSequenceSource's."""
++        pytest.importorskip("pyfaidx")
++        from alphagenome_pytorch.extensions.inference.full_chromosome import (
++            GenomeSequenceProvider,
++        )
++
++        provider = GenomeSequenceProvider(
++            self._tiny_fasta(tmp_path), chromosomes={"chr1"}, show_progress=True,
++        )
++        try:
++            captured = capsys.readouterr()
++            assert captured.out == ""
++            assert "Loading genome from" in captured.err
++            assert "Cached genome" in captured.err
++        finally:
++            provider.close()
++

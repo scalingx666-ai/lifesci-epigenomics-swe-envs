@@ -1,0 +1,73 @@
+version = "1.0"
+
+[task]
+name = "default/oncologylab__fp-tools-55"
+description = "Simplify and harden the fp-tools GUI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "fp-tools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "oncologylab/fp-tools"
+ref = "a3df162f75b6ba47f2297d868087428f80df0892"
+reference = "https://github.com/oncologylab/fp-tools/pull/55"
+source_access = "auto"
+built_at = "2026-11-14T06:57:35.094168+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:42bd3bb3f8ce62dfc93fdaa4277e3009dcc7b1a1b34078c518374b84cf77f999"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-22T02:54:27Z"
+diff_format = "unified"
+context_files = [
+    ".streamlit/config.toml",
+    "CITATION.cff",
+    "DEV_PLAN.md",
+    "docs/get-started/installation.md",
+    "examples/nutrient_stress_project/run_ctrl_vs_10fbs.sh",
+    "packaging/desktop/Info.plist",
+    "pyproject.toml",
+    "scripts/audit_desktop_gui.py",
+    "src/fp_tools/__init__.py",
+    "src/fp_tools/gui_app.py",
+    "src/fp_tools/resources/runtime_manifest.json",
+    "tests/test_gui_launcher.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 614
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

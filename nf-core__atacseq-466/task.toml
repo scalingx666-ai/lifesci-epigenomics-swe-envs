@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/nf-core__atacseq-466"
+description = "Run the test_controls profile with --with_control in CI"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "atacseq",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "nf-core/atacseq"
+ref = "6a9307709662bad3e7bcc10aa873f7e81fdd1646"
+reference = "https://github.com/nf-core/atacseq/pull/466"
+source_access = "auto"
+built_at = "2026-11-14T07:14:46.192977+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:fa72a987dac76109b468ef35ad3987aa3e3f5d26edb133587270d5fa80073747"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-13T14:19:55Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG.md",
+    "conf/test_controls.config",
+    "tests/controls.nf.test",
+    "tests/controls.nf.test.snap",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 983
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

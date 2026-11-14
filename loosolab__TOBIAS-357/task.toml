@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/loosolab__TOBIAS-357"
+description = "Revise Python publish workflow for building wheels"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "TOBIAS",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "loosolab/TOBIAS"
+ref = "c1e0671e1a5aa07667cde16ac24039c51e312239"
+reference = "https://github.com/loosolab/TOBIAS/pull/357"
+source_access = "auto"
+built_at = "2026-11-14T07:14:25.518896+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:453db249ee830926d13c53b5bab5f06273975c19e89403ea9dabcf16ffd27da8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-03T08:44:02Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/python-publish.yml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 28
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

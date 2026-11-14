@@ -1,0 +1,62 @@
+version = "1.0"
+
+[task]
+name = "default/scverse__SnapATAC2-487"
+description = "fix: preserve observation-major Harmony output"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "SnapATAC2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "scverse/SnapATAC2"
+ref = "e669f8197585fe0b1697c4979fe0e6797a2aacba"
+reference = "https://github.com/scverse/SnapATAC2/pull/487"
+source_access = "auto"
+built_at = "2026-11-14T05:48:08.244827+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5e73ae4151c6f15330a8e0e1b8f8c0931bf6e2810f114f6fb96bbfd1c61a6964"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-04T01:05:08Z"
+diff_format = "unified"
+context_files = [
+    "snapatac2/preprocessing/_harmony.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 14
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

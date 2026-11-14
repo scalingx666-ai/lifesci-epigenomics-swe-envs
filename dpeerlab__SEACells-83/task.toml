@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/dpeerlab__SEACells-83"
+description = "GPU-accelerated SEACells (opt-in, end-to-end on GPU)"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "SEACells",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dpeerlab/SEACells"
+ref = "a0a00d779ab5f51b9b005aeb251922fe6119f566"
+reference = "https://github.com/dpeerlab/SEACells/pull/83"
+source_access = "auto"
+built_at = "2026-11-14T05:50:11.903454+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:0b0a8f65257cf18b7bb455c3b2cb2a56318c310b25bc6525a3313c0853931206"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-08-24T16:19:43Z"
+diff_format = "unified"
+context_files = [
+    ".gitignore",
+    ".python-version",
+    "README.md",
+    "SEACells/build_graph.py",
+    "SEACells/core.py",
+    "SEACells/gpu.py",
+    "SEACells/model.py",
+    "docs/gpu_speed_and_scale.md",
+    "environment.yaml",
+    "pyproject.toml",
+    "requirements.txt",
+    "setup.py",
+    "tests/test_unified_parity.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 1079
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

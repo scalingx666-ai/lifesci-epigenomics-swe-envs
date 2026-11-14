@@ -1,0 +1,929 @@
+diff --git a/docs/src/content/docs/options/alignment.md b/docs/src/content/docs/options/alignment.md
+index f5c8ab53..02367569 100644
+--- a/docs/src/content/docs/options/alignment.md
++++ b/docs/src/content/docs/options/alignment.md
+@@ -171,7 +171,7 @@ For non-directional paired-end libraries, the strands identity is encoded by the
+ 
+ - `-o/--output_dir <dir>`
+ 
+-  Write all output files into this directory. By default the output files will be written into the current working directory. If the specified folder does not exist, Bismark will attempt to create it first. The path to the output folder can be either relative or absolute. While an input is being processed, its outputs are written as `<name>.<pid>.partial` and renamed when that input has finished; a failed run removes the partial files of the input it failed on.
++  Write all output files into this directory. By default the output files will be written into the current working directory. If the specified folder does not exist, Bismark will attempt to create it first. The path to the output folder can be either relative or absolute. While an input is being processed, its outputs are written as `<name>.<pid>.partial` and renamed when that input has finished; a failed run removes the partial files of the input it failed on, and leaves any finished outputs of an earlier run in place.
+ 
+ - `--temp_dir <dir>`
+ 
+diff --git a/merge_arbitrary_coverage_files.py b/merge_arbitrary_coverage_files.py
+index 5903a721..95ee3b40 100755
+--- a/merge_arbitrary_coverage_files.py
++++ b/merge_arbitrary_coverage_files.py
+@@ -18,5 +18,5 @@
+ import os
+ import sys
+ 
+-script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "merge_coverage_files_ARGV.py")
++script = os.path.join(os.path.dirname(os.path.realpath(__file__)), "merge_coverage_files_ARGV.py")
+ os.execv(sys.executable, [sys.executable, script, *sys.argv[1:]])
+diff --git a/merge_coverage_files_ARGV.py b/merge_coverage_files_ARGV.py
+index 7398212f..8b24f39e 100755
+--- a/merge_coverage_files_ARGV.py
++++ b/merge_coverage_files_ARGV.py
+@@ -70,15 +70,19 @@ def main():
+ 
+         infile.close()
+ 
++    # Checked before writing, so a bad input leaves no partial output file.
++    for chrom in allcov:
++        for pos in allcov[chrom]:
++            if (allcov[chrom][pos]['meth'] + allcov[chrom][pos]['unmeth'] == 0):
++                # This should not happen in real data, as coverage files by definition only show covered positions
++                print (f"Error: Both methylated and unmethylated counts were 0 at {chrom}:{pos}. Dying now...", file=sys.stderr)
++                sys.exit(1)
++
+     print (f"Now printing out a new, merged coverage file to >>{outfile}<<")
+ 
+     with gzip.open(outfile,"wt") as out:
+         for chrom in sorted(allcov.keys()):
+             for pos in sorted(allcov[chrom].keys()):
+-                if (allcov[chrom][pos]['meth'] + allcov[chrom][pos]['unmeth'] == 0):
+-                    # This should not happen in real data, as coverage files by definition only show covered positions
+-                    print ("Error: Both methylated and unmethylated positions were 0. Dying now...", file=sys.stderr)
+-                    sys.exit(1)
+                 perc = allcov[chrom][pos]['meth'] / (allcov[chrom][pos]['meth'] + allcov[chrom][pos]['unmeth']) * 100
+ 
+                 # percentage is displayed with 2 decimals with f-string formatting
+diff --git a/rust/bismark/src/aligner/mod.rs b/rust/bismark/src/aligner/mod.rs
+index 3731468c..4c4c8ec8 100644
+--- a/rust/bismark/src/aligner/mod.rs
++++ b/rust/bismark/src/aligner/mod.rs
+@@ -213,7 +213,7 @@ pub fn run(cli: &cli::Cli, command_line: String) -> Result<()> {
+     // #787 standalone duplex-consensus over EXISTING BAM(s) — skips the align pipeline
+     // entirely (resolve() requires reads; this path takes BAMs instead).
+     if !cli.five_base_consensus_from_bam.is_empty() {
+-        return finish_staged(run_five_base_consensus_standalone(cli, &command_line));
++        return staging::scope(|| run_five_base_consensus_standalone(cli, &command_line));
+     }
+     // #1095 standalone bisulfite-convention re-encode over EXISTING BAM(s) — same shape,
+     // but needs no genome: the reference is reconstructed per record from MD.
+@@ -319,7 +319,7 @@ pub fn run(cli: &cli::Cli, command_line: String) -> Result<()> {
+     }
+     eprintln!("{}", config.summary());
+     let result = reject_crlf_inputs(&config.layout)
+-        .and_then(|()| finish_staged(pipeline(&config)))
++        .and_then(|()| staging::scope(|| pipeline(&config)))
+         .and_then(|()| run_nucleotide_coverage(&config));
+     // Best-effort cleanup of the alternative-input transcode temp dirs (the plan's
+     // "cleaned up with the other temps"), regardless of pipeline success/failure.
+@@ -329,17 +329,6 @@ pub fn run(cli: &cli::Cli, command_line: String) -> Result<()> {
+     result
+ }
+ 
+-/// Publish the staged outputs of a successful run; delete them after a failed one.
+-fn finish_staged(result: Result<()>) -> Result<()> {
+-    match result {
+-        Ok(()) => Ok(staging::commit()?),
+-        Err(e) => {
+-            staging::discard();
+-            Err(e)
+-        }
+-    }
+-}
+-
+ /// `--nucleotide_coverage` (Perl 931-946): bam2nuc on every input's final BAM, in
+ /// `--output_dir`, after the alignment has finished.
+ fn run_nucleotide_coverage(config: &RunConfig) -> Result<()> {
+@@ -358,7 +347,13 @@ fn run_nucleotide_coverage(config: &RunConfig) -> Result<()> {
+         output_dir.push('/');
+     }
+     let parent_dir = std::env::current_dir()?;
++    let failed = |e: crate::bam2nuc::BismarkBam2nucError| {
++        AlignerError::Validation(format!(
++            "alignment outputs are complete; bam2nuc (--nucleotide_coverage) failed: {e}"
++        ))
++    };
+     eprintln!("Now calculating observed and expected nucleotide coverage statistics...");
++    let genome = crate::bam2nuc::load_genome(&config.genome.genome_dir).map_err(failed)?;
+     // One BAM per call, so an input without usable reads does not skip the next one.
+     for read in reads {
+         let bam = derive_output_path(
+@@ -376,30 +371,32 @@ fn run_nucleotide_coverage(config: &RunConfig) -> Result<()> {
+             cram_ref: None,
+             paired: Some(paired),
+         };
+-        match crate::bam2nuc::run(&bam2nuc) {
+-            Ok(()) => {}
+-            Err(e @ crate::bam2nuc::BismarkBam2nucError::ZeroDivision { .. }) => {
+-                let name = bam.file_name().unwrap_or_default().to_string_lossy();
+-                let stats = format!(
+-                    "{output_dir}{}.nucleotide_stats.txt",
+-                    name.strip_suffix(".bam").unwrap_or(&name)
+-                );
+-                let _ = std::fs::remove_file(&stats);
+-                eprintln!(
+-                    "Warning: no nucleotide coverage statistics for {}: {e}",
+-                    bam.display()
+-                );
+-            }
+-            Err(e) => {
+-                return Err(AlignerError::Validation(format!(
+-                    "alignment outputs are complete; bam2nuc (--nucleotide_coverage) failed: {e}"
+-                )));
++        if let Err(e) = crate::bam2nuc::run_with_genome(&bam2nuc, &genome) {
++            remove_stats_file(&output_dir, &bam);
++            if !matches!(e, crate::bam2nuc::BismarkBam2nucError::ZeroDivision { .. }) {
++                return Err(failed(e));
+             }
++            eprintln!(
++                "Warning: no nucleotide coverage statistics for {}: {e}",
++                bam.display()
++            );
+         }
+     }
+     Ok(())
+ }
+ 
++/// Remove `bam`'s stats file after a failed bam2nuc run; a stale one would be read by
++/// `bismark report`. Anything but a file or symlink at that path is left alone.
++fn remove_stats_file(output_dir: &str, bam: &Path) {
++    let Ok(name) = crate::bam2nuc::output_name::derive_output_name(bam) else {
++        return;
++    };
++    let stats = PathBuf::from(format!("{output_dir}{name}"));
++    if std::fs::symlink_metadata(&stats).is_ok_and(|m| !m.is_dir()) {
++        let _ = std::fs::remove_file(&stats);
++    }
++}
++
+ /// Fail on a read input with Windows (CRLF) line endings.
+ fn reject_crlf_inputs(layout: &ReadLayout) -> Result<()> {
+     let (first, second): (&[String], &[String]) = match layout {
+@@ -2156,7 +2153,7 @@ fn five_base_reference_fasta(config: &RunConfig) -> Result<(PathBuf, Option<Path
+         .output_dir
+         .join(".bismark_5base_concat_ref.fa");
+     let mut out = BufWriter::new(File::create(&tmp)?);
+-    staging::scratch(&tmp);
++    staging::scratch(&tmp)?;
+     for f in fastas {
+         let mut r = open_reader(f)?;
+         std::io::copy(&mut r, &mut out)?;
+@@ -3514,14 +3511,14 @@ fn run_five_base_consensus(
+     // Writers up front: an empty run must still leave valid header-only BAMs.
+     let mut dpx_writer = match dpx_path {
+         Some(p) => Some(
+-            crate::io::BamWriter::from_path(&staging::stage(p), header.clone())
++            crate::io::BamWriter::from_path(&staging::stage(p)?, header.clone())
+                 .map_err(|e| AlignerError::Validation(format!("consensus: create BAM: {e}")))?,
+         ),
+         None => None,
+     };
+     let mut spx_writer = match spx_path {
+         Some(p) => Some(
+-            crate::io::BamWriter::from_path(&staging::stage(p), header.clone()).map_err(|e| {
++            crate::io::BamWriter::from_path(&staging::stage(p)?, header.clone()).map_err(|e| {
+                 AlignerError::Validation(format!("simplex consensus: create BAM: {e}"))
+             })?,
+         ),
+@@ -3859,15 +3856,12 @@ impl Write for AuxWriter {
+ }
+ 
+ impl AuxWriter {
+-    /// Finalise: gz writes its trailer (`finish`); plain only flushes. Neither
+-    /// path flushes mid-stream — a `flush()` would force a deflate block boundary
+-    /// and break the merge's raw-byte identity (PLAN §3.5 invariant).
++    /// Finalise: gz writes its trailer (`finish`), then both drain their buffer.
++    /// Neither flushes mid-stream: that would force a deflate block boundary and
++    /// break the merge's raw-byte identity (PLAN §3.5 invariant).
+     fn finish(self) -> std::io::Result<()> {
+         match self {
+-            AuxWriter::Gz(w) => {
+-                w.finish()?;
+-                Ok(())
+-            }
++            AuxWriter::Gz(w) => w.finish()?.flush(),
+             AuxWriter::Plain(mut w) => w.flush(),
+         }
+     }
+@@ -3911,7 +3905,7 @@ fn open_sinks(
+     header: &noodles_sam::Header,
+     bam_path: &Path,
+ ) -> Result<Sinks> {
+-    let bam = BamWriter::from_path(&staging::stage(bam_path), header.clone())
++    let bam = BamWriter::from_path(&staging::stage(bam_path)?, header.clone())
+         .map_err(|e| AlignerError::Validation(format!("failed to open BAM {bam_path:?}: {e}")))?;
+ 
+     let ambig_bam = if config.ambig_bam {
+@@ -3923,7 +3917,7 @@ fn open_sinks(
+         );
+         eprintln!("Ambiguous BAM output: {}", p.display());
+         Some(
+-            BamWriter::from_path(&staging::stage(&p), header.clone()).map_err(|e| {
++            BamWriter::from_path(&staging::stage(&p)?, header.clone()).map_err(|e| {
+                 AlignerError::Validation(format!("failed to open ambig BAM {p:?}: {e}"))
+             })?,
+         )
+@@ -6136,7 +6130,7 @@ fn open_pe_sinks(
+     header: &noodles_sam::Header,
+     bam_path: &Path,
+ ) -> Result<PeSinks> {
+-    let bam = BamWriter::from_path(&staging::stage(bam_path), header.clone())
++    let bam = BamWriter::from_path(&staging::stage(bam_path)?, header.clone())
+         .map_err(|e| AlignerError::Validation(format!("failed to open BAM {bam_path:?}: {e}")))?;
+ 
+     let ambig_bam = if config.ambig_bam {
+@@ -6148,7 +6142,7 @@ fn open_pe_sinks(
+         );
+         eprintln!("Ambiguous BAM output: {}", p.display());
+         Some(
+-            BamWriter::from_path(&staging::stage(&p), header.clone()).map_err(|e| {
++            BamWriter::from_path(&staging::stage(&p)?, header.clone()).map_err(|e| {
+                 AlignerError::Validation(format!("failed to open ambig BAM {p:?}: {e}"))
+             })?,
+         )
+@@ -8181,6 +8175,16 @@ fn drive_merge_combined_pe_nondir_tagged<S: PairedSamStream>(
+ mod tests {
+     use super::*;
+ 
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn gz_aux_finish_reports_a_failed_final_write() {
++        use std::io::Write as _;
++        let full = File::create("/dev/full").unwrap();
++        let mut w = AuxWriter::Gz(GzEncoder::new(BufWriter::new(full), Compression::default()));
++        w.write_all(b"@r1\nACGT\n+\nIIII\n").unwrap();
++        assert!(w.finish().is_err());
++    }
++
+     #[test]
+     fn reject_crlf_inputs_passes_empty_and_lf_files_and_names_a_crlf_one() {
+         let dir = tempfile::TempDir::new().unwrap();
+diff --git a/rust/bismark/src/aligner/parallel.rs b/rust/bismark/src/aligner/parallel.rs
+index bfb22f8d..4b70aa52 100644
+--- a/rust/bismark/src/aligner/parallel.rs
++++ b/rust/bismark/src/aligner/parallel.rs
+@@ -43,6 +43,7 @@ use crate::aligner::genome::{Genome, read_genome_into_memory};
+ use crate::aligner::merge::Counters;
+ use crate::aligner::output::{build_refid, generate_sam_header};
+ use crate::aligner::report::{self, ReportHeader};
++use crate::aligner::staging;
+ use crate::aligner::{PeSinks, Sinks};
+ 
+ /// One SE chunk's outputs: the per-chunk temp BAM (+ optional ambig BAM) and the
+@@ -566,9 +567,9 @@ fn pe_chunk_job(
+ /// byte-identical *decompressed* content to single-core (PLAN §3.4.1/Q3).
+ fn merge_bams(final_path: &Path, header: &Header, parts: &[PathBuf]) -> Result<()> {
+     let mut writer =
+-        BamWriter::from_path(&crate::aligner::staging::stage(final_path), header.clone()).map_err(
+-            |e| AlignerError::Validation(format!("failed to open merged BAM {final_path:?}: {e}")),
+-        )?;
++        BamWriter::from_path(&staging::stage(final_path)?, header.clone()).map_err(|e| {
++            AlignerError::Validation(format!("failed to open merged BAM {final_path:?}: {e}"))
++        })?;
+     for part in parts {
+         let file = File::open(part)?;
+         let mut reader = noodles_bam::io::Reader::new(BufReader::new(file));
+@@ -591,14 +592,14 @@ fn merge_bams(final_path: &Path, header: &Header, parts: &[PathBuf]) -> Result<(
+ /// single-member gz stream raw-identical to `--parallel 1` (PLAN §3.5).
+ fn merge_aux_gz(final_path: &Path, plain_parts: &[PathBuf]) -> Result<()> {
+     let mut enc = GzEncoder::new(
+-        BufWriter::new(crate::aligner::staging::create(final_path)?),
++        BufWriter::new(staging::create(final_path)?),
+         Compression::default(),
+     );
+     for part in plain_parts {
+         let mut f = File::open(part)?;
+         io::copy(&mut f, &mut enc)?;
+     }
+-    enc.finish()?;
++    enc.finish()?.flush()?;
+     Ok(())
+ }
+ 
+@@ -792,7 +793,7 @@ pub(crate) fn run_se_multicore(config: &RunConfig, reads: &[String], n: u32) ->
+             &format!("_bismark_{tok}_SE_report.txt"),
+             "_SE_report.txt",
+         );
+-        let mut report = BufWriter::new(crate::aligner::staging::create(&report_path)?);
++        let mut report = BufWriter::new(staging::create(&report_path)?);
+         report::write_report_header(
+             &mut report,
+             &ReportHeader {
+@@ -809,7 +810,7 @@ pub(crate) fn run_se_multicore(config: &RunConfig, reads: &[String], n: u32) ->
+         report.flush()?;
+ 
+         cleanup_se(&outcomes);
+-        crate::aligner::staging::commit()?;
++        staging::commit()?;
+         eprintln!("{}", crate::aligner::counters_summary(read_file, &total));
+     }
+     Ok(())
+@@ -969,7 +970,7 @@ pub(crate) fn run_pe_multicore(
+             &format!("_bismark_{tok}_PE_report.txt"),
+             "_PE_report.txt",
+         );
+-        let mut report = BufWriter::new(crate::aligner::staging::create(&report_path)?);
++        let mut report = BufWriter::new(staging::create(&report_path)?);
+         report::write_report_header(
+             &mut report,
+             &ReportHeader {
+@@ -986,7 +987,7 @@ pub(crate) fn run_pe_multicore(
+         report.flush()?;
+ 
+         cleanup_pe(&outcomes);
+-        crate::aligner::staging::commit()?;
++        staging::commit()?;
+         eprintln!(
+             "{}",
+             crate::aligner::counters_summary_pe(read_1, read_2, &total)
+@@ -1212,8 +1213,7 @@ mod tests {
+         write(&a, b"@r1\nACGT\n+\nIIII\n");
+         write(&b, b"@r2\nTTTT\n+\nIIII\n");
+         let out = dir.path().join("out.gz");
+-        merge_aux_gz(&out, &[a, b]).unwrap();
+-        crate::aligner::staging::commit().unwrap();
++        staging::scope(|| merge_aux_gz(&out, &[a, b])).unwrap();
+         let mut s = String::new();
+         GzDecoder::new(File::open(&out).unwrap())
+             .read_to_string(&mut s)
+diff --git a/rust/bismark/src/aligner/staging.rs b/rust/bismark/src/aligner/staging.rs
+index 3869d486..bcec1aae 100644
+--- a/rust/bismark/src/aligner/staging.rs
++++ b/rust/bismark/src/aligner/staging.rs
+@@ -2,8 +2,8 @@
+ //! the input that produced them has finished, so a failed run never leaves a file
+ //! that looks complete.
+ //!
+-//! The registry is per thread: a driver stages and commits on the thread that runs
+-//! it, and concurrent unit tests never see each other's files.
++//! Staging is only allowed inside [`scope`] on the thread that runs it; a stage from
++//! any other thread is an error, so a file can never be left staged unnoticed.
+ 
+ use std::cell::RefCell;
+ use std::fs::File;
+@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
+ /// Outputs not yet committed, and scratch files to delete on failure.
+ #[derive(Default)]
+ struct Pending {
+-    /// `(staged, final)` paths.
++    /// Set while a [`scope`] runs on this thread.
++    active: bool,
++    /// `(staged, final)` paths, in registration order.
+     staged: Vec<(PathBuf, PathBuf)>,
+     scratch: Vec<PathBuf>,
+ }
+@@ -29,20 +31,50 @@ fn partial_name(path: &Path) -> PathBuf {
+     PathBuf::from(name)
+ }
+ 
++fn outside_scope(path: &Path) -> io::Error {
++    io::Error::other(format!(
++        "internal: output staged outside a driver scope: {}",
++        path.display()
++    ))
++}
++
++/// Run `f` as one driver run: publish its staged outputs if it succeeds, delete them
++/// and its scratch files if it fails.
++pub(crate) fn scope<T, E: From<io::Error>>(f: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
++    let was_active = PENDING.with(|p| std::mem::replace(&mut p.borrow_mut().active, true));
++    let result = f().and_then(|v| match commit() {
++        Ok(()) => Ok(v),
++        Err(e) => Err(E::from(e)),
++    });
++    if result.is_err() {
++        discard();
++    }
++    PENDING.with(|p| {
++        let mut p = p.borrow_mut();
++        p.active = was_active;
++        if !was_active {
++            p.scratch.clear();
++        }
++    });
++    result
++}
++
+ /// Register `path` as a final output and return the path to write it under.
+-pub(crate) fn stage(path: &Path) -> PathBuf {
++pub(crate) fn stage(path: &Path) -> io::Result<PathBuf> {
+     let staged = partial_name(path);
+     PENDING.with(|p| {
+-        p.borrow_mut()
+-            .staged
+-            .push((staged.clone(), path.to_path_buf()))
+-    });
+-    staged
++        let mut p = p.borrow_mut();
++        if !p.active {
++            return Err(outside_scope(path));
++        }
++        p.staged.push((staged.clone(), path.to_path_buf()));
++        Ok(staged)
++    })
+ }
+ 
+ /// [`File::create`] for a final output, under its staged name.
+ pub(crate) fn create(path: &Path) -> io::Result<File> {
+-    File::create(stage(path))
++    File::create(stage(path)?)
+ }
+ 
+ /// Where a final output currently is: its staged name until committed.
+@@ -57,33 +89,51 @@ pub(crate) fn current(path: &Path) -> PathBuf {
+     })
+ }
+ 
+-/// Register a scratch file that [`discard`] deletes if the run fails.
+-pub(crate) fn scratch(path: &Path) {
+-    PENDING.with(|p| p.borrow_mut().scratch.push(path.to_path_buf()));
++/// Register a scratch file that a failed [`scope`] deletes.
++pub(crate) fn scratch(path: &Path) -> io::Result<()> {
++    PENDING.with(|p| {
++        let mut p = p.borrow_mut();
++        if !p.active {
++            return Err(outside_scope(path));
++        }
++        p.scratch.push(path.to_path_buf());
++        Ok(())
++    })
+ }
+ 
+-/// Rename every staged output to its final name. On a failed rename the rest stay
+-/// staged, so [`discard`] still removes them.
++/// Rename every staged output to its final name, all or nothing. Outputs are renamed
++/// in reverse registration order, so the BAM, staged first, is published last.
+ pub(crate) fn commit() -> io::Result<()> {
+     let staged = PENDING.with(|p| std::mem::take(&mut p.borrow_mut().staged));
+-    for (i, (from, to)) in staged.iter().enumerate() {
++    let mut published: Vec<&Path> = Vec::new();
++    for (from, to) in staged.iter().rev() {
+         if let Err(e) = std::fs::rename(from, to) {
+-            PENDING.with(|p| p.borrow_mut().staged.extend_from_slice(&staged[i..]));
+-            return Err(e);
++            for done in published {
++                let _ = std::fs::remove_file(done);
++            }
++            for (left, _) in &staged {
++                let _ = std::fs::remove_file(left);
++            }
++            return Err(io::Error::new(
++                e.kind(),
++                format!("publishing {} as {}: {e}", from.display(), to.display()),
++            ));
+         }
++        published.push(to);
+     }
+     Ok(())
+ }
+ 
+ /// Delete every staged output and scratch file of the failed run.
+-pub(crate) fn discard() {
+-    let pending = PENDING.with(|p| std::mem::take(&mut *p.borrow_mut()));
+-    for path in pending
+-        .staged
+-        .into_iter()
+-        .map(|(s, _)| s)
+-        .chain(pending.scratch)
+-    {
++fn discard() {
++    let (staged, scratch) = PENDING.with(|p| {
++        let mut p = p.borrow_mut();
++        (
++            std::mem::take(&mut p.staged),
++            std::mem::take(&mut p.scratch),
++        )
++    });
++    for path in staged.into_iter().map(|(s, _)| s).chain(scratch) {
+         if let Err(e) = std::fs::remove_file(&path)
+             && e.kind() != io::ErrorKind::NotFound
+         {
+@@ -100,26 +150,68 @@ mod tests {
+     use super::*;
+ 
+     #[test]
+-    fn commit_renames_and_discard_removes_only_staged_files() {
++    fn scope_publishes_on_success_and_removes_on_failure() {
+         let dir = tempfile::tempdir().unwrap();
+         let keep = dir.path().join("a.bam");
+         let drop_ = dir.path().join("b.bam");
+         let stale = partial_name(&dir.path().join("c.bam"));
+         std::fs::write(&stale, b"left by a killed run").unwrap();
+ 
+-        std::fs::write(stage(&keep), b"done").unwrap();
+-        assert!(current(&keep).to_string_lossy().ends_with(".partial"));
+-        commit().unwrap();
++        scope(|| -> io::Result<()> {
++            std::fs::write(stage(&keep)?, b"done")?;
++            assert!(current(&keep).to_string_lossy().ends_with(".partial"));
++            Ok(())
++        })
++        .unwrap();
+         assert_eq!(std::fs::read(&keep).unwrap(), b"done");
+         assert_eq!(current(&keep), keep);
+ 
+-        let mut f = create(&drop_).unwrap();
+-        io::Write::write_all(&mut f, b"half").unwrap();
+         let tmp = dir.path().join(".scratch");
+-        std::fs::write(&tmp, b"x").unwrap();
+-        scratch(&tmp);
+-        discard();
++        let err = scope(|| -> io::Result<()> {
++            io::Write::write_all(&mut create(&drop_)?, b"half")?;
++            std::fs::write(&tmp, b"x")?;
++            scratch(&tmp)?;
++            Err(io::Error::other("engine failed"))
++        });
++        assert!(err.is_err());
+         assert!(!drop_.exists() && !partial_name(&drop_).exists() && !tmp.exists());
+         assert!(keep.exists() && stale.exists());
+     }
++
++    #[test]
++    fn staging_outside_a_scope_or_on_another_thread_is_an_error() {
++        let dir = tempfile::tempdir().unwrap();
++        let out = dir.path().join("x.bam");
++        assert!(stage(&out).is_err());
++        assert!(scratch(&out).is_err());
++        scope(|| -> io::Result<()> {
++            let other = std::thread::scope(|s| s.spawn(|| stage(&out).is_err()).join().unwrap());
++            assert!(other, "a worker thread must not stage");
++            Ok(())
++        })
++        .unwrap();
++        assert!(!out.exists());
++    }
++
++    #[test]
++    fn a_failed_rename_publishes_nothing() {
++        // A directory at a final path makes that rename fail (EISDIR on Linux and macOS).
++        for blocked in ["r.txt", "a.bam"] {
++            let dir = tempfile::tempdir().unwrap();
++            let bam = dir.path().join("a.bam");
++            let report = dir.path().join("r.txt");
++            std::fs::create_dir(dir.path().join(blocked)).unwrap();
++            let err = scope(|| -> io::Result<()> {
++                std::fs::write(stage(&bam)?, b"bam")?;
++                std::fs::write(stage(&report)?, b"report")?;
++                Ok(())
++            })
++            .unwrap_err();
++            assert!(err.to_string().contains(blocked), "{err}");
++            for f in [&bam, &report] {
++                assert!(!partial_name(f).exists());
++                assert!(f.is_dir() || !f.exists(), "{} was published", f.display());
++            }
++        }
++    }
+ }
+diff --git a/rust/bismark/src/bam2nuc/mod.rs b/rust/bismark/src/bam2nuc/mod.rs
+index 3f2510bb..e9c7f912 100644
+--- a/rust/bismark/src/bam2nuc/mod.rs
++++ b/rust/bismark/src/bam2nuc/mod.rs
+@@ -41,20 +41,30 @@ pub use error::BismarkBam2nucError;
+ ///    once for file #1, then reused), count the reads, and write
+ ///    `<sample>.nucleotide_stats.txt`.
+ pub fn run(config: &ResolvedConfig) -> Result<(), BismarkBam2nucError> {
+-    use std::io::Write;
++    let genome = load_genome(&config.genome_folder)?;
++    run_with_genome(config, &genome)
++}
+ 
+-    let genome = Genome::load(
+-        &config.genome_folder,
+-        &crate::io::genome::FASTA_TIERS_WITH_GZ,
+-    )?;
++/// Load `genome_folder` as bam2nuc reads it, and report how many sequences it holds.
++pub fn load_genome(genome_folder: &std::path::Path) -> Result<Genome, BismarkBam2nucError> {
++    let genome = Genome::load(genome_folder, &crate::io::genome::FASTA_TIERS_WITH_GZ)?;
+     eprintln!(
+         "Stored sequence information of {} chromosomes/scaffolds in total",
+         genome.len()
+     );
++    Ok(genome)
++}
++
++/// [`run`] on a genome that is already loaded.
++pub fn run_with_genome(
++    config: &ResolvedConfig,
++    genome: &Genome,
++) -> Result<(), BismarkBam2nucError> {
++    use std::io::Write;
+ 
+     // --genomic_composition_only: compute + write the cache (or reuse), exit.
+     if config.genomic_composition_only {
+-        freqs::get_genomic_frequencies(&genome, &config.genome_folder, &config.output_dir)?;
++        freqs::get_genomic_frequencies(genome, &config.genome_folder, &config.output_dir)?;
+         eprintln!("Finished processing genomic nucleotide frequencies");
+         return Ok(());
+     }
+@@ -70,10 +80,10 @@ pub fn run(config: &ResolvedConfig) -> Result<(), BismarkBam2nucError> {
+ 
+         // Genomic composition: reused from the genome-folder cache after file #1.
+         let genomic =
+-            freqs::get_genomic_frequencies(&genome, &config.genome_folder, &config.output_dir)?;
++            freqs::get_genomic_frequencies(genome, &config.genome_folder, &config.output_dir)?;
+ 
+         let (sample, stats) =
+-            count::count_reads_in_file(&genome, infile, config.cram_ref.as_deref(), config.paired)?;
++            count::count_reads_in_file(genome, infile, config.cram_ref.as_deref(), config.paired)?;
+         eprintln!(
+             "Processed {} reads ({} skipped for an InDel/softclip/skip CIGAR)",
+             stats.total, stats.skipped
+diff --git a/rust/bismark/tests/aligner_cli.rs b/rust/bismark/tests/aligner_cli.rs
+index ad408c6f..9150c7ea 100644
+--- a/rust/bismark/tests/aligner_cli.rs
++++ b/rust/bismark/tests/aligner_cli.rs
+@@ -1202,9 +1202,19 @@ fn align_with_nucleotide_coverage(
+     bins: &Path,
+     args: &[&std::ffi::OsStr],
+ ) -> TempDir {
++    align_with_nucleotide_coverage_stderr(genome, bins, args).0
++}
++
++/// [`align_with_nucleotide_coverage`], also returning stderr.
++#[cfg(unix)]
++fn align_with_nucleotide_coverage_stderr(
++    genome: &Path,
++    bins: &Path,
++    args: &[&std::ffi::OsStr],
++) -> (TempDir, String) {
+     let temp = TempDir::new().unwrap();
+     let outdir = TempDir::new().unwrap();
+-    bin()
++    let out = bin()
+         .arg("--genome")
+         .arg(genome)
+         .arg("--path_to_bowtie2")
+@@ -1218,8 +1228,11 @@ fn align_with_nucleotide_coverage(
+         .args(args)
+         .assert()
+         .success()
+-        .stderr(predicate::str::contains("nucleotide coverage statistics"));
+-    outdir
++        .stderr(predicate::str::contains("nucleotide coverage statistics"))
++        .get_output()
++        .stderr
++        .clone();
++    (outdir, String::from_utf8(out).unwrap())
+ }
+ 
+ /// The stats file a standalone `bam2nuc` run writes for `bam`.
+@@ -1371,6 +1384,98 @@ fn nucleotide_coverage_warns_for_an_input_without_usable_reads() {
+     );
+ }
+ 
++/// `--nucleotide_coverage` with `--multicore 2`, with `--basename`, and with two inputs: each
++/// stats file equals a standalone bam2nuc on its BAM, and the genome is loaded once.
++#[cfg(unix)]
++#[test]
++fn nucleotide_coverage_covers_multicore_basename_and_several_inputs() {
++    let genome = TempDir::new().unwrap();
++    make_genome_all_dinucleotides(genome.path());
++    let bins = TempDir::new().unwrap();
++    make_fake_bowtie2_mapped(bins.path());
++    let input = TempDir::new().unwrap();
++    let reads: String = (0..4)
++        .map(|i| format!("@r{i}\nACGTAC\n+\nFFFFFF\n"))
++        .collect();
++    let many = input.path().join("many.fq");
++    fs::write(&many, reads).unwrap();
++    let (a, b) = (input.path().join("a.fq"), input.path().join("b.fq"));
++    for f in [&a, &b] {
++        fs::write(f, b"@r1\nACGTAC\n+\nFFFFFF\n").unwrap();
++    }
++    let same_as_standalone = |out: &Path, stem: &str| {
++        let stats = format!("{stem}.nucleotide_stats.txt");
++        assert_eq!(
++            fs::read(out.join(&stats)).unwrap(),
++            standalone_bam2nuc_stats(genome.path(), &out.join(format!("{stem}.bam")), &stats)
++        );
++    };
++
++    let out = align_with_nucleotide_coverage(
++        genome.path(),
++        bins.path(),
++        &["--multicore".as_ref(), "2".as_ref(), many.as_os_str()],
++    );
++    same_as_standalone(out.path(), "many_bismark_bt2");
++
++    let out = align_with_nucleotide_coverage(
++        genome.path(),
++        bins.path(),
++        &["--basename".as_ref(), "foo".as_ref(), a.as_os_str()],
++    );
++    same_as_standalone(out.path(), "foo");
++
++    let (out, stderr) = align_with_nucleotide_coverage_stderr(
++        genome.path(),
++        bins.path(),
++        &[a.as_os_str(), b.as_os_str()],
++    );
++    same_as_standalone(out.path(), "a_bismark_bt2");
++    same_as_standalone(out.path(), "b_bismark_bt2");
++    assert_eq!(
++        stderr.matches("Stored sequence information").count(),
++        1,
++        "{stderr}"
++    );
++}
++
++/// A bam2nuc write that fails mid-file leaves no stats file behind.
++#[cfg(target_os = "linux")]
++#[test]
++fn nucleotide_coverage_write_failure_leaves_no_stats_file() {
++    let genome = TempDir::new().unwrap();
++    make_genome_all_dinucleotides(genome.path());
++    let bins = TempDir::new().unwrap();
++    make_fake_bowtie2_mapped(bins.path());
++    let input = TempDir::new().unwrap();
++    let read = input.path().join("reads.fq");
++    fs::write(&read, b"@r1\nACGTAC\n+\nFFFFFF\n").unwrap();
++    let temp = TempDir::new().unwrap();
++    let outdir = TempDir::new().unwrap();
++    let stats = outdir.path().join("reads_bismark_bt2.nucleotide_stats.txt");
++    std::os::unix::fs::symlink("/dev/full", &stats).unwrap();
++    bin()
++        .arg("--genome")
++        .arg(genome.path())
++        .arg("--path_to_bowtie2")
++        .arg(bins.path())
++        .arg("--no_stream_converted")
++        .arg("--temp_dir")
++        .arg(temp.path())
++        .arg("--output_dir")
++        .arg(outdir.path())
++        .arg("--nucleotide_coverage")
++        .arg(&read)
++        .assert()
++        .failure()
++        .code(1)
++        .stderr(predicate::str::contains(
++            "bam2nuc (--nucleotide_coverage) failed",
++        ));
++    assert!(outdir.path().join("reads_bismark_bt2.bam").exists());
++    assert!(fs::symlink_metadata(&stats).is_err());
++}
++
+ /// A bam2nuc failure after a successful alignment exits non-zero and keeps the BAM.
+ #[cfg(unix)]
+ #[test]
+@@ -1403,6 +1508,12 @@ fn nucleotide_coverage_failure_fails_the_run_after_alignment() {
+             "alignment outputs are complete; bam2nuc (--nucleotide_coverage) failed",
+         ));
+     assert!(outdir.path().join("reads_bismark_bt2.bam").exists());
++    assert!(
++        outdir
++            .path()
++            .join("reads_bismark_bt2.nucleotide_stats.txt")
++            .is_dir()
++    );
+ }
+ 
+ #[cfg(unix)]
+@@ -8419,7 +8530,7 @@ fn multicore_outputs_appear_only_when_complete() {
+ }
+ 
+ /// 5-Base: an input whose engine fails leaves nothing, while the finished input keeps its
+-/// BAM, report and deconvolution report together.
++/// BAM, report and post-pass outputs together.
+ #[cfg(unix)]
+ #[test]
+ fn five_base_failed_input_keeps_the_finished_inputs_post_pass_outputs() {
+@@ -8460,6 +8571,8 @@ fn five_base_failed_input_keeps_the_finished_inputs_post_pass_outputs() {
+         .arg(genome.path())
+         .arg("--illumina_5base")
+         .arg("--five_base_deconvolution")
++        .args(["--five_base_duplex", "--five_base_consensus"])
++        .args(["--five_base_emit_multiplicity", "both"])
+         .arg("--path_to_minimap2")
+         .arg(bins.path())
+         .arg("--output_dir")
+@@ -8475,8 +8588,55 @@ fn five_base_failed_input_keeps_the_finished_inputs_post_pass_outputs() {
+         dir_names(outdir.path()),
+         [
+             "a_1_bismark_mm2_PE_report.txt",
++            "a_1_bismark_mm2_pe.5base_consensus.bam",
+             "a_1_bismark_mm2_pe.5base_deconvolution.txt",
++            "a_1_bismark_mm2_pe.5base_duplex.txt",
++            "a_1_bismark_mm2_pe.5base_simplex.bam",
+             "a_1_bismark_mm2_pe.bam",
+         ]
+     );
+ }
++
++/// `--combined_index`: of two inputs the second fails; only the first's outputs remain.
++#[cfg(unix)]
++#[test]
++fn combined_index_failed_input_leaves_only_the_finished_inputs_outputs() {
++    let genome = TempDir::new().unwrap();
++    make_genome_combined(genome.path());
++    let bins = TempDir::new().unwrap();
++    make_fake_bowtie2_combined(bins.path());
++    let real = bins.path().join("bowtie2.real");
++    fs::rename(bins.path().join("bowtie2"), &real).unwrap();
++    write_exec(
++        &bins.path().join("bowtie2"),
++        &format!(
++            "#!/bin/sh\ncase \"$*\" in *bad.fq*) exit 1;; esac\nexec {} \"$@\"\n",
++            real.display()
++        ),
++    );
++    let input = TempDir::new().unwrap();
++    let good = write_reads_ids(input.path(), "good.fq", &["r_ot"]);
++    let bad = write_reads_ids(input.path(), "bad.fq", &["r_ot"]);
++    let temp = TempDir::new().unwrap();
++    let outdir = TempDir::new().unwrap();
++    bin()
++        .arg("--combined_index")
++        .arg("--genome")
++        .arg(genome.path())
++        .arg("--path_to_bowtie2")
++        .arg(bins.path())
++        .arg("--no_stream_converted")
++        .arg("--temp_dir")
++        .arg(temp.path())
++        .arg("--output_dir")
++        .arg(outdir.path())
++        .arg(&good)
++        .arg(&bad)
++        .timeout(std::time::Duration::from_secs(60))
++        .assert()
++        .failure();
++    assert_eq!(
++        dir_names(outdir.path()),
++        ["good_bismark_bt2.bam", "good_bismark_bt2_SE_report.txt"]
++    );
++}
+diff --git a/rust/bismark/tests/aligner_five_base_simplex.rs b/rust/bismark/tests/aligner_five_base_simplex.rs
+index b99e0c89..a135c522 100644
+--- a/rust/bismark/tests/aligner_five_base_simplex.rs
++++ b/rust/bismark/tests/aligner_five_base_simplex.rs
+@@ -745,3 +745,71 @@ fn simplex_never_calls_a_strand_it_did_not_sequence() {
+         );
+     }
+ }
++
++/// The standalone consensus publishes only final names, and a failing input leaves nothing.
++#[test]
++fn consensus_from_bam_publishes_only_complete_outputs() {
++    if !samtools_available() {
++        eprintln!("skipping: samtools not on PATH");
++        return;
++    }
++    let tmp = tempfile::tempdir().unwrap();
++    let n = 40;
++    write_genome(tmp.path(), n);
++    let mut recs = String::new();
++    for i in 0..n {
++        recs.push_str(&pair(
++            &format!("ot{i}"),
++            i,
++            true,
++            &seq_ot_methylated(),
++            60,
++            60,
++        ));
++        recs.push_str(&pair(&format!("ob{i}"), i, false, WINDOW, 60, 60));
++    }
++    let bam = make_bam(tmp.path(), "families", n, &recs);
++    let names = |d: &Path| {
++        let mut v: Vec<String> = std::fs::read_dir(d)
++            .unwrap()
++            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
++            .collect();
++        v.sort();
++        v
++    };
++
++    let ok = tempfile::tempdir().unwrap();
++    run_consensus(tmp.path(), ok.path(), &bam, &[]);
++    assert!(
++        names(ok.path()).iter().all(|n| !n.ends_with(".partial")),
++        "{:?}",
++        names(ok.path())
++    );
++    assert!(ok.path().join("five_base_consensus.bam").exists());
++
++    // A BAM cut short fails while its records are read, before any output is opened.
++    let bytes = std::fs::read(&bam).unwrap();
++    let cut = tmp.path().join("cut.bam");
++    std::fs::write(&cut, &bytes[..bytes.len() - 60]).unwrap();
++    let failed = tempfile::tempdir().unwrap();
++    let out = Command::new(bismark_bin())
++        .arg("--illumina_5base")
++        .arg("--five_base_consensus_from_bam")
++        .arg(&cut)
++        .arg("--genome")
++        .arg(tmp.path())
++        .arg("--output_dir")
++        .arg(failed.path())
++        .output()
++        .unwrap();
++    assert!(
++        !out.status.success(),
++        "{}",
++        String::from_utf8_lossy(&out.stderr)
++    );
++    assert!(
++        names(failed.path()).is_empty(),
++        "{:?}",
++        names(failed.path())
++    );
++}

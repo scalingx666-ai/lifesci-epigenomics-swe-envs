@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/pinellolab__DNA-Diffusion-362"
+description = "chore(sampling): update state dict loading for local checkpoints"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "DNA-Diffusion",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "pinellolab/DNA-Diffusion"
+ref = "0dadc708e0bdd527a2025501874ef5852f99dced"
+reference = "https://github.com/pinellolab/DNA-Diffusion/pull/362"
+source_access = "auto"
+built_at = "2026-11-14T06:58:14.120077+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:159af03143afd2acc5ca49db1465b9154fe452d0b9785c51ffa833131d567e35"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-06-30T17:43:22Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "notebooks/training_and_sequence_generation.ipynb",
+    "sample.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5269
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

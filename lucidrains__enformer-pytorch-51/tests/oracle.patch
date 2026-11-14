@@ -1,0 +1,26 @@
+diff --git a/enformer_pytorch/data.py b/enformer_pytorch/data.py
+index 6f914fb..f87d320 100644
+--- a/enformer_pytorch/data.py
++++ b/enformer_pytorch/data.py
+@@ -55,7 +55,7 @@ def coin_flip():
+ def torch_fromstring(seq_strs):
+     batched = not isinstance(seq_strs, str)
+     seq_strs = cast_list(seq_strs)
+-    np_seq_chrs = list(map(lambda t: np.fromstring(t, dtype = np.uint8), seq_strs))
++    np_seq_chrs = list(map(lambda t: np.frombuffer(t.encode(), dtype = np.uint8).copy(), seq_strs))
+     seq_chrs = list(map(torch.from_numpy, np_seq_chrs))
+     return torch.stack(seq_chrs) if batched else seq_chrs[0]
+ 
+diff --git a/setup.py b/setup.py
+index 7424b02..54d9ece 100644
+--- a/setup.py
++++ b/setup.py
+@@ -19,7 +19,7 @@
+   install_requires=[
+     'discrete-key-value-bottleneck-pytorch>=0.0.8',
+     'einops>=0.3',
+-    'numpy',
++    'numpy>=2.3.1',
+     'torch>=1.6',
+     'torchmetrics',
+     'polars',

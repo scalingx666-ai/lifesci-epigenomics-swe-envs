@@ -1,0 +1,67 @@
+version = "1.0"
+
+[task]
+name = "default/dohlee__metheor-35"
+description = "Stream tagged BAM to stdout and protect source files"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "metheor",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "dohlee/metheor"
+ref = "346da8d6ddb1e5b187be6114c04c9be77222b9dd"
+reference = "https://github.com/dohlee/metheor/pull/35"
+source_access = "auto"
+built_at = "2026-11-14T07:17:52.859766+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:35ffaa11f84e942fa1c206a2f06fefd4562cfa8fc7433c653b8dad90aeb6336b"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-29T00:40:11Z"
+diff_format = "unified"
+context_files = [
+    "README.md",
+    "src/alignmentwriter.rs",
+    "src/lib.rs",
+    "src/main.rs",
+    "src/tag.rs",
+    "tests/tag_streams.rs",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 316
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

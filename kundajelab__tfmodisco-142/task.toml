@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/kundajelab__tfmodisco-142"
+description = "Fix seqlet FASTA export coordinates and lengths"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "tfmodisco",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "kundajelab/tfmodisco"
+ref = "28154f18ec422c0738d3e45316c8a2fc76e6c88f"
+reference = "https://github.com/kundajelab/tfmodisco/pull/142"
+source_access = "auto"
+built_at = "2026-11-14T07:15:07.179896+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:f118580d8255c66534cd40c425f0b2171983d67d9e0ff71065219916ccacbe98"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-05T08:22:07Z"
+diff_format = "unified"
+context_files = [
+    "CHANGELOG",
+    "README.md",
+    "modiscolite/io.py",
+    "tests/test_fasta_coordinates.py",
+    "tests/test_io.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 215
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

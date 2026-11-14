@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/MAGICS-LAB__DNABERT_2-113"
+description = "Add Continuous Integration script to reproduce error `assert q.is_cuda and k.is_cuda and v.is_cuda`"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "DNABERT_2",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "MAGICS-LAB/DNABERT_2"
+ref = "c0e55cc4f25f50f616aa45e993bcaba77f8a60dc"
+reference = "https://github.com/MAGICS-LAB/DNABERT_2/pull/113"
+source_access = "auto"
+built_at = "2026-11-14T07:13:31.123667+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:c9a4400c3a6b6121675ac542d15b8a9fb34eeb05d2379115cae5cd5389a2105a"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-12-14T04:00:30Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/check_build.yml",
+    ".github/workflows/example_huggingface_newer_than_v4_28.py",
+    ".github/workflows/example_huggingface_v4_28.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 57
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

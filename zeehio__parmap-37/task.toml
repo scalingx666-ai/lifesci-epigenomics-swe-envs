@@ -1,0 +1,68 @@
+version = "1.0"
+
+[task]
+name = "default/zeehio__parmap-37"
+description = "Calibrate flaky test timings and warn on reserved-kwarg collisions"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "parmap",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "zeehio/parmap"
+ref = "8ccac3b914fa347ef451b7fdc6f2cda4a5085627"
+reference = "https://github.com/zeehio/parmap/pull/37"
+source_access = "auto"
+built_at = "2026-11-14T07:15:59.348926+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:1c01965dedc0686117e3343b1f0f33dde562308fbe4e52d406b05d34d46ccb50"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-07T14:00:28Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/test.yml",
+    ".gitignore",
+    "ChangeLog",
+    "README.rst",
+    "parmap/parmap.py",
+    "pyproject.toml",
+    "test_parmap.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 233
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

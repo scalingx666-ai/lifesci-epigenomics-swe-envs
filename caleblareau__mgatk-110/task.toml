@@ -1,0 +1,74 @@
+version = "1.0"
+
+[task]
+name = "default/caleblareau__mgatk-110"
+description = "Fix CLI version regression, gzip barcode counting; add CI + tests"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "mgatk",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "caleblareau/mgatk"
+ref = "673435161e227454bf7a9cc15688974336af778b"
+reference = "https://github.com/caleblareau/mgatk/pull/110"
+source_access = "auto"
+built_at = "2026-11-14T07:16:36.867658+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:515413a0882ade22ba4f1e13ad27cfbee2e7ba5291e4fd08c4840933d0ee99f6"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-07-08T17:11:19Z"
+diff_format = "unified"
+context_files = [
+    ".github/workflows/ci.yml",
+    ".travis.yml",
+    "README.md",
+    "mgatk/__init__.py",
+    "mgatk/cli.py",
+    "mgatk/deletioncalling/clidel.py",
+    "mgatk/deletioncalling/clifind.py",
+    "mgatk/mgatkHelp.py",
+    "tests/conftest.py",
+    "tests/test_cli.py",
+    "tests/test_deletioncalling.py",
+    "tests/test_remove_background_removed.py",
+    "tests/test_version.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 319
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

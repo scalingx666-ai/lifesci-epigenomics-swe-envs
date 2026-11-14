@@ -1,0 +1,2336 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 662d7177..07ea3467 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,7 +1,7 @@
+ Package: Signac
+ Title: Analysis of Single-Cell Chromatin Data
+-Version: 1.9999.6
+-Date: 2026-06-11
++Version: 1.9999.7
++Date: 2026-08-04
+ Authors@R: c(
+   person(given = 'Tim', family = 'Stuart', email = 'stuartt@a-star.edu.sg', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-3044-0897')),
+   person(given = 'Avi', family = 'Srivastava', email = 'asrivastava@wistar.org', role = 'ctb', comment = c(ORCID = '0000-0001-9798-2079')),
+diff --git a/NAMESPACE b/NAMESPACE
+index 207968c5..a61f43a8 100644
+--- a/NAMESPACE
++++ b/NAMESPACE
+@@ -349,6 +349,7 @@ importFrom(Rsamtools,indexTabix)
+ importFrom(Rsamtools,scanTabix)
+ importFrom(Rsamtools,seqnamesTabix)
+ importFrom(S4Vectors,"mcols<-")
++importFrom(S4Vectors,DataFrame)
+ importFrom(S4Vectors,elementNROWS)
+ importFrom(S4Vectors,mcols)
+ importFrom(S4Vectors,queryHits)
+@@ -483,6 +484,7 @@ importFrom(rlang,is_integerish)
+ importFrom(scales,comma)
+ importFrom(scales,hue_pal)
+ importFrom(sparseMatrixStats,rowVars)
++importFrom(stats,ave)
+ importFrom(stats,cor)
+ importFrom(stats,cov)
+ importFrom(stats,dist)
+diff --git a/NEWS.md b/NEWS.md
+index 8deaa961..7cbecbd5 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -85,6 +85,11 @@ beyond the ends of chromosomes.
+ cells, avoiding an unnecessary scan of the whole file.
+ * Functions no longer reset the random number seed.
+ * Added back `RunChromVAR()` and `AddChromatinModule()`
++* Changed the behavior of `LinkPeaks()`: zscores are not computed by default;
++the distance parameter now checks the distance to any gene TSS, not just the TSS
++of the longest transcript; `score_cutoff` parameter renamed to `cor.cutoff`;
++output includes the distance to the gene TSS, the fraction of the peak that
++overlaps the gene, and whether the gene is the closest gene to the peak.
+ 
+ # Signac 1.17.1
+ 
+diff --git a/R/links.R b/R/links.R
+index 0cb54d48..12cb33aa 100644
+--- a/R/links.R
++++ b/R/links.R
+@@ -61,8 +61,9 @@ GetLinkedPeaks.ChromatinAssay5 <- function(
+   if (length(x = lnk) == 0) {
+     stop("No links present in assay. Run LinkPeaks first.")
+   }
++  gene.names <- LinkGeneNames(links = lnk)
+   lnk.keep <- lnk[(abs(x = lnk$score) > min.abs.score) &
+-                    lnk$anchor2.gene_name %in% features]
++                    gene.names %in% features]
+   return(unique(x = as.character(x = anchors(x = lnk.keep)$first)))
+ }
+ 
+@@ -126,8 +127,9 @@ GetLinkedGenes.ChromatinAssay5 <- function(
+     stop("No links present in assay. Run LinkPeaks first.")
+   }
+   pknames <- as.character(x = anchors(x = lnk)$first)
+-  lnk.keep <- lnk[(abs(x = lnk$score) > min.abs.score) & pknames %in% features]
+-  return(unique(x = lnk.keep$anchor2.gene_name))
++  gene.names <- LinkGeneNames(links = lnk)
++  lnk.keep <- (abs(x = lnk$score) > min.abs.score) & pknames %in% features
++  return(unique(x = gene.names[lnk.keep]))
+ }
+ 
+ #' Cicero connections to links
+@@ -190,71 +192,517 @@ ConnectionsToLinks <- function(
+   return(gi)
+ }
+ 
+-#' Link peaks to genes
++
++
++#' Find candidate peak-gene links
++#'
++#' Identify candidate peak-gene pairs within a specified distance from a
++#' transcription start site (TSS).
++#'
++#' A TSS is computed for every transcript in the annotation, so a gene with
++#' multiple transcripts contributes multiple TSSs. A peak is a candidate for a
++#' gene if it falls within `distance` of any TSS of that gene. Each peak-gene
++#' pair is reported once, using the transcript whose TSS is closest to the peak,
++#' and `tss_distance` is the distance to that TSS.
+ #'
+-#' Find peaks that are correlated with the expression of nearby genes.
+-#' For each gene, this function computes the correlation coefficient between
+-#' the gene expression and accessibility of each peak within a given distance
+-#' from the gene TSS, and computes an expected correlation coefficient for each
+-#' peak given the GC content, accessibility, and length of the peak. The
+-#' expected coefficient values for the peak are then used to compute a z-score
+-#' and p-value.
++#' @param object A Seurat object.
++#' @param peak.assay Name of assay containing peak information.
++#' @param expression.assay Name of assay containing gene expression information.
++#' @param peak.layer Name of layer to pull chromatin data from.
++#' @param expression.layer Name of layer to pull expression data from.
++#' @param gene.coords A [GenomicRanges::GRanges] object containing gene or
++#' transcript coordinates. If `NULL`, gene annotations are extracted from the
++#' peak assay.
++#' @param distance Maximum distance from a TSS for a peak-gene pair to be
++#' considered a candidate link.
++#' @param min.distance Optional minimum distance from a TSS. Candidate links
++#' closer than this distance are excluded.
++#' @param min.cells Minimum number of cells positive for a peak or gene for it
++#' to be retained.
++#' @param genes.use Optional vector of genes to test. If `NULL`, genes are
++#' selected from the expression assay after `min.cells` filtering.
++#' @param gene.id Set to `TRUE` if genes in the expression assay are named by
++#' gene ID rather than gene name.
++#' @param verbose Display messages.
++#'
++#' @return A list containing objects used downstream by [LinkPeaks()]:
++#' `candidate.matrix`, `candidate.links`, `peaks`, `gene.coords`, `peak.data`,
++#' and `expression.data`.
++#'
++#' @importFrom GenomicRanges GRanges granges seqnames start end width strand resize findOverlaps
++#' @importFrom IRanges IRanges
++#' @importFrom S4Vectors mcols queryHits subjectHits
++#' @importFrom InteractionSet GInteractions
++#' @importFrom Matrix rowSums sparseMatrix
++#' @importFrom SeuratObject LayerData Layers
++#' @importFrom stats ave
++#'
++#' @noRd
++FindCandidateLinks <- function(
++  object,
++  peak.assay,
++  expression.assay,
++  peak.layer = "counts",
++  expression.layer = "data",
++  gene.coords = NULL,
++  distance = 5e5,
++  min.distance = NULL,
++  min.cells = 10,
++  genes.use = NULL,
++  gene.id = FALSE,
++  verbose = TRUE
++) {
++  gene.key <- if (gene.id) "gene_id" else "gene_name"
++
++  .peak_to_tss_distance <- function(peaks, tss, peak_index, tss_index) {
++    peak.starts <- start(peaks)[peak_index]
++    peak.ends <- end(peaks)[peak_index]
++    tss.pos <- start(tss)[tss_index]
++
++    ifelse(
++      tss.pos >= peak.starts & tss.pos <= peak.ends,
++      0,
++      pmin(abs(tss.pos - peak.starts), abs(tss.pos - peak.ends))
++    )
++  }
++
++  .add_closest_gene_info <- function(df) {
++    # TRUE when no other candidate gene has a TSS closer to this peak. Ties are
++    # all marked TRUE
++    df$closest_gene <- df$tss_distance ==
++      ave(df$tss_distance, df$peak_index, FUN = min)
++    df
++  }
++
++  .add_peak_gene_overlap_info <- function(df, peaks, gene.body.coords, gene.key) {
++    df$frac_peak_in_gene <- 0
++
++    if (nrow(df) == 0 || length(gene.body.coords) == 0) {
++      return(df)
++    }
++
++    gene.body.values <- as.character(
++      mcols(gene.body.coords)[[gene.key]]
++    )
++
++    body.index <- match(as.character(df$gene), gene.body.values)
++    ok <- !is.na(body.index)
++
++    if (any(ok)) {
++      peak.ranges <- peaks[df$peak_index[ok]]
++      body.ranges <- gene.body.coords[body.index[ok]]
++
++      same.seq <- as.character(seqnames(peak.ranges)) ==
++        as.character(seqnames(body.ranges))
++
++      overlap.start <- pmax(
++        start(peak.ranges),
++        start(body.ranges)
++      )
++      overlap.end <- pmin(
++        end(peak.ranges),
++        end(body.ranges)
++      )
++
++      overlap.width <- ifelse(
++        same.seq,
++        pmax(0L, overlap.end - overlap.start + 1L),
++        0L
++      )
++
++      df$frac_peak_in_gene[ok] <- overlap.width / width(peak.ranges)
++    }
++
++    df
++  }
++
++  if (!inherits(object[[peak.assay]], "GRangesAssay")) {
++    stop("The requested peak assay is not a GRangesAssay")
++  }
++
++  if (!is.null(x = min.distance)) {
++    if (!is.numeric(x = min.distance)) {
++      stop("min.distance should be a numeric value")
++    }
++    if (min.distance < 0) {
++      warning(
++        "Requested a negative min.distance value, setting min.distance to zero"
++      )
++      min.distance <- NULL
++    } else if (min.distance == 0) {
++      min.distance <- NULL
++    } else if (min.distance >= distance) {
++      stop("min.distance should be smaller than distance")
++    }
++  }
++
++  gene.coords.input <- gene.coords
++  if (is.null(gene.coords.input)) {
++    gene.coords.input <- Annotation(object[[peak.assay]])
++    if (is.null(gene.coords.input)) stop("Gene annotations not found")
++  }
++
++  if (!("gene_id" %in% colnames(mcols(gene.coords.input)))) {
++    stop("gene.coords / annotation must contain 'gene_id'")
++  }
++
++  if (!("gene_name" %in% colnames(mcols(gene.coords.input)))) {
++    if (gene.id) {
++      mcols(gene.coords.input)$gene_name <- mcols(gene.coords.input)$gene_id
++    } else {
++      stop("gene.coords / annotation must contain 'gene_name' when gene.id = FALSE")
++    }
++  }
++
++  if (!(peak.layer %in% Layers(object[[peak.assay]]))) {
++    stop("Requested peak layer not found")
++  }
++
++  if (!(expression.layer %in% Layers(object[[expression.assay]]))) {
++    stop("Requested expression layer not found")
++  }
++
++  peak.data <- LayerData(object[[peak.assay]], layer = peak.layer)
++  expression.data <- LayerData(object[[expression.assay]], layer = expression.layer)
++
++  peaks.keep <- rowSums(peak.data > 0) >= min.cells
++  genes.keep <- names(which(rowSums(expression.data > 0) >= min.cells))
++
++  if (!is.null(genes.use)) {
++    genes.keep <- intersect(genes.keep, genes.use)
++  }
++
++  peak.data <- peak.data[peaks.keep, , drop = FALSE]
++  expression.data <- expression.data[genes.keep, , drop = FALSE]
++
++  if (nrow(peak.data) == 0) stop("No peaks pass min.cells filtering")
++  if (nrow(expression.data) == 0) stop("No genes pass min.cells / genes.use filtering")
++
++  genes <- rownames(expression.data)
++  peaks <- granges(object[[peak.assay]])[peaks.keep]
++  peak.names <- rownames(peak.data)
++  if (is.null(peak.names)) peak.names <- as.character(peaks)
++
++  gene.body.coords <- GetGeneRanges(ranges = gene.coords.input)
++
++  # one range per transcript, so that resizing to the 5' end gives the TSS of
++  # each transcript rather than the start of each exon
++  transcript.coords.use <- GetTranscriptRanges(ranges = gene.coords.input)
++
++  # GetGeneRanges() makes gene names unique, so carry those names onto the
++  # transcripts by gene ID. Genes are matched to the expression assay by name,
++  # and without this a duplicated gene symbol would have the transcripts of
++  # every gene sharing the symbol attributed to whichever gene kept the plain
++  # name, producing links to TSSs belonging to a different gene
++  gene.name.lookup <- gene.body.coords$gene_name
++  names(x = gene.name.lookup) <- gene.body.coords$gene_id
++  transcript.coords.use$gene_name <- as.character(
++    x = gene.name.lookup[transcript.coords.use$gene_id]
++  )
++
++  # a gene with no gene-level coordinates, for example one dropped for being
++  # annotated on more than one chromosome, cannot be linked: drop its
++  # transcripts so they are not attributed to a gene we have no extent for
++  transcript.coords.use <- transcript.coords.use[
++    transcript.coords.use$gene_id %in% gene.body.coords$gene_id
++  ]
++
++  if (gene.id) {
++    gene.body.coords <- gene.body.coords[gene.body.coords$gene_id %in% genes]
++    gene.body.coords$gene_name <- gene.body.coords$gene_id
++  } else {
++    gene.body.coords <- gene.body.coords[gene.body.coords$gene_name %in% genes]
++  }
++
++  gene.body.values <- as.character(
++    mcols(gene.body.coords)[[gene.key]]
++  )
++  keep.body.genes <- genes[genes %in% gene.body.values]
++  gene.body.coords <- gene.body.coords[match(keep.body.genes, gene.body.values)]
++
++  if (gene.id) {
++    transcript.coords.use <- transcript.coords.use[
++      transcript.coords.use$gene_id %in% genes
++    ]
++    transcript.coords.use$gene_name <- transcript.coords.use$gene_id
++  } else {
++    transcript.coords.use <- transcript.coords.use[
++      transcript.coords.use$gene_name %in% genes
++    ]
++  }
++
++  if (length(transcript.coords.use) == 0) {
++    stop("No transcript/gene coordinates found")
++  }
++
++  transcript.gene.values <- as.character(
++    mcols(transcript.coords.use)[[gene.key]]
++  )
++  gene.values <- genes[genes %in% unique(transcript.gene.values)]
++
++  if (length(gene.values) == 0) {
++    stop("No expressed genes matched transcript coordinates")
++  }
++
++  # keep gene-level coordinates in the same order as the columns of the
++  # candidate matrix, since LinkPeaks indexes into this by gene
++  gene.coords.use <- gene.body.coords[
++    match(gene.values, as.character(mcols(gene.body.coords)[[gene.key]]))
++  ]
++
++  # resize() is strand aware, so fix = "start" gives the 5' end of the
++  # transcript on both strands
++  transcript.tss <- resize(
++    transcript.coords.use,
++    width = 1,
++    fix = "start"
++  )
++
++  outer.hits <- findOverlaps(
++    query = peaks,
++    subject = Extend(
++      transcript.tss,
++      upstream = distance,
++      downstream = distance
++    ),
++    type = "any"
++  )
++
++  if (length(outer.hits) == 0) {
++    stop("No candidate peak-transcript links found")
++  }
++
++  outer.df <- data.frame(
++    peak_index = queryHits(outer.hits),
++    transcript_index = subjectHits(outer.hits)
++  )
++
++  outer.df$gene <- transcript.gene.values[outer.df$transcript_index]
++  outer.df <- outer.df[outer.df$gene %in% gene.values, , drop = FALSE]
++
++  if (nrow(outer.df) == 0) {
++    stop("No candidate peak-transcript links matched expressed genes")
++  }
++
++  if (!is.null(min.distance)) {
++    inner.hits <- findOverlaps(
++      query = peaks,
++      subject = Extend(
++        transcript.tss,
++        upstream = min.distance,
++        downstream = min.distance
++      ),
++      type = "any"
++    )
++
++    if (length(inner.hits) > 0) {
++      inner.df <- data.frame(
++        peak_index = queryHits(inner.hits),
++        transcript_index = subjectHits(inner.hits)
++      )
++
++      inner.df$gene <- transcript.gene.values[inner.df$transcript_index]
++      inner.df <- inner.df[inner.df$gene %in% gene.values, , drop = FALSE]
++
++      outer.df <- outer.df[
++        !(paste(outer.df$peak_index, outer.df$gene, sep = "\r") %in%
++            paste(inner.df$peak_index, inner.df$gene, sep = "\r")),
++        ,
++        drop = FALSE
++      ]
++    }
++  }
++
++  if (nrow(outer.df) == 0) {
++    stop("No candidate links remain after min.distance filtering")
++  }
++
++  outer.df$gene_index <- match(outer.df$gene, gene.values)
++
++  outer.df$tss_distance <- .peak_to_tss_distance(
++    peaks = peaks,
++    tss = transcript.tss,
++    peak_index = outer.df$peak_index,
++    tss_index = outer.df$transcript_index
++  )
++
++  outer.df$tss_seqname <- as.character(
++    seqnames(transcript.tss)
++  )[outer.df$transcript_index]
++
++  outer.df$tss_position <- start(transcript.tss)[
++    outer.df$transcript_index
++  ]
++
++  outer.df$tss_strand <- as.character(
++    strand(transcript.tss)
++  )[outer.df$transcript_index]
++
++  # keep the transcript whose TSS is closest to the peak for each peak-gene pair
++  outer.df <- outer.df[order(
++    outer.df$peak_index,
++    outer.df$gene_index,
++    outer.df$tss_distance,
++    outer.df$transcript_index
++  ), , drop = FALSE]
++
++  outer.df <- outer.df[
++    !duplicated(paste(outer.df$peak_index, outer.df$gene_index, sep = "\r")),
++    ,
++    drop = FALSE
++  ]
++
++  outer.df$peak <- peak.names[outer.df$peak_index]
++  outer.df <- .add_closest_gene_info(outer.df)
++  outer.df <- .add_peak_gene_overlap_info(
++    df = outer.df,
++    peaks = peaks,
++    gene.body.coords = gene.body.coords,
++    gene.key = gene.key
++  )
++
++  candidate.matrix <- sparseMatrix(
++    i = outer.df$peak_index,
++    j = outer.df$gene_index,
++    x = 1,
++    dims = c(length(peaks), length(gene.values))
++  )
++
++  rownames(candidate.matrix) <- peak.names
++  colnames(candidate.matrix) <- gene.values
++
++  candidate.tss <- GRanges(
++    seqnames = outer.df$tss_seqname,
++    ranges = IRanges(
++      start = outer.df$tss_position,
++      end = outer.df$tss_position
++    ),
++    strand = outer.df$tss_strand
++  )
++  mcols(candidate.tss) <- NULL
++
++  candidate.links <- GInteractions(
++    peaks[outer.df$peak_index],
++    candidate.tss
++  )
++
++  candidate.links$peak <- outer.df$peak
++  candidate.links$gene <- outer.df$gene
++  candidate.links$tss_distance <- outer.df$tss_distance
++  candidate.links$frac_peak_in_gene <- outer.df$frac_peak_in_gene
++  candidate.links$closest_gene <- outer.df$closest_gene
++
++  if (verbose) {
++    message(
++      "Identified ", length(candidate.links),
++      " candidate peak-gene links across ", ncol(candidate.matrix),
++      " genes and ", sum(rowSums(candidate.matrix) > 0),
++      " peaks"
++    )
++  }
++
++  # Return only objects used downstream by LinkPeaks().
++  list(
++    candidate.matrix = candidate.matrix,
++    candidate.links = candidate.links,
++    peaks = peaks,
++    gene.coords = gene.coords.use,
++    peak.data = peak.data,
++    expression.data = expression.data
++  )
++}
++
++#' Link peaks to genes
+ #'
+-#' This function was inspired by the method originally described by SHARE-seq
+-#' (Sai Ma et al. 2020, Cell). Please consider citing the original SHARE-seq
+-#' work if using this function:
+-#' [doi: 10.1016/j.cell.2020.09.056](https://pubmed.ncbi.nlm.nih.gov/33098772/)
++#' Compute the correlation between peak DNA accessibility and the RNA abundance
++#' of nearby genes.
++#' 
++#' For each gene, this function computes the correlation coefficient between gene
++#' expression and accessibility of candidate peaks within a specified distance
++#' from a transcription start site (TSS) of that gene. A TSS is computed for
++#' every transcript in the annotation, so a peak is a candidate for a gene if it
++#' falls within `distance` of any of that gene's TSSs. By default, links are
++#' retained using the observed correlation coefficient only. If `zscore = TRUE`,
++#' the function also computes an expected correlation coefficient for each peak
++#' following the method of Ma et al. ([doi: 10.1016/j.cell.2020.09.056](https://pubmed.ncbi.nlm.nih.gov/33098772/))
++#' using background peaks matched on GC content, accessibility, and sequence
++#' length, and uses this background distribution to compute a z-score and
++#' p-value.
++#' 
++#' Note that in Signac v2 the default `LinkPeaks` behavior has changed to skip
++#' computation of the z-scores. This change was made due to work by Leblanc &
++#' Lettre ([doi: 10.1038/s41598-023-31040-w](https://doi.org/10.1038/s41598-023-31040-w))
++#' showing that the z-score method is influenced by the cell type composition of
++#' the dataset, and can result in a higher false negative rate. If required,
++#' z-scores can still be computed by setting `zscore=TRUE`.
++#' 
++#' The main purpose of `LinkPeaks` is to provide the raw correlation
++#' coefficients between DNA accessibility and gene expression. For accurate
++#' peak-gene linkage, these correlation coefficients alone are often
++#' insufficient. We recommend exploring other methods such as pgBoost, ScarLink,
++#' and scE2G.
+ #'
+-#' @param object A Seurat object
+-#' @param peak.assay Name of assay containing peak information
+-#' @param peak.layer Name of layer to pull chromatin data from
+-#' @param expression.assay Name of assay containing gene expression information
+-#' @param expression.layer Name of layer to pull expression data from
+-#' @param method Correlation method to use. One of "pearson" or "spearman"
+-#' @param key Key to use when storing link information in the assay
+-#' @param gene.coords GRanges object containing coordinates of genes in the
+-#' expression assay. If NULL, extract from gene annotations stored in the assay.
+-#' @param distance Distance threshold for peaks to include in regression model
+-#' @param min.distance Minimum distance between peak and TSS to include in
+-#' regression model. If NULL (default), no minimum distance is used.
++#' @param object A Seurat object.
++#' @param peak.assay Name of assay containing peak information.
++#' @param expression.assay Name of assay containing gene expression information.
++#' @param peak.layer Name of layer to pull chromatin data from.
++#' @param expression.layer Name of layer to pull expression data from.
++#' @param method Correlation method to use. One of `"pearson"` or `"spearman"`.
++#' @param key Key to use when storing link information in the assay.
++#' @param gene.coords A [GenomicRanges::GRanges] object containing gene or
++#' transcript coordinates. If `NULL`, gene annotations are extracted from the
++#' peak assay.
++#' @param genes.use Optional vector of genes to test. If `NULL`, genes are
++#' selected from the expression assay after `min.cells` filtering.
++#' @param distance Maximum distance from a TSS for peaks to include as candidate
++#' links.
++#' @param min.distance Optional minimum distance from a TSS. Candidate links
++#' closer than this distance are excluded.
++#' @param cor.cutoff Minimum absolute correlation coefficient for a link to be
++#' retained.
+ #' @param min.cells Minimum number of cells positive for the peak and gene
+-#' needed to include in the results.
+-#' @param genes.use Genes to test. If NULL, determine from expression assay.
+-#' @param n_sample Number of peaks to sample at random when computing the null
+-#' distribution.
+-#' @param pvalue_cutoff Minimum p-value required to retain a link. Links with a
+-#' p-value equal or greater than this value will be removed from the output.
+-#' @param score_cutoff Minimum absolute value correlation coefficient for a link
+-#' to be retained
+-#' @param gene.id Set to TRUE if genes in the expression assay are named
+-#' using gene IDs rather than gene names.
+-#' @param verbose Display messages
+-#' @param peak.slot Deprecated (use `peak.layer`)
+-#' @param expression.slot Deprecated (used `expression.layer`)
++#' needed to include them in the analysis.
++#' @param n_sample Number of background peaks to sample when computing the null
++#' distribution. Only used when `zscore = TRUE`.
++#' @param pvalue_cutoff Maximum p-value for retaining a link. Links with a
++#' p-value greater than or equal to this value are removed from the output. Only
++#' used when `zscore = TRUE`.
++#' @param zscore Compute background-matched z-scores and p-values. If
++#' `FALSE` (default), background peak matching is skipped and links are retained
++#' using `cor.cutoff` only.
++#' @param gene.id Set to `TRUE` if genes in the expression assay are named by
++#' gene ID rather than gene name.
++#' @param verbose Display messages.
++#' @param peak.slot Deprecated; use `peak.layer`.
++#' @param expression.slot Deprecated; use `expression.layer`.
++#'
++#' @return Returns a Seurat object with results added to the links slot in the
++#' peak assay, stored under `key`. The results are stored as an
++#' [InteractionSet::GInteractions] object accessible via [Links()]. The metadata
++#' stored on each link includes:
++#' * `peak`: peak identifier
++#' * `gene`: linked gene identifier
++#' * `tss_distance`: distance from the peak to the selected TSS
++#' * `frac_peak_in_gene`: fraction of the peak width overlapping the linked gene
++#' body
++#' * `closest_gene`: `TRUE` when no other candidate gene has a TSS closer to
++#' this peak
++#' * `score`: observed correlation coefficient
++#' * `zscore`: z-score of the observed correlation coefficient; `NA` when
++#' `zscore = FALSE`
++#' * `pvalue`: p-value associated with the z-score; `NA` when
++#' `zscore = FALSE`
+ #'
+ #' @importFrom SeuratObject LayerData Layers as.sparse
+-#' @importFrom stats pnorm sd
+ #' @importFrom Matrix sparseMatrix rowSums
++#' @importMethodsFrom Matrix t
++#' @importFrom GenomicRanges seqnames
++#' @importFrom S4Vectors mcols DataFrame
+ #' @importFrom future.apply future_lapply
+ #' @importFrom future nbrOfWorkers
+ #' @importFrom pbapply pblapply
+ #' @importFrom lifecycle is_present deprecated deprecate_warn
+-#' @importMethodsFrom Matrix t
+-#'
+-#' @return Returns a Seurat object with results added to the `links` slot in the
+-#' assay, stored under the key specified in the function. The results are stored
+-#' as an [InteractionSet::GInteractions] object accessible via the [Links()]
+-#' function. This contains the [GenomicRanges::GRanges] for the pair of linked
+-#' regions (peak and gene), with `anchor1` corresponding to the peak region and
+-#' `anchor2` corresponding to the gene region linked to the peak. The following
+-#'  metadata is also stored in the `GInteractions` object:
+-#' * `anchor2.gene_id`: The gene ID for the linked gene
+-#' * `anchor2.gene_name`: The name of the linked gene
+-#' * `score`: the correlation coefficient between the accessibility of the
+-#' peak and expression of the gene
+-#' * `zscore`: the z-score of the correlation coefficient, computed based on
+-#' the distribution of correlation coefficients from a set of background peaks
+-#' * `pvalue`: the p-value associated with the z-score for the link
++#' @importFrom stats pnorm sd
+ #'
+ #' @export
+ #' @concept links
+@@ -267,13 +715,14 @@ LinkPeaks <- function(
+   method = "pearson",
+   key = "linkpeaks",
+   gene.coords = NULL,
++  genes.use = NULL,
+   distance = 5e+05,
+   min.distance = NULL,
++  cor.cutoff = 0.05,
+   min.cells = 10,
+-  genes.use = NULL,
+   n_sample = 200,
+   pvalue_cutoff = 0.05,
+-  score_cutoff = 0.05,
++  zscore = FALSE,
+   gene.id = FALSE,
+   verbose = TRUE,
+   peak.slot = deprecated(),
+@@ -282,37 +731,27 @@ LinkPeaks <- function(
+   if (!inherits(x = object[[peak.assay]], what = "GRangesAssay")) {
+     stop("The requested assay is not a GRangesAssay")
+   }
+-  if (!is.null(x = min.distance)) {
+-    if (!is.numeric(x = min.distance)) {
+-      stop("min.distance should be a numeric value")
+-    }
+-    if (min.distance < 0) {
+-      warning(
+-        "Requested a negative min.distance value, setting min.distance to zero"
+-      )
+-      min.distance <- NULL
+-    } else if (min.distance == 0) {
+-      min.distance <- NULL
+-    }
+-  }
++
+   if (is_present(arg = expression.slot)) {
+     deprecate_warn(
+-      when = "1.16.0",
++      when = "2.0.0",
+       what = "LinkPeaks(expression.slot)",
+       with = "LinkPeaks(expression.layer)"
+     )
+     expression.layer <- expression.slot
+   }
++
+   if (is_present(arg = peak.slot)) {
+     deprecate_warn(
+-      when = "1.16.0",
++      when = "2.0.0",
+       what = "LinkPeaks(peak.slot)",
+       with = "LinkPeaks(peak.layer)"
+     )
+     peak.layer <- peak.slot
+   }
++
+   features.match <- c("GC.percent", "count", "sequence.length")
+-  
++
+   if (method == "pearson") {
+     cor_method <- corSparse
+   } else if (method == "spearman") {
+@@ -321,261 +760,338 @@ LinkPeaks <- function(
+     stop("method can be one of 'pearson' or 'spearman'.")
+   }
+ 
+-  if (is.null(x = gene.coords)) {
+-    annot <- Annotation(object = object[[peak.assay]])
+-    if (is.null(x = annot)) {
+-      stop("Gene annotations not found")
++  meta.features <- NULL
++  if (isTRUE(zscore)) {
++    meta.features <- object[[peak.assay]][[]]
++    if (!(all(c("GC.percent", "sequence.length") %in% colnames(x = meta.features)))) {
++      stop(
++        "DNA sequence information for each peak has not been computed.\n",
++        "Run RegionStats before calling this function."
++      )
++    }
++
++    if (!("count" %in% colnames(x = meta.features))) {
++      hvf.info <- FindTopFeatures(
++        object = LayerData(object = object[[peak.assay]], layer = peak.layer),
++        verbose = FALSE
++      )
++      hvf.info <- hvf.info[
++        rownames(meta.features), c("count", "percentile"), drop = FALSE
++      ]
++      meta.features <- cbind(meta.features, hvf.info)
+     }
+-    gene.coords <- CollapseToLongestTranscript(
+-      ranges = annot
+-    )
+-  }
+-  meta.features <- object[[peak.assay]][[]]
+-  if (!(all(
+-    c("GC.percent", "sequence.length") %in% colnames(x = meta.features)
+-  ))) {
+-    stop(
+-      "DNA sequence information for each peak has not been computed.\n",
+-      "Run RegionStats before calling this function."
+-    )
+-  }
+-  if (!("count" %in% colnames(x = meta.features))) {
+-    hvf.info <- FindTopFeatures(
+-      object = LayerData(object = object[[peak.assay]], layer = peak.layer),
+-      verbose = FALSE
+-    )
+-    hvf.info <- hvf.info[
+-      rownames(meta.features), c("count", "percentile"), drop = FALSE
+-    ]
+-    meta.features <- cbind(meta.features, hvf.info)
+-  }
+-  if (!(peak.layer %in% Layers(object = object[[peak.assay]]))) {
+-    stop("Requested peak layer not found")
+-  }
+-  peak.data <- LayerData(object = object[[peak.assay]], layer = peak.layer)
+-  if (!(expression.layer %in% Layers(object = object[[expression.assay]]))) {
+-    stop("Requested expression layer not found")
+   }
+-  expression.data <- LayerData(
+-    object = object[[expression.assay]], layer = expression.layer
++
++  candidates <- FindCandidateLinks(
++    object = object,
++    peak.assay = peak.assay,
++    expression.assay = expression.assay,
++    peak.layer = peak.layer,
++    expression.layer = expression.layer,
++    gene.coords = gene.coords,
++    distance = distance,
++    min.distance = min.distance,
++    min.cells = min.cells,
++    genes.use = genes.use,
++    gene.id = gene.id,
++    verbose = verbose
+   )
+-  peakcounts <- rowSums(x = peak.data > 0)
+-  genecounts <- rowSums(x = expression.data > 0)
+-  peaks.keep <- peakcounts > min.cells
+-  genes.keep <- genecounts > min.cells
+-  peak.data <- peak.data[peaks.keep, ]
+-  if (!is.null(x = genes.use)) {
+-    genes.keep <- intersect(
+-      x = names(x = genes.keep[genes.keep]), y = genes.use
+-    )
+-  }
+-  expression.data <- expression.data[genes.keep, , drop = FALSE]
+-  genes <- rownames(x = expression.data)
+-  if (gene.id) {
+-    gene.coords.use <- gene.coords[gene.coords$gene_id %in% genes, ]
+-    gene.coords.use$gene_name <- gene.coords.use$gene_id
++
++  peak_distance_matrix <- candidates$candidate.matrix
++  candidate.links <- candidates$candidate.links
++  peak.data <- candidates$peak.data
++  expression.data <- candidates$expression.data
++  gene.coords.use <- candidates$gene.coords
++  genes.test <- colnames(x = peak_distance_matrix)
++  all.peaks <- rownames(x = peak.data)
++  all.peak.chroms <- if (isTRUE(zscore)) {
++    as.character(seqnames(candidates$peaks))
+   } else {
+-    gene.coords.use <- gene.coords[gene.coords$gene_name %in% genes, ]
+-  }
+-  if (length(x = gene.coords.use) == 0) {
+-    stop("Could not find gene coordinates for requested genes")
+-  }
+-  if (length(x = gene.coords.use) < nrow(x = expression.data)) {
+-    message(
+-      "Found gene coordinates for ",
+-      length(x = gene.coords.use),
+-      " genes"
+-    )
+-  }
+-  peaks <- granges(x = object[[peak.assay]])
+-  peaks <- peaks[peaks.keep]
+-  peak_distance_matrix <- DistanceToTSS(
+-    peaks = peaks,
+-    genes = gene.coords.use,
+-    distance = distance
+-  )
+-  if (!is.null(x = min.distance)) {
+-    peak_distance_matrix_min <- DistanceToTSS(
+-      peaks = peaks,
+-      genes = gene.coords.use,
+-      distance = min.distance
+-    )
+-    peak_distance_matrix <- peak_distance_matrix - peak_distance_matrix_min
++    NULL
+   }
++
+   if (sum(peak_distance_matrix) == 0) {
+-    stop(
+-      "No peaks fall within distance threshold\n",
+-      "Have you set the proper genome and seqlevelsStyle for ",
+-      peak.assay,
+-      " assay?"
+-    )
++    if (verbose) message("No peaks fall within distance threshold.")
++    Links(object = object[[peak.assay]], key = key) <- make_empty_links()
++    return(object)
+   }
++
+   if (verbose) {
+     message(
+-      "Testing ",
+-      nrow(x = expression.data),
+-      " genes and ",
+-      sum(rowSums(x = peak_distance_matrix) > 0),
++      "Testing ", nrow(x = expression.data),
++      " genes and ", sum(rowSums(x = peak_distance_matrix) > 0),
+       " peaks"
+     )
+   }
+-  genes.use <- colnames(x = peak_distance_matrix)
+-  all.peaks <- rownames(x = peak.data)
+-  peak.chrom <- as.character(x = seqnames(x = peaks))
+ 
+   peak.data <- t(x = peak.data)
+ 
+   if (nbrOfWorkers() > 1) {
+     mylapply <- future_lapply
+   } else {
+-    mylapply <- ifelse(test = verbose, yes = pblapply, no = lapply)
++    mylapply <- if (verbose) pblapply else lapply
+   }
+-  
+-  # run in parallel across genes
++
+   res <- mylapply(
+-    X = seq_along(along.with = genes.use),
++    X = seq_along(along.with = genes.test),
+     FUN = function(i) {
+-      peak.use <- as.logical(x = peak_distance_matrix[, genes.use[[i]]])
+-      gene.expression <- t(x = expression.data[genes.use[[i]], , drop = FALSE])
+-      gene.chrom <- as.character(x = seqnames(x = gene.coords.use[i]))
++      peak.use <- as.logical(x = peak_distance_matrix[, genes.test[[i]]])
++      gene.expression <- t(x = expression.data[genes.test[[i]], , drop = FALSE])
+ 
+       if (sum(peak.use) < 2) {
+-        # no peaks close to gene
+         return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
+-      } else {
+-        peak.access <- peak.data[, peak.use, drop = FALSE]
+-        if (inherits(x = peak.access, what = "IterableMatrix")) {
+-          peak.access <- as.sparse(x = peak.access)
+-        }
+-        if (inherits(x = gene.expression, what = "IterableMatrix")) {
+-          gene.expression <- as.sparse(x = gene.expression)
+-        }
+-        coef.result <- cor_method(
+-          X = peak.access,
+-          Y = gene.expression
++      }
++
++      peak.access <- peak.data[, peak.use, drop = FALSE]
++      if (inherits(x = peak.access, what = "IterableMatrix")) {
++        peak.access <- as.sparse(x = peak.access)
++      }
++      if (inherits(x = gene.expression, what = "IterableMatrix")) {
++        gene.expression <- as.sparse(x = gene.expression)
++      }
++
++      coef.result <- cor_method(
++        X = peak.access,
++        Y = gene.expression
++      )
++      rownames(x = coef.result) <- colnames(x = peak.access)
++      # a peak or gene with zero variance across cells gives a non-finite
++      # correlation (Inf when the peak is constant, NaN when the gene is).
++      # Drop those explicitly: Inf would otherwise be kept as a top-scoring
++      # link, and subsetting by an index containing NA would insert rows with
++      # an NA peak name
++      keep.peaks <- is.finite(x = coef.result[, 1]) &
++        (abs(x = coef.result[, 1]) >= cor.cutoff)
++      coef.result <- coef.result[keep.peaks, , drop = FALSE]
++
++      if (nrow(x = coef.result) == 0) {
++        return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
++      }
++
++      peaks.test <- rownames(x = coef.result)
++      coef.vals <- as.vector(x = coef.result)
++      names(x = coef.vals) <- peaks.test
++
++      if (!isTRUE(x = zscore)) {
++        return(list(
++          "gene" = rep(x = i, length(x = coef.vals)),
++          "coef" = coef.vals,
++          "zscore" = rep(NA_real_, length(x = coef.vals))
++        ))
++      }
++
++      # select peaks at random with matching GC content and accessibility,
++      # sampling from peaks on a different chromosome to the gene. Use the
++      # actual peak chromosomes rather than assuming a chr-start-end peak name
++      gene.chrom <- as.character(x = seqnames(x = gene.coords.use[i]))
++      trans.peaks <- all.peaks[all.peak.chroms != gene.chrom]
++      if (length(x = trans.peaks) < 2) {
++        # no background available on another chromosome; skip rather than
++        # computing a z-score against peaks that are cis to the gene
++        warning(
++          "Fewer than two peaks are available on a chromosome other than ",
++          gene.chrom, "; skipping genes on this chromosome",
++          call. = FALSE
+         )
+-        rownames(x = coef.result) <- colnames(x = peak.access)
+-        coef.result <- coef.result[
+-          abs(x = coef.result) > score_cutoff, ,
+-          drop = FALSE
+-        ]
+-
+-        if (nrow(x = coef.result) == 0) {
+-          return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
+-        } else {
+-          # select peaks at random with matching GC content and accessibility
+-          # sample from peaks on a different chromosome to the gene
+-          peaks.test <- rownames(x = coef.result)
+-          trans.peaks <- all.peaks[peak.chrom != gene.chrom]
+-          if (length(x = trans.peaks) < 2) {
+-            # no background available on another chromosome; skip rather than
+-            # computing a z-score against peaks that are cis to the gene
+-            warning(
+-              "Fewer than two peaks are available on a chromosome other than ",
+-              gene.chrom, "; skipping genes on this chromosome",
+-              call. = FALSE
+-            )
+-            return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
+-          }
+-          meta.use <- meta.features[trans.peaks, ]
+-          pk.use <- meta.features[peaks.test, ]
+-          bg.peaks <- lapply(
+-            X = seq_len(length.out = nrow(x = pk.use)),
+-            FUN = function(x) {
+-              MatchRegionStats(
+-                meta.feature = meta.use,
+-                query.feature = pk.use[x, , drop = FALSE],
+-                features.match = features.match,
+-                n = n_sample,
+-                verbose = FALSE
+-              )
+-            }
+-          )
+-          # run background correlations
+-          unique.bg <- unique(x = unlist(x = bg.peaks))
+-          bg.access <- peak.data[, unique.bg, drop = FALSE]
+-          if (inherits(x = bg.access, what = 'IterableMatrix')) {
+-            bg.access <- as.sparse(x = bg.access)
+-          }
+-          bg.coef <- cor_method(
+-            X = bg.access,
+-            Y = gene.expression
++        return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
++      }
++      meta.use <- meta.features[trans.peaks, , drop = FALSE]
++      pk.use <- meta.features[peaks.test, , drop = FALSE]
++
++      bg.peaks <- lapply(
++        X = seq_len(length.out = nrow(x = pk.use)),
++        FUN = function(x) {
++          MatchRegionStats(
++            meta.feature = meta.use,
++            query.feature = pk.use[x, , drop = FALSE],
++            features.match = features.match,
++            n = n_sample,
++            verbose = FALSE
+           )
+-          rownames(x = bg.coef) <- unique.bg
+-          zscores <- vector(mode = "numeric", length = length(x = peaks.test))
+-          for (j in seq_along(along.with = peaks.test)) {
+-            coef.use <- bg.coef[bg.peaks[[j]], ]
+-            bg.sd <- sd(x = coef.use)
+-            if (bg.sd == 0 || !is.finite(x = bg.sd)) {
+-              zscores[[j]] <- 0
+-            } else {
+-              zscores[[j]] <- (coef.result[j] - mean(x = coef.use)) / bg.sd
+-            }
+-          }
+-          coef.vals <- as.vector(x = coef.result)
+-          names(x = coef.vals) <- peaks.test
+-          names(x = zscores) <- peaks.test
+-          gc(verbose = FALSE)
+-          # p-values are filtered once on the assembled links below, so no
+-          # filtering is applied here
+-          return(list(
+-            "gene" = rep(x = i, length(x = coef.vals)),
+-            "coef" = coef.vals,
+-            "zscore" = zscores
+-          ))
+         }
++      )
++
++      # run background correlations
++      unique.bg <- unique(x = unlist(x = bg.peaks))
++      if (length(x = unique.bg) == 0) {
++        return(list("gene" = NULL, "coef" = NULL, "zscore" = NULL))
++      }
++
++      bg.access <- peak.data[, unique.bg, drop = FALSE]
++      if (inherits(x = bg.access, what = "IterableMatrix")) {
++        bg.access <- as.sparse(x = bg.access)
+       }
++
++      bg.coef <- cor_method(
++        X = bg.access,
++        Y = gene.expression
++      )
++      rownames(x = bg.coef) <- unique.bg
++
++      zscores <- vector(mode = "numeric", length = length(x = peaks.test))
++      for (j in seq_along(along.with = peaks.test)) {
++        coef.use <- bg.coef[bg.peaks[[j]], , drop = FALSE]
++        bg.sd <- sd(x = coef.use)
++        if (bg.sd == 0 || !is.finite(x = bg.sd)) {
++          zscores[[j]] <- 0
++        } else {
++          zscores[[j]] <- (coef.result[j] - mean(x = coef.use)) / bg.sd
++        }
++      }
++      names(x = zscores) <- peaks.test
++      gc(verbose = FALSE)
++
++      # p-values are filtered once on the assembled links below, so no
++      # filtering is applied here
++      list(
++        "gene" = rep(x = i, length(x = coef.vals)),
++        "coef" = coef.vals,
++        "zscore" = zscores
++      )
+     }
+   )
+-  # combine results
++
+   gene.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 1))
+   coef.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 2))
+   zscore.vec <- do.call(what = c, args = lapply(X = res, FUN = `[[`, 3))
+ 
+   if (length(x = coef.vec) == 0) {
+-    if (verbose) {
+-      message("No significant links found")
+-    }
++    if (verbose) message("No links pass cor.cutoff")
++    Links(object = object[[peak.assay]], key = key) <- make_empty_links()
+     return(object)
+   }
+-  peak.key <- seq_along(
+-    along.with = unique(x = names(x = coef.vec))
+-  )
+-  names(x = peak.key) <- unique(x = names(x = coef.vec))
+-  coef.matrix <- sparseMatrix(
+-    i = gene.vec,
+-    j = peak.key[names(x = coef.vec)],
+-    x = coef.vec,
+-    dims = c(length(x = genes.use), max(peak.key))
+-  )
+-  rownames(x = coef.matrix) <- genes.use
+-  colnames(x = coef.matrix) <- names(x = peak.key)
+-  links <- LinksToGInteractions(
+-    linkmat = coef.matrix,
+-    gene.coords = gene.coords.use
+-  )
+-  # add zscores
+-  z.matrix <- sparseMatrix(
+-    i = gene.vec,
+-    j = peak.key[names(x = zscore.vec)],
+-    x = zscore.vec,
+-    dims = c(length(x = genes.use), max(peak.key))
++
++  sig.df <- data.frame(
++    peak = names(x = coef.vec),
++    gene_index = as.integer(gene.vec),
++    gene = genes.test[as.integer(gene.vec)],
++    score = as.numeric(coef.vec),
++    zscore = if (isTRUE(zscore)) {
++      as.numeric(zscore.vec)
++    } else {
++      rep(NA_real_, length(x = coef.vec))
++    },
++    stringsAsFactors = FALSE
+   )
+-  rownames(x = z.matrix) <- genes.use
+-  colnames(x = z.matrix) <- names(x = peak.key)
+-  z.lnk <- LinksToGInteractions(
+-    linkmat = z.matrix,
+-    gene.coords = gene.coords.use
++
++  if (isTRUE(zscore)) {
++    sig.df$pvalue <- 2 * pnorm(q = -abs(x = sig.df$zscore))
++    sig.df <- sig.df[sig.df$pvalue < pvalue_cutoff, , drop = FALSE]
++
++    if (nrow(sig.df) == 0) {
++      if (verbose) message("No significant links after p-value filtering")
++      Links(object = object[[peak.assay]], key = key) <- make_empty_links()
++      return(object)
++    }
++  } else {
++    sig.df$pvalue <- NA_real_
++  }
++
++  candidate.key <- paste(candidate.links$peak, candidate.links$gene, sep = "\r")
++  sig.key <- paste(sig.df$peak, sig.df$gene, sep = "\r")
++  link.idx <- match(sig.key, candidate.key)
++
++  if (anyNA(link.idx)) {
++    missing <- unique(sig.key[is.na(link.idx)])
++    stop(
++      "Internal error: significant links could not be matched back to candidate links. ",
++      "First missing key: ", missing[[1]]
++    )
++  }
++
++  links <- candidate.links[link.idx]
++  links$peak <- sig.df$peak
++  links$gene <- sig.df$gene
++
++  if (!("frac_peak_in_gene" %in% colnames(mcols(links)))) {
++    links$frac_peak_in_gene <- rep(NA_real_, length(links))
++  }
++  if (!("closest_gene" %in% colnames(mcols(links)))) {
++    links$closest_gene <- rep(NA, length(links))
++  }
++
++  links$score <- sig.df$score
++  links$zscore <- sig.df$zscore
++  links$pvalue <- sig.df$pvalue
++
++  .link_mcol <- function(x, col) {
++    value <- mcols(x)[[col]]
++
++    if (length(value) != length(x)) {
++      stop(
++        "Internal error: links$", col, " has length ", length(value),
++        " but length(links) is ", length(x), "."
++      )
++    }
++
++    value
++  }
++
++  # Keep only fields required downstream for export and saved link objects.
++  mcols(links) <- DataFrame(
++    peak = as.character(.link_mcol(links, "peak")),
++    gene = as.character(.link_mcol(links, "gene")),
++    tss_distance = as.numeric(.link_mcol(links, "tss_distance")),
++    frac_peak_in_gene = as.numeric(.link_mcol(links, "frac_peak_in_gene")),
++    closest_gene = as.logical(.link_mcol(links, "closest_gene")),
++    score = as.numeric(.link_mcol(links, "score")),
++    zscore = as.numeric(.link_mcol(links, "zscore")),
++    pvalue = as.numeric(.link_mcol(links, "pvalue"))
+   )
+-  links$zscore <- z.lnk$score
+-  links$pvalue <- 2 * pnorm(q = -abs(x = links$zscore))
+-  links <- links[links$pvalue < pvalue_cutoff]
++
+   Links(object = object[[peak.assay]], key = key) <- links
+-  return(object)
++  object
+ }
+ 
+ ### Not exported ###
+ 
++# Get the linked gene name for each link
++#
++# LinkPeaks() stores the linked gene in a `gene` metadata column, whereas links
++# created from a set of gene ranges (for example by LinksToGInteractions())
++# carry the gene name through on the second anchor. Look for both so that the
++# link accessors work regardless of how the links were created.
++#
++# @param links A GInteractions object
++# @return Returns a character vector with one element per link
++#' @importFrom S4Vectors mcols
++LinkGeneNames <- function(links) {
++  link.cols <- colnames(x = mcols(x = links))
++  if ("gene" %in% link.cols) {
++    return(as.character(x = links$gene))
++  }
++  if ("anchor2.gene_name" %in% link.cols) {
++    return(as.character(x = links$anchor2.gene_name))
++  }
++  stop("Links do not contain gene information")
++}
++
++# Create an empty set of links
++#
++# Returns a zero-length GInteractions object carrying the same metadata columns
++# as the links created by LinkPeaks(), so that downstream code can rely on the
++# same schema whether or not any links were found.
++#
++# @return Returns a GInteractions object of length zero
++#' @importFrom GenomicRanges GRanges
++#' @importFrom InteractionSet GInteractions
++#' @importFrom S4Vectors mcols DataFrame
++make_empty_links <- function() {
++  empty.gr <- GRanges()
++  gi <- GInteractions(anchor1 = empty.gr, anchor2 = empty.gr)
++  mcols(x = gi) <- DataFrame(
++    peak = character(),
++    gene = character(),
++    tss_distance = numeric(),
++    frac_peak_in_gene = numeric(),
++    closest_gene = logical(),
++    score = numeric(),
++    zscore = numeric(),
++    pvalue = numeric()
++  )
++  return(gi)
++}
++
+ #' @importFrom GenomicRanges GRanges
+ #' @importFrom InteractionSet GInteractions
+ LinksToGInteractions <- function(linkmat, gene.coords) {
+@@ -588,45 +1104,3 @@ LinksToGInteractions <- function(linkmat, gene.coords) {
+   return(gi)
+ }
+ 
+-# Find peaks near genes
+-#
+-# Find peaks that are within a given distance threshold to each gene
+-#
+-# @param peaks A GRanges object containing peak coordinates
+-# @param genes A GRanges object containing gene coordinates
+-# @param distance Distance threshold. Peaks within this distance from the gene
+-# will be recorded.
+-#
+-#' @importFrom GenomicRanges findOverlaps
+-#' @importFrom S4Vectors queryHits subjectHits
+-#' @importFrom Matrix sparseMatrix
+-#' @importFrom GenomicRanges resize
+-#
+-# @return Returns a sparse matrix
+-DistanceToTSS <- function(
+-  peaks,
+-  genes,
+-  distance = 200000
+-) {
+-  tss <- resize(x = genes, width = 1, fix = "start")
+-  genes.extended <- suppressWarnings(
+-    expr = Extend(
+-      x = tss, upstream = distance, downstream = distance
+-    )
+-  )
+-  overlaps <- findOverlaps(
+-    query = peaks,
+-    subject = genes.extended,
+-    type = "any",
+-    select = "all"
+-  )
+-  hit_matrix <- sparseMatrix(
+-    i = queryHits(x = overlaps),
+-    j = subjectHits(x = overlaps),
+-    x = 1,
+-    dims = c(length(x = peaks), length(x = genes.extended))
+-  )
+-  rownames(x = hit_matrix) <- as.character(x = peaks)
+-  colnames(x = hit_matrix) <- genes.extended$gene_name
+-  return(hit_matrix)
+-}
+diff --git a/R/quantification.R b/R/quantification.R
+index 37839cf6..835e1cf9 100644
+--- a/R/quantification.R
++++ b/R/quantification.R
+@@ -206,7 +206,7 @@ GeneActivity <- function(
+   if (verbose) {
+     message("Extracting gene coordinates")
+   }
+-  transcripts <- CollapseToLongestTranscript(ranges = annotation)
++  transcripts <- GetGeneRanges(ranges = annotation)
+   if (gene.id) {
+     transcripts$gene_name <- transcripts$gene_id
+   }
+diff --git a/R/utilities.R b/R/utilities.R
+index a6b2bbef..507e41d9 100644
+--- a/R/utilities.R
++++ b/R/utilities.R
+@@ -487,7 +487,7 @@ GetTSSPositions <- function(ranges, biotypes = "protein_coding") {
+   if (!is.null(x = biotypes)) {
+     ranges <- ranges[ranges$gene_biotype %in% biotypes]
+   }
+-  gene.ranges <- CollapseToLongestTranscript(ranges = ranges)
++  gene.ranges <- GetGeneRanges(ranges = ranges)
+   # shrink to TSS position
+   tss <- resize(gene.ranges, width = 1, fix = "start")
+   return(tss)
+@@ -904,41 +904,199 @@ PadMissingCells <- function(mat, cells) {
+ }
+ 
+ globalVariables(
+-  names = c("start", "end", "seqnames", "strand", "gene_biotype", "gene_name"),
++  names = c(
++    "start", "end", "seqnames", "strand", "gene_biotype", "gene_name",
++    "gene_id", "tx_id"
++  ),
+   package = "Signac"
+ )
+-#' @importFrom GenomicRanges makeGRangesFromDataFrame
++
++# Coerce a gene annotation to a data.table with the expected columns
++#
++# Signac annotations store one row per sub-transcript feature (exon, cds, utr,
++# gap), so the extent of a transcript or gene has to be derived by grouping.
++# This normalizes the columns those groupings rely on.
++#
++# @param ranges A GRanges object containing gene annotations
++# @return Returns a data.table
+ #' @importFrom data.table as.data.table
+-CollapseToLongestTranscript <- function(ranges) {
+-  range.df <- as.data.table(x = ranges)
++#' @importFrom S4Vectors mcols
++AnnotationToTable <- function(ranges) {
++  # row.names = NULL: annotations are usually named by exon, and those names
++  # are not unique once collapsed to the transcript or gene level
++  range.df <- as.data.table(x = as.data.frame(x = ranges, row.names = NULL))
++
++  if (!("gene_id" %in% colnames(x = range.df))) {
++    stop("Input ranges must contain gene_id")
++  }
++
++  if (!("gene_name" %in% colnames(x = range.df))) {
++    range.df$gene_name <- range.df$gene_id
++  }
++
++  if (!("gene_biotype" %in% colnames(x = range.df))) {
++    # gencode annotations store the biotype as gene_type
++    range.df$gene_biotype <- if ("gene_type" %in% colnames(x = range.df)) {
++      range.df$gene_type
++    } else {
++      NA_character_
++    }
++  }
++
++  # a '*' strand has no defined 5' end, so treat it as '+' when locating a TSS
+   range.df$strand <- as.character(x = range.df$strand)
+   range.df$strand <- ifelse(
+     test = range.df$strand == "*",
+     yes = "+",
+     no = range.df$strand
+   )
++
++  return(range.df)
++}
++
++# Remove annotation groups that span more than one chromosome
++#
++# A gene or transcript should be confined to a single chromosome. Collapsing one
++# that is not would silently produce a range running from the lowest start to the
++# highest end across chromosomes, reported on whichever chromosome came first,
++# so drop those groups and report which were dropped.
++#
++# @param range.df A data.table of annotation rows
++# @param group Name of the column identifying each group, e.g. "gene_id"
++# @return Returns range.df with any offending groups removed
++DropMultiChromosomeGroups <- function(range.df, group) {
++  seqname.count <- range.df[
++    , list(n_seqnames = length(x = unique(x = seqnames))), by = group
++  ]
++  drop.groups <- seqname.count[[group]][seqname.count$n_seqnames > 1]
++
++  if (length(x = drop.groups) == 0) {
++    return(range.df)
++  }
++
++  shown <- drop.groups[seq_len(length.out = min(5, length(x = drop.groups)))]
++  warning(
++    "Dropping ", length(x = drop.groups), " ", group,
++    if (length(x = drop.groups) == 1) " that spans " else " that span ",
++    "more than one chromosome: ",
++    paste(shown, collapse = ", "),
++    if (length(x = drop.groups) > length(x = shown)) ", ..." else "",
++    call. = FALSE
++  )
++
++  return(range.df[!(range.df[[group]] %in% drop.groups), ])
++}
++
++# Get the range spanned by each gene
++#
++# Collapse an annotation to one range per gene, spanning from the lowest start
++# to the highest end across every feature assigned to that gene. Note that this
++# is the union extent over all transcripts of the gene, which can be wider than
++# any individual transcript.
++#
++# @param ranges A GRanges object containing gene annotations
++# @return Returns a GRanges object with one range per gene
++#' @importFrom GenomicRanges makeGRangesFromDataFrame GRanges
++#' @importFrom S4Vectors mcols "mcols<-" DataFrame
++GetGeneRanges <- function(ranges) {
++  range.df <- AnnotationToTable(ranges = ranges)
++  range.df <- DropMultiChromosomeGroups(range.df = range.df, group = "gene_id")
++
++  if (nrow(x = range.df) == 0) {
++    empty.ranges <- GRanges()
++    mcols(x = empty.ranges) <- DataFrame(
++      gene_id = character(),
++      gene_biotype = character(),
++      gene_name = character()
++    )
++    return(empty.ranges)
++  }
++
+   collapsed <- range.df[
+     , list(
+-      unique(seqnames),
+-      min(start),
+-      max(end),
+-      strand[[1]],
+-      gene_biotype[[1]],
+-      gene_name[[1]]
++      seqnames = seqnames[[1]],
++      start = min(start),
++      end = max(end),
++      strand = strand[[1]],
++      gene_biotype = gene_biotype[[1]],
++      gene_name = gene_name[[1]]
+     ),
+-    "gene_id"
++    by = "gene_id"
+   ]
+-  colnames(x = collapsed) <- c(
+-    "gene_id", "seqnames", "start", "end", "strand", "gene_biotype", "gene_name"
+-  )
++
+   collapsed$gene_name <- make.unique(names = collapsed$gene_name)
++
+   gene.ranges <- makeGRangesFromDataFrame(
+     df = collapsed,
+     keep.extra.columns = TRUE
+   )
++
+   return(gene.ranges)
+ }
+ 
++# Get the range spanned by each transcript
++#
++# Collapse an annotation to one range per transcript, spanning from the lowest
++# start to the highest end across the features (exons, UTRs) belonging to that
++# transcript. Resizing the result to width 1 with `fix = "start"` then gives the
++# TSS of each transcript, since `resize()` is strand aware.
++#
++# Transcripts are identified by `tx_id`, or by `transcript_id` if `tx_id` is
++# absent. If the annotation has neither, each gene is treated as a single
++# transcript, which is the appropriate behaviour for a gene-level annotation.
++#
++# @param ranges A GRanges object containing gene annotations
++# @return Returns a GRanges object with one range per transcript
++#' @importFrom GenomicRanges makeGRangesFromDataFrame GRanges
++#' @importFrom S4Vectors mcols "mcols<-" DataFrame
++GetTranscriptRanges <- function(ranges) {
++  range.df <- AnnotationToTable(ranges = ranges)
++
++  if (nrow(x = range.df) > 0) {
++    if (!("tx_id" %in% colnames(x = range.df))) {
++      range.df$tx_id <- if ("transcript_id" %in% colnames(x = range.df)) {
++        as.character(x = range.df$transcript_id)
++      } else {
++        # gene-level annotation: one transcript per gene
++        as.character(x = range.df$gene_id)
++      }
++    }
++    range.df$tx_id <- as.character(x = range.df$tx_id)
++    range.df <- DropMultiChromosomeGroups(range.df = range.df, group = "tx_id")
++  }
++
++  if (nrow(x = range.df) == 0) {
++    empty.ranges <- GRanges()
++    mcols(x = empty.ranges) <- DataFrame(
++      tx_id = character(),
++      gene_id = character(),
++      gene_biotype = character(),
++      gene_name = character()
++    )
++    return(empty.ranges)
++  }
++
++  collapsed <- range.df[
++    , list(
++      seqnames = seqnames[[1]],
++      start = min(start),
++      end = max(end),
++      strand = strand[[1]],
++      gene_id = gene_id[[1]],
++      gene_biotype = gene_biotype[[1]],
++      gene_name = gene_name[[1]]
++    ),
++    by = "tx_id"
++  ]
++
++  transcript.ranges <- makeGRangesFromDataFrame(
++    df = collapsed,
++    keep.extra.columns = TRUE
++  )
++
++  return(transcript.ranges)
++}
++
+ # Chunk GRanges
+ #
+ # Split a genomic ranges object into evenly sized chunks
+diff --git a/man/LinkPeaks.Rd b/man/LinkPeaks.Rd
+index f8716d95..65aca4be 100644
+--- a/man/LinkPeaks.Rd
++++ b/man/LinkPeaks.Rd
+@@ -13,13 +13,14 @@ LinkPeaks(
+   method = "pearson",
+   key = "linkpeaks",
+   gene.coords = NULL,
++  genes.use = NULL,
+   distance = 5e+05,
+   min.distance = NULL,
++  cor.cutoff = 0.05,
+   min.cells = 10,
+-  genes.use = NULL,
+   n_sample = 200,
+   pvalue_cutoff = 0.05,
+-  score_cutoff = 0.05,
++  zscore = FALSE,
+   gene.id = FALSE,
+   verbose = TRUE,
+   peak.slot = deprecated(),
+@@ -27,82 +28,107 @@ LinkPeaks(
+ )
+ }
+ \arguments{
+-\item{object}{A Seurat object}
++\item{object}{A Seurat object.}
+ 
+-\item{peak.assay}{Name of assay containing peak information}
++\item{peak.assay}{Name of assay containing peak information.}
+ 
+-\item{expression.assay}{Name of assay containing gene expression information}
++\item{expression.assay}{Name of assay containing gene expression information.}
+ 
+-\item{peak.layer}{Name of layer to pull chromatin data from}
++\item{peak.layer}{Name of layer to pull chromatin data from.}
+ 
+-\item{expression.layer}{Name of layer to pull expression data from}
++\item{expression.layer}{Name of layer to pull expression data from.}
+ 
+-\item{method}{Correlation method to use. One of "pearson" or "spearman"}
++\item{method}{Correlation method to use. One of \code{"pearson"} or \code{"spearman"}.}
+ 
+-\item{key}{Key to use when storing link information in the assay}
++\item{key}{Key to use when storing link information in the assay.}
+ 
+-\item{gene.coords}{GRanges object containing coordinates of genes in the
+-expression assay. If NULL, extract from gene annotations stored in the assay.}
++\item{gene.coords}{A \link[GenomicRanges:GRanges]{GenomicRanges::GRanges} object containing gene or
++transcript coordinates. If \code{NULL}, gene annotations are extracted from the
++peak assay.}
+ 
+-\item{distance}{Distance threshold for peaks to include in regression model}
++\item{genes.use}{Optional vector of genes to test. If \code{NULL}, genes are
++selected from the expression assay after \code{min.cells} filtering.}
+ 
+-\item{min.distance}{Minimum distance between peak and TSS to include in
+-regression model. If NULL (default), no minimum distance is used.}
++\item{distance}{Maximum distance from a TSS for peaks to include as candidate
++links.}
+ 
+-\item{min.cells}{Minimum number of cells positive for the peak and gene
+-needed to include in the results.}
++\item{min.distance}{Optional minimum distance from a TSS. Candidate links
++closer than this distance are excluded.}
+ 
+-\item{genes.use}{Genes to test. If NULL, determine from expression assay.}
++\item{cor.cutoff}{Minimum absolute correlation coefficient for a link to be
++retained.}
++
++\item{min.cells}{Minimum number of cells positive for the peak and gene
++needed to include them in the analysis.}
+ 
+-\item{n_sample}{Number of peaks to sample at random when computing the null
+-distribution.}
++\item{n_sample}{Number of background peaks to sample when computing the null
++distribution. Only used when \code{zscore = TRUE}.}
+ 
+-\item{pvalue_cutoff}{Minimum p-value required to retain a link. Links with a
+-p-value equal or greater than this value will be removed from the output.}
++\item{pvalue_cutoff}{Maximum p-value for retaining a link. Links with a
++p-value greater than or equal to this value are removed from the output. Only
++used when \code{zscore = TRUE}.}
+ 
+-\item{score_cutoff}{Minimum absolute value correlation coefficient for a link
+-to be retained}
++\item{zscore}{Compute background-matched z-scores and p-values. If
++\code{FALSE} (default), background peak matching is skipped and links are retained
++using \code{cor.cutoff} only.}
+ 
+-\item{gene.id}{Set to TRUE if genes in the expression assay are named
+-using gene IDs rather than gene names.}
++\item{gene.id}{Set to \code{TRUE} if genes in the expression assay are named by
++gene ID rather than gene name.}
+ 
+-\item{verbose}{Display messages}
++\item{verbose}{Display messages.}
+ 
+-\item{peak.slot}{Deprecated (use \code{peak.layer})}
++\item{peak.slot}{Deprecated; use \code{peak.layer}.}
+ 
+-\item{expression.slot}{Deprecated (used \code{expression.layer})}
++\item{expression.slot}{Deprecated; use \code{expression.layer}.}
+ }
+ \value{
+-Returns a Seurat object with results added to the \code{links} slot in the
+-assay, stored under the key specified in the function. The results are stored
+-as an \link[InteractionSet:GInteractions]{InteractionSet::GInteractions} object accessible via the \code{\link[=Links]{Links()}}
+-function. This contains the \link[GenomicRanges:GRanges]{GenomicRanges::GRanges} for the pair of linked
+-regions (peak and gene), with \code{anchor1} corresponding to the peak region and
+-\code{anchor2} corresponding to the gene region linked to the peak. The following
+-metadata is also stored in the \code{GInteractions} object:
++Returns a Seurat object with results added to the links slot in the
++peak assay, stored under \code{key}. The results are stored as an
++\link[InteractionSet:GInteractions]{InteractionSet::GInteractions} object accessible via \code{\link[=Links]{Links()}}. The metadata
++stored on each link includes:
+ \itemize{
+-\item \code{anchor2.gene_id}: The gene ID for the linked gene
+-\item \code{anchor2.gene_name}: The name of the linked gene
+-\item \code{score}: the correlation coefficient between the accessibility of the
+-peak and expression of the gene
+-\item \code{zscore}: the z-score of the correlation coefficient, computed based on
+-the distribution of correlation coefficients from a set of background peaks
+-\item \code{pvalue}: the p-value associated with the z-score for the link
++\item \code{peak}: peak identifier
++\item \code{gene}: linked gene identifier
++\item \code{tss_distance}: distance from the peak to the selected TSS
++\item \code{frac_peak_in_gene}: fraction of the peak width overlapping the linked gene
++body
++\item \code{closest_gene}: \code{TRUE} when no other candidate gene has a TSS closer to
++this peak
++\item \code{score}: observed correlation coefficient
++\item \code{zscore}: z-score of the observed correlation coefficient; \code{NA} when
++\code{zscore = FALSE}
++\item \code{pvalue}: p-value associated with the z-score; \code{NA} when
++\code{zscore = FALSE}
+ }
+ }
+ \description{
+-Find peaks that are correlated with the expression of nearby genes.
+-For each gene, this function computes the correlation coefficient between
+-the gene expression and accessibility of each peak within a given distance
+-from the gene TSS, and computes an expected correlation coefficient for each
+-peak given the GC content, accessibility, and length of the peak. The
+-expected coefficient values for the peak are then used to compute a z-score
+-and p-value.
++Compute the correlation between peak DNA accessibility and the RNA abundance
++of nearby genes.
+ }
+ \details{
+-This function was inspired by the method originally described by SHARE-seq
+-(Sai Ma et al. 2020, Cell). Please consider citing the original SHARE-seq
+-work if using this function:
+-\href{https://pubmed.ncbi.nlm.nih.gov/33098772/}{doi: 10.1016/j.cell.2020.09.056}
++For each gene, this function computes the correlation coefficient between gene
++expression and accessibility of candidate peaks within a specified distance
++from a transcription start site (TSS) of that gene. A TSS is computed for
++every transcript in the annotation, so a peak is a candidate for a gene if it
++falls within \code{distance} of any of that gene's TSSs. By default, links are
++retained using the observed correlation coefficient only. If \code{zscore = TRUE},
++the function also computes an expected correlation coefficient for each peak
++following the method of Ma et al. (\href{https://pubmed.ncbi.nlm.nih.gov/33098772/}{doi: 10.1016/j.cell.2020.09.056})
++using background peaks matched on GC content, accessibility, and sequence
++length, and uses this background distribution to compute a z-score and
++p-value.
++
++Note that in Signac v2 the default \code{LinkPeaks} behavior has changed to skip
++computation of the z-scores. This change was made due to work by Leblanc &
++Lettre (\href{https://doi.org/10.1038/s41598-023-31040-w}{doi: 10.1038/s41598-023-31040-w})
++showing that the z-score method is influenced by the cell type composition of
++the dataset, and can result in a higher false negative rate. If required,
++z-scores can still be computed by setting \code{zscore=TRUE}.
++
++The main purpose of \code{LinkPeaks} is to provide the raw correlation
++coefficients between DNA accessibility and gene expression. For accurate
++peak-gene linkage, these correlation coefficients alone are often
++insufficient. We recommend exploring other methods such as pgBoost, ScarLink,
++and scE2G.
+ }
+ \concept{links}
+diff --git a/tests/testthat/test-links.R b/tests/testthat/test-links.R
+index 14e20f71..6fe93ba2 100644
+--- a/tests/testthat/test-links.R
++++ b/tests/testthat/test-links.R
+@@ -198,7 +198,7 @@ test_that("LinkPeaks warns and sets to zero on negative min.distance", {
+         peak.assay = "peaks", expression.assay = "RNA",
+         min.distance = -10, verbose = FALSE
+       ),
+-      regexp = "Could not find gene coordinates"
++      regexp = "No transcript/gene coordinates found"
+     ),
+     regexp = "negative min.distance"
+   )
+@@ -250,41 +250,387 @@ test_that("LinkPeaks errors when no gene names match expression features", {
+       object = obj, peak.assay = "peaks", expression.assay = "RNA",
+       min.cells = 0, n_sample = 10, verbose = FALSE
+     )),
+-    regexp = "Could not find gene coordinates"
++    regexp = "No transcript/gene coordinates found"
+   )
+ })
+ 
+ test_that("LinkPeaks errors when no gene coordinates match", {
+   obj <- atac_small
+   empty_gc <- GRanges()
++  mcols(empty_gc)$gene_id <- character(0)
+   mcols(empty_gc)$gene_name <- character(0)
+   expect_error(
+     suppressWarnings(LinkPeaks(
+       object = obj, peak.assay = "peaks", expression.assay = "RNA",
+       gene.coords = empty_gc, verbose = FALSE
+     )),
+-    regexp = "Could not find gene coordinates"
++    regexp = "No transcript/gene coordinates found"
+   )
+ })
+ 
+-# DistanceToTSS / LinksToGInteractions ----------------------------------------
++# FindCandidateLinks / LinkPeaks results ---------------------------------------
+ 
+-test_that("DistanceToTSS returns sparse matrix", {
+-  peaks <- GRanges("chr1", IRanges(c(100, 5000, 20000), c(200, 5100, 20100)))
+-  genes <- GRanges(
+-    "chr1", IRanges(c(1000, 10000), c(2000, 11000)),
+-    gene_name = c("g1", "g2")
++# Build an exon-level annotation of the shape GetGRangesFromEnsDb() returns:
++# one row per exon, with the transcript recorded in tx_id
++MakeExonAnnotation <- function(
++  seqnames,
++  start,
++  end,
++  tx_id,
++  gene_id,
++  strand = "+",
++  gene_name = gene_id
++) {
++  annot <- GRanges(
++    seqnames = seqnames,
++    ranges = IRanges(start = start, end = end),
++    strand = strand
++  )
++  annot$tx_id <- tx_id
++  annot$gene_id <- gene_id
++  annot$gene_name <- gene_name
++  annot$gene_biotype <- "protein_coding"
++  annot$type <- factor(x = "exon", levels = c("cds", "exon", "gap", "utr"))
++  return(annot)
++}
++
++# Build a peak + RNA object for peak-gene linking tests. The first gene is made
++# to correlate with the first peak, so there is a signal for LinkPeaks to find.
++MakeLinkObject <- function(annotation, peaks, genes, ncell = 60, seed = 1) {
++  set.seed(seed = seed)
++  cells <- paste0("cell", seq_len(length.out = ncell))
++  counts <- matrix(
++    data = rpois(n = length(x = peaks) * ncell, lambda = 3),
++    nrow = length(x = peaks),
++    dimnames = list(peaks, cells)
++  )
++  rna <- matrix(
++    data = rpois(n = length(x = genes) * ncell, lambda = 5),
++    nrow = length(x = genes),
++    dimnames = list(genes, cells)
++  )
++  rna[1, ] <- counts[1, ] * 2 + rpois(n = ncell, lambda = 1)
++
++  assay <- suppressWarnings(
++    CreateGRangesAssay(counts = counts, annotation = annotation)
++  )
++  obj <- SeuratObject::CreateSeuratObject(counts = assay, assay = "peaks")
++  obj[["RNA"]] <- suppressWarnings(
++    SeuratObject::CreateAssay5Object(counts = rna, data = log1p(x = rna))
++  )
++  return(obj)
++}
++
++MakeLinkTestObject <- function(ncell = 60, npeak = 20, ngene = 4, seed = 42) {
++  peak.chr <- rep(x = c("chr1", "chr2"), each = npeak / 2)
++  peak.start <- rep(
++    x = seq(from = 10000, by = 5000, length.out = npeak / 2), times = 2
++  )
++  peak.names <- paste0(peak.chr, ":", peak.start, "-", peak.start + 500)
++
++  annot <- GRanges(
++    seqnames = rep(x = c("chr1", "chr2"), each = ngene / 2),
++    ranges = IRanges(
++      start = rep(
++        x = seq(from = 12000, by = 20000, length.out = ngene / 2), times = 2
++      ),
++      width = 3000
++    ),
++    strand = "+"
++  )
++  annot$gene_id <- paste0("gene", seq_len(length.out = ngene))
++  annot$gene_name <- annot$gene_id
++  annot$gene_biotype <- "protein_coding"
++  annot$type <- "transcript"
++  annot$transcript_id <- paste0("tx", seq_len(length.out = ngene))
++
++  return(MakeLinkObject(
++    annotation = annot,
++    peaks = peak.names,
++    genes = paste0("gene", seq_len(length.out = ngene)),
++    ncell = ncell,
++    seed = seed
++  ))
++}
++
++test_that("FindCandidateLinks returns the expected structure", {
++  obj <- MakeLinkTestObject()
++  cand <- Signac:::FindCandidateLinks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, verbose = FALSE
++  )
++  expect_named(
++    object = cand,
++    expected = c(
++      "candidate.matrix", "candidate.links", "peaks", "gene.coords",
++      "peak.data", "expression.data"
++    )
++  )
++  expect_s4_class(cand$candidate.links, "GInteractions")
++  expect_gt(length(cand$candidate.links), 0)
++  expect_true(all(cand$candidate.links$tss_distance >= 0))
++  # gene.coords must line up with the candidate matrix columns
++  expect_equal(
++    cand$gene.coords$gene_name, colnames(cand$candidate.matrix)
++  )
++})
++
++tss.cases <- list(
++  list(
++    name = "plus strand transcript",
++    # TSS at 10000. The final exon starts 45kb away and must not be treated as
++    # a TSS, so the peak sitting on it is not a candidate at distance = 10kb
++    annotation = MakeExonAnnotation(
++      seqnames = "chr1",
++      start = c(10000, 30000, 55000),
++      end = c(10500, 30500, 60000),
++      strand = "+",
++      tx_id = "ENST1", gene_id = "ENSG1", gene_name = "geneA"
++    ),
++    peaks = c("chr1:9000-9500", "chr1:54800-55300",
++              "chr2:10000-10500", "chr2:20000-20500"),
++    distance = 1e4,
++    peak = "chr1:9000-9500",
++    tss_distance = 500,
++    tss = 10000
++  ),
++  list(
++    name = "minus strand transcript",
++    # spans 10000-60000 on the minus strand, so the TSS is at 60000, not 10000
++    annotation = MakeExonAnnotation(
++      seqnames = "chr1",
++      start = c(10000, 55000),
++      end = c(10500, 60000),
++      strand = "-",
++      tx_id = "ENST1", gene_id = "ENSG1", gene_name = "geneA"
++    ),
++    peaks = c("chr1:9000-9500", "chr1:60500-61000",
++              "chr2:10000-10500", "chr2:20000-20500"),
++    distance = 1e4,
++    peak = "chr1:60500-61000",
++    tss_distance = 500,
++    tss = 60000
++  ),
++  list(
++    name = "nearest of two transcript TSSs",
++    # one gene, two transcripts with TSSs at 10000 and 100000. The peak is
++    # 1.5kb from the second, so the pair must resolve to that transcript
++    annotation = MakeExonAnnotation(
++      seqnames = "chr1",
++      start = c(10000, 20000, 100000, 110000),
++      end = c(10500, 20500, 100500, 110500),
++      strand = "+",
++      tx_id = c("ENST1", "ENST1", "ENST2", "ENST2"),
++      gene_id = "ENSG1", gene_name = "geneA"
++    ),
++    peaks = c("chr1:101500-102000", "chr2:10000-10500", "chr2:20000-20500"),
++    distance = 5e5,
++    peak = "chr1:101500-102000",
++    tss_distance = 1500,
++    tss = 100000
++  )
++)
++
++test_that("FindCandidateLinks measures distance to each transcript TSS", {
++  for (case in tss.cases) {
++    obj <- MakeLinkObject(
++      annotation = case$annotation, peaks = case$peaks, genes = "geneA"
++    )
++    cand <- Signac:::FindCandidateLinks(
++      object = obj, peak.assay = "peaks", expression.assay = "RNA",
++      min.cells = 0, distance = case$distance, verbose = FALSE
++    )
++    # a single candidate peak-gene pair, resolved to the nearest TSS
++    expect_equal(
++      object = cand$candidate.links$peak, expected = case$peak,
++      label = paste0(case$name, ": candidate peak")
++    )
++    expect_equal(
++      object = cand$candidate.links$tss_distance, expected = case$tss_distance,
++      label = paste0(case$name, ": tss_distance")
++    )
++    expect_equal(
++      object = start(InteractionSet::anchors(cand$candidate.links)$second),
++      expected = case$tss,
++      label = paste0(case$name, ": TSS used")
++    )
++  }
++})
++
++test_that("FindCandidateLinks does not mix genes sharing a gene symbol", {
++  # two gene_ids share the symbol SHARED. GetGeneRanges() uniquifies the names,
++  # so the second becomes SHARED.1 and is absent from the expression assay. Its
++  # transcripts must not be attributed to SHARED.
++  obj <- MakeLinkObject(
++    annotation = MakeExonAnnotation(
++      seqnames = c("chr1", "chr1", "chr2", "chr2"),
++      start = c(10000, 20000, 500000, 510000),
++      end = c(10500, 20500, 500500, 510500),
++      tx_id = c("txA", "txA", "txB", "txB"),
++      gene_id = c("ENSG_A", "ENSG_A", "ENSG_B", "ENSG_B"),
++      gene_name = "SHARED"
++    ),
++    peaks = c("chr1:9000-9500", "chr2:499000-499500", "chr2:600000-600500"),
++    genes = c("SHARED", "OTHER")
++  )
++  cand <- Signac:::FindCandidateLinks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, distance = 1e4, verbose = FALSE
++  )
++  # only the chr1 peak, next to ENSG_A's TSS
++  expect_equal(cand$candidate.links$peak, "chr1:9000-9500")
++  # the TSS used must be on the same chromosome as the gene body
++  expect_equal(
++    as.character(seqnames(InteractionSet::anchors(
++      cand$candidate.links)$second)),
++    "chr1"
+   )
+-  res <- Signac:::DistanceToTSS(peaks = peaks, genes = genes, distance = 5000)
+-  expect_s4_class(res, "CsparseMatrix")
+-  expect_equal(dim(res), c(3, 2))
+-  # peak 1 (100-200) is within 5kb of g1's TSS only; peak 2 (5000-5100) is
+-  # within 5kb of both TSSs; peak 3 (20000) is within range of neither
+-  expect_equal(as.numeric(res[1, ]), c(1, 0))
+-  expect_equal(as.numeric(res[2, ]), c(1, 1))
+-  expect_equal(as.numeric(res[3, ]), c(0, 0))
++  expect_true(all(as.character(seqnames(cand$gene.coords)) == "chr1"))
+ })
+ 
++test_that("FindCandidateLinks excludes multi-chromosome genes entirely", {
++  annot <- MakeExonAnnotation(
++    seqnames = c("chr1", "chr1", "chrX", "chrX", "chrY", "chrY"),
++    start = c(10000, 20000, 1000, 2000, 50000, 51000),
++    end = c(10500, 20500, 1200, 2200, 50200, 51200),
++    tx_id = c("txA", "txA", "txX", "txX", "txY", "txY"),
++    gene_id = c("ENSGA", "ENSGA", "PAR1", "PAR1", "PAR1", "PAR1"),
++    gene_name = c("geneA", "geneA", "PAR1", "PAR1", "PAR1", "PAR1")
++  )
++  peaks <- c("chr1:9000-9500", "chrX:500-900", "chrY:49500-49900",
++             "chr1:100000-100500")
++
++  # both naming modes must exclude the gene, and neither may leave an NA in
++  # gene.coords, which LinkPeaks indexes into by gene
++  for (use.id in c(FALSE, TRUE)) {
++    obj <- MakeLinkObject(
++      annotation = annot, peaks = peaks,
++      genes = if (use.id) c("ENSGA", "PAR1") else c("geneA", "PAR1")
++    )
++    expect_warning(
++      cand <- Signac:::FindCandidateLinks(
++        object = obj, peak.assay = "peaks", expression.assay = "RNA",
++        min.cells = 0, distance = 1e4, gene.id = use.id, verbose = FALSE
++      ),
++      regexp = "more than one chromosome"
++    )
++    expect_equal(
++      object = cand$candidate.links$peak, expected = "chr1:9000-9500",
++      label = paste0("gene.id = ", use.id, ": candidate peak")
++    )
++    expect_false(anyNA(as.character(seqnames(cand$gene.coords))))
++    expect_true(all(as.character(seqnames(cand$gene.coords)) == "chr1"))
++  }
++})
++
++test_that("FindCandidateLinks respects min.distance", {
++  obj <- MakeLinkTestObject()
++  all.cand <- Signac:::FindCandidateLinks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, verbose = FALSE
++  )
++  filtered <- Signac:::FindCandidateLinks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, min.distance = 10000, verbose = FALSE
++  )
++  expect_lt(length(filtered$candidate.links), length(all.cand$candidate.links))
++  expect_true(all(filtered$candidate.links$tss_distance >= 10000))
++})
++
++test_that("LinkPeaks stores links with the expected metadata", {
++  obj <- MakeLinkTestObject()
++  obj <- LinkPeaks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, verbose = FALSE
++  )
++  lnk <- Links(object = obj[["peaks"]])[["linkpeaks"]]
++  expect_s4_class(lnk, "GInteractions")
++  expect_gt(length(lnk), 0)
++  expect_equal(
++    colnames(S4Vectors::mcols(lnk)),
++    c(
++      "peak", "gene", "tss_distance", "frac_peak_in_gene", "closest_gene",
++      "score", "zscore", "pvalue"
++    )
++  )
++  expect_type(lnk$closest_gene, "logical")
++  # zscore is not computed by default
++  expect_true(all(is.na(lnk$zscore)))
++  expect_true(all(is.na(lnk$pvalue)))
++  expect_true(all(abs(lnk$score) > 0.05))
++  # gene1 was constructed to correlate with the first peak
++  expect_true("chr1:10000-10500" %in% lnk$peak[lnk$gene == "gene1"])
++})
++
++test_that("LinkPeaks computes z-scores when zscore = TRUE", {
++  obj <- MakeLinkTestObject()
++  md <- obj[["peaks"]][[]]
++  md$GC.percent <- runif(n = nrow(x = md), min = 30, max = 60)
++  md$sequence.length <- seq_len(length.out = nrow(x = md)) + 500
++  obj[["peaks"]][[]] <- md
++  obj <- LinkPeaks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, zscore = TRUE, n_sample = 10,
++    pvalue_cutoff = 0.9, verbose = FALSE
++  )
++  lnk <- Links(object = obj[["peaks"]])[["linkpeaks"]]
++  expect_gt(length(lnk), 0)
++  expect_false(any(is.na(lnk$zscore)))
++  expect_true(all(lnk$pvalue < 0.9))
++})
++
++test_that("LinkPeaks handles zero-variance peaks and genes", {
++  obj <- MakeLinkTestObject()
++  cnt <- SeuratObject::LayerData(obj[["peaks"]], layer = "counts")
++  # make the first peak identical in every cell
++  cnt[1, ] <- 5
++  SeuratObject::LayerData(obj[["peaks"]], layer = "counts") <- cnt
++
++  expect_no_error(
++    obj <- suppressWarnings(LinkPeaks(
++      object = obj, peak.assay = "peaks", expression.assay = "RNA",
++      min.cells = 0, verbose = FALSE
++    ))
++  )
++  lnk <- Links(object = obj[["peaks"]])[["linkpeaks"]]
++  expect_false(any(is.na(lnk$peak)))
++  expect_false(any(is.na(lnk$score)))
++  expect_false(rownames(cnt)[[1]] %in% lnk$peak)
++})
++
++test_that("LinkPeaks stores empty links when nothing passes cor.cutoff", {
++  obj <- MakeLinkTestObject()
++  obj <- LinkPeaks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, cor.cutoff = 1, verbose = FALSE
++  )
++  lnk <- Links(object = obj[["peaks"]])[["linkpeaks"]]
++  expect_s4_class(lnk, "GInteractions")
++  expect_equal(length(lnk), 0)
++  # empty links keep the same schema as populated links
++  expect_true("gene" %in% colnames(S4Vectors::mcols(lnk)))
++})
++
++test_that("GetLinkedPeaks/Genes work on LinkPeaks output", {
++  obj <- MakeLinkTestObject()
++  obj <- LinkPeaks(
++    object = obj, peak.assay = "peaks", expression.assay = "RNA",
++    min.cells = 0, verbose = FALSE
++  )
++  lnk <- Links(object = obj[["peaks"]])[["linkpeaks"]]
++  expected.peaks <- unique(x = lnk$peak[lnk$gene == "gene1"])
++  pks <- GetLinkedPeaks(
++    object = obj[["peaks"]], features = "gene1", key = "linkpeaks"
++  )
++  expect_setequal(pks, expected.peaks)
++  gns <- GetLinkedGenes(
++    object = obj[["peaks"]], features = pks[[1]], key = "linkpeaks"
++  )
++  expect_true("gene1" %in% gns)
++})
++
++# LinksToGInteractions ---------------------------------------------------------
++
+ test_that("LinksToGInteractions converts link matrix", {
+   gene.coords <- GRanges(
+     "chr1", IRanges(c(1000, 5000), c(2000, 6000)),
+diff --git a/tests/testthat/test-utilities.R b/tests/testthat/test-utilities.R
+index a5203a39..b199d24f 100644
+--- a/tests/testthat/test-utilities.R
++++ b/tests/testthat/test-utilities.R
+@@ -290,14 +290,15 @@ test_that("FindRegion errors on unknown gene", {
+   )
+ })
+ 
+-test_that("CollapseToLongestTranscript works", {
++test_that("GetGeneRanges collapses to one range per gene", {
+   ann <- Annotation(atac_small)
+-  collapsed <- Signac:::CollapseToLongestTranscript(ranges = ann)
++  collapsed <- Signac:::GetGeneRanges(ranges = ann)
+   expect_s4_class(collapsed, "GRanges")
+-  expect_true(length(collapsed) > 0)
++  expect_equal(length(collapsed), length(unique(ann$gene_id)))
++  expect_false(any(duplicated(collapsed$gene_id)))
+ })
+ 
+-test_that("CollapseToLongestTranscript handles unstranded ranges", {
++test_that("GetGeneRanges handles unstranded ranges", {
+   gr <- GRanges(
+     "chr1", IRanges(c(100, 200), c(150, 250)),
+     strand = c("*", "*"),
+@@ -307,8 +308,135 @@ test_that("CollapseToLongestTranscript handles unstranded ranges", {
+     gene_biotype = c("protein_coding", "protein_coding"),
+     type = c("exon", "exon")
+   )
+-  res <- Signac:::CollapseToLongestTranscript(gr)
++  res <- Signac:::GetGeneRanges(gr)
+   expect_s4_class(res, "GRanges")
++  expect_equal(as.character(strand(res)), "+")
++  expect_equal(start(res), 100)
++  expect_equal(end(res), 250)
++})
++
++test_that("GetGeneRanges spans all transcripts of a gene", {
++  # two transcripts of one gene with distant first exons
++  gr <- GRanges(
++    "chr1", IRanges(c(1000, 5000, 20000, 24000), c(1200, 5200, 20200, 24200)),
++    strand = "+",
++    tx_id = c("t1", "t1", "t2", "t2"),
++    gene_id = "g1", gene_name = "g1",
++    gene_biotype = "protein_coding", type = "exon"
++  )
++  res <- Signac:::GetGeneRanges(gr)
++  expect_equal(length(res), 1)
++  expect_equal(start(res), 1000)
++  expect_equal(end(res), 24200)
++})
++
++test_that("GetGeneRanges drops genes spanning several chromosomes", {
++  # geneA is confined to chr1; PAR1 is annotated on both chrX and chrY, which
++  # would otherwise collapse to a nonsense chrX range absorbing the chrY end
++  gr <- GRanges(
++    c("chr1", "chr1", "chrX", "chrX", "chrY", "chrY"),
++    IRanges(c(10000, 20000, 1000, 2000, 50000, 51000),
++            c(10500, 20500, 1200, 2200, 50200, 51200)),
++    strand = "+"
++  )
++  gr$tx_id <- c("txA", "txA", "txX", "txX", "txY", "txY")
++  gr$gene_id <- c("ENSGA", "ENSGA", "PAR1", "PAR1", "PAR1", "PAR1")
++  gr$gene_name <- c("geneA", "geneA", "PAR1", "PAR1", "PAR1", "PAR1")
++  gr$gene_biotype <- "protein_coding"
++  gr$type <- "exon"
++
++  expect_warning(
++    res <- Signac:::GetGeneRanges(gr),
++    regexp = "more than one chromosome"
++  )
++  expect_equal(res$gene_id, "ENSGA")
++  expect_equal(as.character(seqnames(res)), "chr1")
++  expect_equal(end(res), 20500)
++})
++
++test_that("GetTranscriptRanges drops transcripts spanning several chromosomes", {
++  gr <- GRanges(
++    c("chr1", "chr1", "chrX", "chrY"),
++    IRanges(c(10000, 20000, 1000, 50000), c(10500, 20500, 1200, 50200)),
++    strand = "+"
++  )
++  gr$tx_id <- c("txA", "txA", "txBAD", "txBAD")
++  gr$gene_id <- "ENSGA"
++  gr$gene_name <- "geneA"
++  gr$gene_biotype <- "protein_coding"
++  gr$type <- "exon"
++
++  expect_warning(
++    res <- Signac:::GetTranscriptRanges(gr),
++    regexp = "more than one chromosome"
++  )
++  expect_equal(res$tx_id, "txA")
++})
++
++test_that("no multi-chromosome warning on a well formed annotation", {
++  ann <- Annotation(atac_small)
++  expect_no_warning(Signac:::GetGeneRanges(ranges = ann))
++  expect_no_warning(Signac:::GetTranscriptRanges(ranges = ann))
++})
++
++test_that("GetTranscriptRanges returns one range per transcript", {
++  gr <- GRanges(
++    "chr1", IRanges(c(1000, 5000, 20000, 24000), c(1200, 5200, 20200, 24200)),
++    strand = "+",
++    tx_id = c("t1", "t1", "t2", "t2"),
++    gene_id = "g1", gene_name = "g1",
++    gene_biotype = "protein_coding", type = "exon"
++  )
++  res <- Signac:::GetTranscriptRanges(gr)
++  expect_equal(length(res), 2)
++  expect_setequal(res$tx_id, c("t1", "t2"))
++  expect_equal(start(res)[res$tx_id == "t1"], 1000)
++  expect_equal(end(res)[res$tx_id == "t1"], 5200)
++  expect_equal(start(res)[res$tx_id == "t2"], 20000)
++  expect_true(all(res$gene_name == "g1"))
++})
++
++test_that("GetTranscriptRanges gives the correct TSS on both strands", {
++  # a minus-strand transcript's TSS is its highest coordinate
++  gr <- GRanges(
++    "chr1", IRanges(c(1000, 5000, 1000, 5000), c(1200, 5200, 1200, 5200)),
++    strand = c("+", "+", "-", "-"),
++    tx_id = c("plus", "plus", "minus", "minus"),
++    gene_id = c("gp", "gp", "gm", "gm"),
++    gene_name = c("gp", "gp", "gm", "gm"),
++    gene_biotype = "protein_coding", type = "exon"
++  )
++  tx <- Signac:::GetTranscriptRanges(gr)
++  tss <- GenomicRanges::resize(tx, width = 1, fix = "start")
++  expect_equal(start(tss)[tx$tx_id == "plus"], 1000)
++  expect_equal(start(tss)[tx$tx_id == "minus"], 5200)
++})
++
++test_that("GetTranscriptRanges falls back to gene_id without a transcript column", {
++  gr <- GRanges(
++    "chr1", IRanges(c(1000, 5000), c(1200, 5200)),
++    strand = "+",
++    gene_id = c("g1", "g2"), gene_name = c("g1", "g2"),
++    gene_biotype = "protein_coding"
++  )
++  res <- Signac:::GetTranscriptRanges(gr)
++  expect_equal(length(res), 2)
++  expect_setequal(res$tx_id, c("g1", "g2"))
++})
++
++test_that("GetTranscriptRanges uses transcript_id when tx_id is absent", {
++  gr <- GRanges(
++    "chr1", IRanges(c(1000, 5000), c(1200, 5200)),
++    strand = "+",
++    transcript_id = c("t1", "t1"),
++    gene_id = "g1", gene_name = "g1",
++    gene_biotype = "protein_coding"
++  )
++  res <- Signac:::GetTranscriptRanges(gr)
++  expect_equal(length(res), 1)
++  expect_equal(res$tx_id, "t1")
++  expect_equal(start(res), 1000)
++  expect_equal(end(res), 5200)
+ })
+ 
+ test_that("GetTSSPositions returns TSS GRanges", {
+diff --git a/vignettes/pbmc_multiomic.Rmd b/vignettes/pbmc_multiomic.Rmd
+index 58fbadf8..eee05ea5 100644
+--- a/vignettes/pbmc_multiomic.Rmd
++++ b/vignettes/pbmc_multiomic.Rmd
+@@ -248,22 +248,16 @@ DimPlot(pbmc, label = TRUE, repel = TRUE, reduction = "umap") + NoLegend()
+ 
+ ## Linking peaks to genes
+ 
+-For each gene, we can find the set of peaks that may regulate the gene by by
++For each gene, we can find the set of peaks that may regulate the gene by
+ computing the correlation between gene expression and accessibility at nearby
+-peaks, and correcting for bias due to GC content, overall accessibility, and 
+-peak size. See the [Signac paper](https://doi.org/10.1038/s41592-021-01282-5)
+-for a full description of the method we use to link peaks to genes.
+-
+-Running this step on the whole genome can be time consuming, so here we demonstrate
+-peak-gene links for a subset of genes as an example. The same function can be used
+-to find links for all genes by omitting the `genes.use` parameter:
++peaks. Running this step on the whole genome can be time consuming, so here we
++demonstrate peak-gene links for a subset of genes as an example. The same
++function can be used to find links for all genes by omitting the `genes.use`
++parameter:
+ 
+ ```{r message=FALSE, warning=FALSE}
+ DefaultAssay(pbmc) <- "ATAC"
+ 
+-# first compute the GC content for each peak
+-pbmc <- RegionStats(pbmc, genome = BSgenome.Hsapiens.UCSC.hg38)
+-
+ # link peaks to genes
+ pbmc <- LinkPeaks(
+   object = pbmc,

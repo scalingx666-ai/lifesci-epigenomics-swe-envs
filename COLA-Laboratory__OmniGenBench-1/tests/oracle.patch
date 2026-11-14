@@ -1,0 +1,1366 @@
+diff --git a/examples/RGB/RNA-mRNA/config.py b/examples/RGB/RNA-mRNA/config.py
+index c66ae9e..da583fa 100644
+--- a/examples/RGB/RNA-mRNA/config.py
++++ b/examples/RGB/RNA-mRNA/config.py
+@@ -22,9 +22,13 @@
+ 
+ 
+ class Dataset(OmniGenomeDatasetForTokenRegression):
++    """
++    Custom dataset class that inherits from OmniGenomeDatasetForTokenRegression
++    """
+     def __init__(self, data_source, tokenizer, max_length, **kwargs):
+         super().__init__(data_source, tokenizer, max_length, **kwargs)
+ 
++    # Prepares the input for the model by tokenizing the sequence and creating labels
+     def prepare_input(self, instance, **kwargs):
+         target_cols = ["reactivity", "deg_Mg_pH10", "deg_Mg_50C"]
+         instance["sequence"] = f'{instance["sequence"]}'
+@@ -57,7 +61,7 @@ def prepare_input(self, instance, **kwargs):
+             tokenized_inputs[col] = tokenized_inputs[col].squeeze()
+         return tokenized_inputs
+ 
+-
++# Function to calculate the mean root-mean-square error (MCRMSE)
+ def mcrmse(y_true, y_pred):
+     if y_true.shape != y_pred.shape:
+         raise ValueError("y_true and y_pred must have the same shape")
+@@ -70,6 +74,9 @@ def mcrmse(y_true, y_pred):
+ 
+ 
+ class Model(OmniGenomeModelForTokenRegression):
++    """
++    Custom model class for token regression tasks, inherited from OmniGenomeModelForTokenRegression
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         super().__init__(config_or_model_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+@@ -79,6 +86,7 @@ def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         self.loss_fn = torch.nn.MSELoss()
+         self.model_info()
+ 
++    # Forward pass of the model
+     def forward(self, **inputs):
+         labels = inputs.pop("labels", None)
+         last_hidden_state = self.last_hidden_state_forward(**inputs)
+@@ -92,6 +100,7 @@ def forward(self, **inputs):
+         }
+         return outputs
+ 
++    # Prediction method for the model, outputs logits and predictions
+     def predict(self, sequence_or_inputs, **kwargs):
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+ 
+@@ -114,6 +123,7 @@ def predict(self, sequence_or_inputs, **kwargs):
+ 
+         return outputs
+ 
++    # Inference method for generating model predictions
+     def inference(self, sequence_or_inputs, **kwargs):
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+ 
+@@ -143,6 +153,7 @@ def inference(self, sequence_or_inputs, **kwargs):
+ 
+         return outputs
+ 
++    # Loss function to compute loss for model predictions
+     def loss_function(self, logits, labels):
+         padding_value = (
+             self.config.ignore_y if hasattr(self.config, "ignore_y") else -100
+@@ -158,7 +169,7 @@ def loss_function(self, logits, labels):
+         return loss
+ 
+ 
+-# Hyperparameters
++# Hyperparameters for the configuration
+ config_dict = {
+     "task_name": "RNA-mRNA",
+     "task_type": "token_regression",
+diff --git a/examples/tutorials/SSP_Demo.py b/examples/tutorials/SSP_Demo.py
+index 1d955a6..9d3aff9 100644
+--- a/examples/tutorials/SSP_Demo.py
++++ b/examples/tutorials/SSP_Demo.py
+@@ -1,8 +1,8 @@
+ # -*- coding: utf-8 -*-
+ # file: SSP_Demo.py
+ # time: 17:04 18/04/2025
+-# author: YANG, HENG <hy345@exeter.ac.uk> (杨恒)
+-# 描述: 在同一视图展示 Ground Truth、ViennaRNA 与模型预测结构（三图水平排列）
++# author: YANG, HENG <hy345@exeter.ac.uk>
++# Description: Display Ground Truth, ViennaRNA prediction, and model prediction in a single view (three images aligned horizontally)）
+ 
+ import os
+ import time
+@@ -15,16 +15,20 @@
+ import RNA
+ from omnigenome import ModelHub
+ 
+-# 加载模型
++# Load the SSP structure prediction model
+ print("Available files:", os.listdir('..'))
+ ssp_model = ModelHub.load("../OmniGenome-186M-SSP")
+ 
+-# 临时 SVG 存储目录
++#  Create a temporary directory for storing SVG images
+ TEMP_DIR = Path(tempfile.mkdtemp())
+ print(f"Using temporary directory: {TEMP_DIR}")
+ 
+ 
+ def ss_validity_loss(rna_strct: str) -> float:
++    """
++    Compute the structural validity loss: unbalanced brackets / total pairs.
++    Helps detect invalid dot-bracket notations.
++    """
+     left = right = 0
+     dots = rna_strct.count('.')
+     for c in rna_strct:
+@@ -41,6 +45,9 @@ def ss_validity_loss(rna_strct: str) -> float:
+ 
+ 
+ def find_invalid_positions(struct: str) -> list:
++    """
++    Find invalid base-pair positions in dot-bracket string (e.g. unmatched parentheses).
++    """
+     stack, invalid = [], []
+     for i, c in enumerate(struct):
+         if c == '(': stack.append(i)
+@@ -54,7 +61,9 @@ def find_invalid_positions(struct: str) -> list:
+ 
+ 
+ def generate_svg_datauri(rna_seq: str, struct: str) -> str:
+-    """生成 SVG 并返回 Base64 URI"""
++    """
++    Generate SVG from RNA sequence and structure, and return Base64-encoded data URI.
++    """
+     try:
+         path = TEMP_DIR / f"{hash(rna_seq+struct)}.svg"
+         RNA.svg_rna_plot(rna_seq, struct, str(path))
+@@ -69,18 +78,21 @@ def generate_svg_datauri(rna_seq: str, struct: str) -> str:
+ 
+ 
+ def fold(rna_seq: str, gt_struct: str):
+-    """展示 Ground Truth、ViennaRNA 与模型预测的结构对比"""
++    """
++    Display side-by-side structural comparison:
++    Ground Truth (if provided), ViennaRNA prediction, and SSP model prediction.
++    """
+     if not rna_seq.strip():
+         return "", "", "", ""
+-    # Ground Truth: 用户输入优先
++    # Ground Truth (user-provided)
+     ground = gt_struct.strip() if gt_struct and gt_struct.strip() else ""
+     gt_uri = generate_svg_datauri(rna_seq, ground) if ground else ""
+ 
+-    # ViennaRNA 预测
++    # ViennaRNA folding prediction
+     vienna_struct, vienna_energy = RNA.fold(rna_seq)
+     vienna_uri = generate_svg_datauri(rna_seq, vienna_struct)
+ 
+-    # 模型预测
++    # Model prediction
+     result = ssp_model.inference(rna_seq)
+     pred = "".join(result.get('predictions', []))
+     if ss_validity_loss(pred):
+@@ -88,7 +100,7 @@ def fold(rna_seq: str, gt_struct: str):
+             pred = pred[:i] + '.' + pred[i+1:]
+     pred_uri = generate_svg_datauri(rna_seq, pred)
+ 
+-    # 统计信息
++    # Structural similarity metrics
+     match_gt = (sum(a==b for a,b in zip(ground, pred)) / len(ground)) if ground else 0
+     match_vienna = sum(a==b for a,b in zip(vienna_struct, pred)) / len(vienna_struct)
+     stats = (
+@@ -96,7 +108,7 @@ def fold(rna_seq: str, gt_struct: str):
+         f"Vienna↔Pred Match: {match_vienna:.2%}"
+     )
+ 
+-    # 合并 HTML：三图水平排列
++    # Combine the three SVGs in horizontal layout
+     combined = (
+         '<div style="display:flex;justify-content:space-around;">'
+         f'{f"<div><h4>Ground Truth</h4><img src=\"{gt_uri}\" style=\"max-width:100%;height:auto;\"/></div>" if ground else ""}'
+@@ -108,13 +120,15 @@ def fold(rna_seq: str, gt_struct: str):
+ 
+ 
+ def sample_rna_sequence():
+-    """从测试集中抽样，返回序列与 Ground Truth 结构"""
++    """
++    Randomly sample an RNA sequence and ground truth structure from the test set.
++    """
+     try:
+         exs = [json.loads(l) for l in open('toy_datasets/Archive2/test.json')]
+         ex = exs[np.random.randint(len(exs))]
+         return ex['seq'], ex.get('label','')
+     except Exception as e:
+-        return f"加载样本出错: {e}", ""
++        return f"Failed to load sample: {e}", ""
+ 
+ # Gradio UI
+ with gr.Blocks(css="""
+@@ -122,18 +136,18 @@ def sample_rna_sequence():
+ .controls {display:flex;gap:10px;margin:20px 0;}
+ .status {padding:10px;background:#f0f4f8;border-radius:4px;white-space:pre;}
+ """) as demo:
+-    gr.Markdown("# RNA 结构预测对比", elem_classes="heading")
++    gr.Markdown("# RNA Structure Prediction Comparison", elem_classes="heading")
+     with gr.Row():
+-        rna_input = gr.Textbox(label="RNA 序列", lines=3)
+-        structure_input = gr.Textbox(label="Ground Truth 结构 (可选)", lines=3)
++        rna_input = gr.Textbox(label="RNA Sequence", lines=3)
++        structure_input = gr.Textbox(label="Ground Truth Structure (optional)", lines=3)
+     with gr.Row(elem_classes="controls"):
+-        sample_btn = gr.Button("抽取样本")
+-        run_btn = gr.Button("预测并对比", variant="primary")
+-    stats_out    = gr.Textbox(label="统计信息", interactive=False, elem_classes="status")
++        sample_btn = gr.Button("Sample Sequence")
++        run_btn = gr.Button("Predict & Compare", variant="primary")
++    stats_out    = gr.Textbox(label="Statistics", interactive=False, elem_classes="status")
+     gt_out       = gr.Textbox(label="Ground Truth", interactive=False)
+-    vienna_out   = gr.Textbox(label="ViennaRNA 结构", interactive=False)
+-    pred_out     = gr.Textbox(label="Prediction 结构", interactive=False)
+-    combined_view= gr.HTML(label="三图对比视图")
++    vienna_out   = gr.Textbox(label="ViennaRNA Structure", interactive=False)
++    pred_out     = gr.Textbox(label="Prediction Structure", interactive=False)
++    combined_view= gr.HTML(label="Side-by-Side Comparison View")
+ 
+     run_btn.click(
+         fold,
+diff --git a/examples/tutorials/Secondary_Structure_Prediction_Tutorial.ipynb b/examples/tutorials/Secondary_Structure_Prediction_Tutorial.ipynb
+index 15488d8..0abb1b7 100644
+--- a/examples/tutorials/Secondary_Structure_Prediction_Tutorial.ipynb
++++ b/examples/tutorials/Secondary_Structure_Prediction_Tutorial.ipynb
+@@ -1507,35 +1507,35 @@
+      "evalue": "_ssl.c:1112: The handshake operation timed out",
+      "output_type": "error",
+      "traceback": [
+-      "\u001B[1;31m---------------------------------------------------------------------------\u001B[0m",
+-      "\u001B[1;31mConnectTimeout\u001B[0m                            Traceback (most recent call last)",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:69\u001B[0m, in \u001B[0;36mmap_httpcore_exceptions\u001B[1;34m()\u001B[0m\n\u001B[0;32m     68\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[1;32m---> 69\u001B[0m     \u001B[38;5;28;01myield\u001B[39;00m\n\u001B[0;32m     70\u001B[0m \u001B[38;5;28;01mexcept\u001B[39;00m \u001B[38;5;167;01mException\u001B[39;00m \u001B[38;5;28;01mas\u001B[39;00m exc:\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:233\u001B[0m, in \u001B[0;36mHTTPTransport.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m    232\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m map_httpcore_exceptions():\n\u001B[1;32m--> 233\u001B[0m     resp \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43m_pool\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mhandle_request\u001B[49m\u001B[43m(\u001B[49m\u001B[43mreq\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    235\u001B[0m \u001B[38;5;28;01massert\u001B[39;00m \u001B[38;5;28misinstance\u001B[39m(resp\u001B[38;5;241m.\u001B[39mstream, typing\u001B[38;5;241m.\u001B[39mIterable)\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection_pool.py:216\u001B[0m, in \u001B[0;36mConnectionPool.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m    215\u001B[0m     \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_close_connections(closing)\n\u001B[1;32m--> 216\u001B[0m     \u001B[38;5;28;01mraise\u001B[39;00m exc \u001B[38;5;28;01mfrom\u001B[39;00m \u001B[38;5;28;01mNone\u001B[39;00m\n\u001B[0;32m    218\u001B[0m \u001B[38;5;66;03m# Return the response. Note that in this case we still have to manage\u001B[39;00m\n\u001B[0;32m    219\u001B[0m \u001B[38;5;66;03m# the point at which the response is closed.\u001B[39;00m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection_pool.py:196\u001B[0m, in \u001B[0;36mConnectionPool.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m    194\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[0;32m    195\u001B[0m     \u001B[38;5;66;03m# Send the request on the assigned connection.\u001B[39;00m\n\u001B[1;32m--> 196\u001B[0m     response \u001B[38;5;241m=\u001B[39m \u001B[43mconnection\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mhandle_request\u001B[49m\u001B[43m(\u001B[49m\n\u001B[0;32m    197\u001B[0m \u001B[43m        \u001B[49m\u001B[43mpool_request\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mrequest\u001B[49m\n\u001B[0;32m    198\u001B[0m \u001B[43m    \u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    199\u001B[0m \u001B[38;5;28;01mexcept\u001B[39;00m ConnectionNotAvailable:\n\u001B[0;32m    200\u001B[0m     \u001B[38;5;66;03m# In some cases a connection may initially be available to\u001B[39;00m\n\u001B[0;32m    201\u001B[0m     \u001B[38;5;66;03m# handle a request, but then become unavailable.\u001B[39;00m\n\u001B[0;32m    202\u001B[0m     \u001B[38;5;66;03m#\u001B[39;00m\n\u001B[0;32m    203\u001B[0m     \u001B[38;5;66;03m# In this case we clear the connection and try again.\u001B[39;00m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:99\u001B[0m, in \u001B[0;36mHTTPConnection.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m     98\u001B[0m     \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_connect_failed \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;01mTrue\u001B[39;00m\n\u001B[1;32m---> 99\u001B[0m     \u001B[38;5;28;01mraise\u001B[39;00m exc\n\u001B[0;32m    101\u001B[0m \u001B[38;5;28;01mreturn\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_connection\u001B[38;5;241m.\u001B[39mhandle_request(request)\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:76\u001B[0m, in \u001B[0;36mHTTPConnection.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m     75\u001B[0m \u001B[38;5;28;01mif\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_connection \u001B[38;5;129;01mis\u001B[39;00m \u001B[38;5;28;01mNone\u001B[39;00m:\n\u001B[1;32m---> 76\u001B[0m     stream \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43m_connect\u001B[49m\u001B[43m(\u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m     78\u001B[0m     ssl_object \u001B[38;5;241m=\u001B[39m stream\u001B[38;5;241m.\u001B[39mget_extra_info(\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mssl_object\u001B[39m\u001B[38;5;124m\"\u001B[39m)\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:154\u001B[0m, in \u001B[0;36mHTTPConnection._connect\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m    153\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m Trace(\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mstart_tls\u001B[39m\u001B[38;5;124m\"\u001B[39m, logger, request, kwargs) \u001B[38;5;28;01mas\u001B[39;00m trace:\n\u001B[1;32m--> 154\u001B[0m     stream \u001B[38;5;241m=\u001B[39m stream\u001B[38;5;241m.\u001B[39mstart_tls(\u001B[38;5;241m*\u001B[39m\u001B[38;5;241m*\u001B[39mkwargs)\n\u001B[0;32m    155\u001B[0m     trace\u001B[38;5;241m.\u001B[39mreturn_value \u001B[38;5;241m=\u001B[39m stream\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_backends\\sync.py:168\u001B[0m, in \u001B[0;36mSyncStream.start_tls\u001B[1;34m(self, ssl_context, server_hostname, timeout)\u001B[0m\n\u001B[0;32m    167\u001B[0m         \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mclose()\n\u001B[1;32m--> 168\u001B[0m         \u001B[38;5;28;01mraise\u001B[39;00m exc\n\u001B[0;32m    169\u001B[0m \u001B[38;5;28;01mreturn\u001B[39;00m SyncStream(sock)\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\contextlib.py:137\u001B[0m, in \u001B[0;36m_GeneratorContextManager.__exit__\u001B[1;34m(self, typ, value, traceback)\u001B[0m\n\u001B[0;32m    136\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[1;32m--> 137\u001B[0m     \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mgen\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mthrow\u001B[49m\u001B[43m(\u001B[49m\u001B[43mtyp\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mvalue\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mtraceback\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    138\u001B[0m \u001B[38;5;28;01mexcept\u001B[39;00m \u001B[38;5;167;01mStopIteration\u001B[39;00m \u001B[38;5;28;01mas\u001B[39;00m exc:\n\u001B[0;32m    139\u001B[0m     \u001B[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001B[39;00m\n\u001B[0;32m    140\u001B[0m     \u001B[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001B[39;00m\n\u001B[0;32m    141\u001B[0m     \u001B[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001B[39;00m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_exceptions.py:14\u001B[0m, in \u001B[0;36mmap_exceptions\u001B[1;34m(map)\u001B[0m\n\u001B[0;32m     13\u001B[0m     \u001B[38;5;28;01mif\u001B[39;00m \u001B[38;5;28misinstance\u001B[39m(exc, from_exc):\n\u001B[1;32m---> 14\u001B[0m         \u001B[38;5;28;01mraise\u001B[39;00m to_exc(exc) \u001B[38;5;28;01mfrom\u001B[39;00m \u001B[38;5;21;01mexc\u001B[39;00m\n\u001B[0;32m     15\u001B[0m \u001B[38;5;28;01mraise\u001B[39;00m\n",
+-      "\u001B[1;31mConnectTimeout\u001B[0m: _ssl.c:1112: The handshake operation timed out",
++      "\u001b[1;31m---------------------------------------------------------------------------\u001b[0m",
++      "\u001b[1;31mConnectTimeout\u001b[0m                            Traceback (most recent call last)",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:69\u001b[0m, in \u001b[0;36mmap_httpcore_exceptions\u001b[1;34m()\u001b[0m\n\u001b[0;32m     68\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m---> 69\u001b[0m     \u001b[38;5;28;01myield\u001b[39;00m\n\u001b[0;32m     70\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mException\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:233\u001b[0m, in \u001b[0;36mHTTPTransport.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    232\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m map_httpcore_exceptions():\n\u001b[1;32m--> 233\u001b[0m     resp \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_pool\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mreq\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    235\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(resp\u001b[38;5;241m.\u001b[39mstream, typing\u001b[38;5;241m.\u001b[39mIterable)\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection_pool.py:216\u001b[0m, in \u001b[0;36mConnectionPool.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    215\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_close_connections(closing)\n\u001b[1;32m--> 216\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m exc \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[0;32m    218\u001b[0m \u001b[38;5;66;03m# Return the response. Note that in this case we still have to manage\u001b[39;00m\n\u001b[0;32m    219\u001b[0m \u001b[38;5;66;03m# the point at which the response is closed.\u001b[39;00m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection_pool.py:196\u001b[0m, in \u001b[0;36mConnectionPool.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    194\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    195\u001b[0m     \u001b[38;5;66;03m# Send the request on the assigned connection.\u001b[39;00m\n\u001b[1;32m--> 196\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[43mconnection\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    197\u001b[0m \u001b[43m        \u001b[49m\u001b[43mpool_request\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrequest\u001b[49m\n\u001b[0;32m    198\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    199\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m ConnectionNotAvailable:\n\u001b[0;32m    200\u001b[0m     \u001b[38;5;66;03m# In some cases a connection may initially be available to\u001b[39;00m\n\u001b[0;32m    201\u001b[0m     \u001b[38;5;66;03m# handle a request, but then become unavailable.\u001b[39;00m\n\u001b[0;32m    202\u001b[0m     \u001b[38;5;66;03m#\u001b[39;00m\n\u001b[0;32m    203\u001b[0m     \u001b[38;5;66;03m# In this case we clear the connection and try again.\u001b[39;00m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:99\u001b[0m, in \u001b[0;36mHTTPConnection.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m     98\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connect_failed \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mTrue\u001b[39;00m\n\u001b[1;32m---> 99\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m exc\n\u001b[0;32m    101\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connection\u001b[38;5;241m.\u001b[39mhandle_request(request)\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:76\u001b[0m, in \u001b[0;36mHTTPConnection.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m     75\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connection \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m:\n\u001b[1;32m---> 76\u001b[0m     stream \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_connect\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m     78\u001b[0m     ssl_object \u001b[38;5;241m=\u001b[39m stream\u001b[38;5;241m.\u001b[39mget_extra_info(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mssl_object\u001b[39m\u001b[38;5;124m\"\u001b[39m)\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_sync\\connection.py:154\u001b[0m, in \u001b[0;36mHTTPConnection._connect\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    153\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m Trace(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mstart_tls\u001b[39m\u001b[38;5;124m\"\u001b[39m, logger, request, kwargs) \u001b[38;5;28;01mas\u001b[39;00m trace:\n\u001b[1;32m--> 154\u001b[0m     stream \u001b[38;5;241m=\u001b[39m stream\u001b[38;5;241m.\u001b[39mstart_tls(\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mkwargs)\n\u001b[0;32m    155\u001b[0m     trace\u001b[38;5;241m.\u001b[39mreturn_value \u001b[38;5;241m=\u001b[39m stream\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_backends\\sync.py:168\u001b[0m, in \u001b[0;36mSyncStream.start_tls\u001b[1;34m(self, ssl_context, server_hostname, timeout)\u001b[0m\n\u001b[0;32m    167\u001b[0m         \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mclose()\n\u001b[1;32m--> 168\u001b[0m         \u001b[38;5;28;01mraise\u001b[39;00m exc\n\u001b[0;32m    169\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m SyncStream(sock)\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\contextlib.py:137\u001b[0m, in \u001b[0;36m_GeneratorContextManager.__exit__\u001b[1;34m(self, typ, value, traceback)\u001b[0m\n\u001b[0;32m    136\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m--> 137\u001b[0m     \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgen\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mthrow\u001b[49m\u001b[43m(\u001b[49m\u001b[43mtyp\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mvalue\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mtraceback\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    138\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mStopIteration\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n\u001b[0;32m    139\u001b[0m     \u001b[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001b[39;00m\n\u001b[0;32m    140\u001b[0m     \u001b[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001b[39;00m\n\u001b[0;32m    141\u001b[0m     \u001b[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001b[39;00m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpcore\\_exceptions.py:14\u001b[0m, in \u001b[0;36mmap_exceptions\u001b[1;34m(map)\u001b[0m\n\u001b[0;32m     13\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(exc, from_exc):\n\u001b[1;32m---> 14\u001b[0m         \u001b[38;5;28;01mraise\u001b[39;00m to_exc(exc) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mexc\u001b[39;00m\n\u001b[0;32m     15\u001b[0m \u001b[38;5;28;01mraise\u001b[39;00m\n",
++      "\u001b[1;31mConnectTimeout\u001b[0m: _ssl.c:1112: The handshake operation timed out",
+       "\nThe above exception was the direct cause of the following exception:\n",
+-      "\u001B[1;31mConnectTimeout\u001B[0m                            Traceback (most recent call last)",
+-      "Cell \u001B[1;32mIn[1], line 204\u001B[0m\n\u001B[0;32m    195\u001B[0m     repair_button\u001B[38;5;241m.\u001B[39mclick(\n\u001B[0;32m    196\u001B[0m         fn\u001B[38;5;241m=\u001B[39mrepair_rna_structure,\n\u001B[0;32m    197\u001B[0m         inputs\u001B[38;5;241m=\u001B[39m[rna_input, pred_structure_output],\n\u001B[0;32m    198\u001B[0m         outputs\u001B[38;5;241m=\u001B[39m[pred_structure_output, predicted_image],\n\u001B[0;32m    199\u001B[0m     )\n\u001B[0;32m    201\u001B[0m     sample_button\u001B[38;5;241m.\u001B[39mclick(\n\u001B[0;32m    202\u001B[0m         fn\u001B[38;5;241m=\u001B[39msample_rna_sequence, outputs\u001B[38;5;241m=\u001B[39m[rna_input, strcut_input, anno_structure_output]\n\u001B[0;32m    203\u001B[0m     )\n\u001B[1;32m--> 204\u001B[0m \u001B[43mdemo\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mlaunch\u001B[49m\u001B[43m(\u001B[49m\u001B[43mshare\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[38;5;28;43;01mTrue\u001B[39;49;00m\u001B[43m)\u001B[49m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\gradio\\blocks.py:2283\u001B[0m, in \u001B[0;36mBlocks.launch\u001B[1;34m(self, inline, inbrowser, share, debug, max_threads, auth, auth_message, prevent_thread_lock, show_error, server_name, server_port, height, width, favicon_path, ssl_keyfile, ssl_certfile, ssl_keyfile_password, ssl_verify, quiet, show_api, allowed_paths, blocked_paths, root_path, app_kwargs, state_session_capacity, share_server_address, share_server_protocol, auth_dependency, _frontend)\u001B[0m\n\u001B[0;32m   2280\u001B[0m \u001B[38;5;28;01mfrom\u001B[39;00m \u001B[38;5;21;01mIPython\u001B[39;00m\u001B[38;5;21;01m.\u001B[39;00m\u001B[38;5;21;01mdisplay\u001B[39;00m \u001B[38;5;28;01mimport\u001B[39;00m HTML, Javascript, display  \u001B[38;5;66;03m# type: ignore\u001B[39;00m\n\u001B[0;32m   2282\u001B[0m \u001B[38;5;28;01mif\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mshare \u001B[38;5;129;01mand\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mshare_url:\n\u001B[1;32m-> 2283\u001B[0m     \u001B[38;5;28;01mwhile\u001B[39;00m \u001B[38;5;129;01mnot\u001B[39;00m \u001B[43mnetworking\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43murl_ok\u001B[49m\u001B[43m(\u001B[49m\u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mshare_url\u001B[49m\u001B[43m)\u001B[49m:\n\u001B[0;32m   2284\u001B[0m         time\u001B[38;5;241m.\u001B[39msleep(\u001B[38;5;241m0.25\u001B[39m)\n\u001B[0;32m   2285\u001B[0m     artifact \u001B[38;5;241m=\u001B[39m HTML(\n\u001B[0;32m   2286\u001B[0m         \u001B[38;5;124mf\u001B[39m\u001B[38;5;124m'\u001B[39m\u001B[38;5;124m<div><iframe src=\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;132;01m{\u001B[39;00m\u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mshare_url\u001B[38;5;132;01m}\u001B[39;00m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m width=\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;132;01m{\u001B[39;00m\u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mwidth\u001B[38;5;132;01m}\u001B[39;00m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m height=\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;132;01m{\u001B[39;00m\u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mheight\u001B[38;5;132;01m}\u001B[39;00m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m allow=\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mautoplay; camera; microphone; clipboard-read; clipboard-write;\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m frameborder=\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m0\u001B[39m\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124m allowfullscreen></iframe></div>\u001B[39m\u001B[38;5;124m'\u001B[39m\n\u001B[0;32m   2287\u001B[0m     )\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\gradio\\networking.py:53\u001B[0m, in \u001B[0;36murl_ok\u001B[1;34m(url)\u001B[0m\n\u001B[0;32m     51\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m warnings\u001B[38;5;241m.\u001B[39mcatch_warnings():\n\u001B[0;32m     52\u001B[0m     warnings\u001B[38;5;241m.\u001B[39mfilterwarnings(\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mignore\u001B[39m\u001B[38;5;124m\"\u001B[39m)\n\u001B[1;32m---> 53\u001B[0m     r \u001B[38;5;241m=\u001B[39m \u001B[43mhttpx\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mhead\u001B[49m\u001B[43m(\u001B[49m\u001B[43murl\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mtimeout\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[38;5;241;43m3\u001B[39;49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mverify\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[38;5;28;43;01mFalse\u001B[39;49;00m\u001B[43m)\u001B[49m\n\u001B[0;32m     54\u001B[0m \u001B[38;5;28;01mif\u001B[39;00m r\u001B[38;5;241m.\u001B[39mstatus_code \u001B[38;5;129;01min\u001B[39;00m (\u001B[38;5;241m200\u001B[39m, \u001B[38;5;241m401\u001B[39m, \u001B[38;5;241m302\u001B[39m):  \u001B[38;5;66;03m# 401 or 302 if auth is set\u001B[39;00m\n\u001B[0;32m     55\u001B[0m     \u001B[38;5;28;01mreturn\u001B[39;00m \u001B[38;5;28;01mTrue\u001B[39;00m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_api.py:278\u001B[0m, in \u001B[0;36mhead\u001B[1;34m(url, params, headers, cookies, auth, proxy, proxies, follow_redirects, cert, verify, timeout, trust_env)\u001B[0m\n\u001B[0;32m    255\u001B[0m \u001B[38;5;28;01mdef\u001B[39;00m \u001B[38;5;21mhead\u001B[39m(\n\u001B[0;32m    256\u001B[0m     url: URLTypes,\n\u001B[0;32m    257\u001B[0m     \u001B[38;5;241m*\u001B[39m,\n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m    268\u001B[0m     trust_env: \u001B[38;5;28mbool\u001B[39m \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;01mTrue\u001B[39;00m,\n\u001B[0;32m    269\u001B[0m ) \u001B[38;5;241m-\u001B[39m\u001B[38;5;241m>\u001B[39m Response:\n\u001B[0;32m    270\u001B[0m \u001B[38;5;250m    \u001B[39m\u001B[38;5;124;03m\"\"\"\u001B[39;00m\n\u001B[0;32m    271\u001B[0m \u001B[38;5;124;03m    Sends a `HEAD` request.\u001B[39;00m\n\u001B[0;32m    272\u001B[0m \n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m    276\u001B[0m \u001B[38;5;124;03m    on this function, as `HEAD` requests should not include a request body.\u001B[39;00m\n\u001B[0;32m    277\u001B[0m \u001B[38;5;124;03m    \"\"\"\u001B[39;00m\n\u001B[1;32m--> 278\u001B[0m     \u001B[38;5;28;01mreturn\u001B[39;00m \u001B[43mrequest\u001B[49m\u001B[43m(\u001B[49m\n\u001B[0;32m    279\u001B[0m \u001B[43m        \u001B[49m\u001B[38;5;124;43m\"\u001B[39;49m\u001B[38;5;124;43mHEAD\u001B[39;49m\u001B[38;5;124;43m\"\u001B[39;49m\u001B[43m,\u001B[49m\n\u001B[0;32m    280\u001B[0m \u001B[43m        \u001B[49m\u001B[43murl\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    281\u001B[0m \u001B[43m        \u001B[49m\u001B[43mparams\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mparams\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    282\u001B[0m \u001B[43m        \u001B[49m\u001B[43mheaders\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mheaders\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    283\u001B[0m \u001B[43m        \u001B[49m\u001B[43mcookies\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mcookies\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    284\u001B[0m \u001B[43m        \u001B[49m\u001B[43mauth\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mauth\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    285\u001B[0m \u001B[43m        \u001B[49m\u001B[43mproxy\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mproxy\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    286\u001B[0m \u001B[43m        \u001B[49m\u001B[43mproxies\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mproxies\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    287\u001B[0m \u001B[43m        \u001B[49m\u001B[43mfollow_redirects\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfollow_redirects\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    288\u001B[0m \u001B[43m        \u001B[49m\u001B[43mcert\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mcert\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    289\u001B[0m \u001B[43m        \u001B[49m\u001B[43mverify\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mverify\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    290\u001B[0m \u001B[43m        \u001B[49m\u001B[43mtimeout\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mtimeout\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    291\u001B[0m \u001B[43m        \u001B[49m\u001B[43mtrust_env\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mtrust_env\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    292\u001B[0m \u001B[43m    \u001B[49m\u001B[43m)\u001B[49m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_api.py:106\u001B[0m, in \u001B[0;36mrequest\u001B[1;34m(method, url, params, content, data, files, json, headers, cookies, auth, proxy, proxies, timeout, follow_redirects, verify, cert, trust_env)\u001B[0m\n\u001B[0;32m     46\u001B[0m \u001B[38;5;250m\u001B[39m\u001B[38;5;124;03m\"\"\"\u001B[39;00m\n\u001B[0;32m     47\u001B[0m \u001B[38;5;124;03mSends an HTTP request.\u001B[39;00m\n\u001B[0;32m     48\u001B[0m \n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m     95\u001B[0m \u001B[38;5;124;03m```\u001B[39;00m\n\u001B[0;32m     96\u001B[0m \u001B[38;5;124;03m\"\"\"\u001B[39;00m\n\u001B[0;32m     97\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m Client(\n\u001B[0;32m     98\u001B[0m     cookies\u001B[38;5;241m=\u001B[39mcookies,\n\u001B[0;32m     99\u001B[0m     proxy\u001B[38;5;241m=\u001B[39mproxy,\n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m    104\u001B[0m     trust_env\u001B[38;5;241m=\u001B[39mtrust_env,\n\u001B[0;32m    105\u001B[0m ) \u001B[38;5;28;01mas\u001B[39;00m client:\n\u001B[1;32m--> 106\u001B[0m     \u001B[38;5;28;01mreturn\u001B[39;00m \u001B[43mclient\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mrequest\u001B[49m\u001B[43m(\u001B[49m\n\u001B[0;32m    107\u001B[0m \u001B[43m        \u001B[49m\u001B[43mmethod\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mmethod\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    108\u001B[0m \u001B[43m        \u001B[49m\u001B[43murl\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43murl\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    109\u001B[0m \u001B[43m        \u001B[49m\u001B[43mcontent\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mcontent\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    110\u001B[0m \u001B[43m        \u001B[49m\u001B[43mdata\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mdata\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    111\u001B[0m \u001B[43m        \u001B[49m\u001B[43mfiles\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfiles\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    112\u001B[0m \u001B[43m        \u001B[49m\u001B[43mjson\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mjson\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    113\u001B[0m \u001B[43m        \u001B[49m\u001B[43mparams\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mparams\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    114\u001B[0m \u001B[43m        \u001B[49m\u001B[43mheaders\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mheaders\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    115\u001B[0m \u001B[43m        \u001B[49m\u001B[43mauth\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mauth\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    116\u001B[0m \u001B[43m        \u001B[49m\u001B[43mfollow_redirects\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfollow_redirects\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    117\u001B[0m \u001B[43m    \u001B[49m\u001B[43m)\u001B[49m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:827\u001B[0m, in \u001B[0;36mClient.request\u001B[1;34m(self, method, url, content, data, files, json, params, headers, cookies, auth, follow_redirects, timeout, extensions)\u001B[0m\n\u001B[0;32m    812\u001B[0m     warnings\u001B[38;5;241m.\u001B[39mwarn(message, \u001B[38;5;167;01mDeprecationWarning\u001B[39;00m)\n\u001B[0;32m    814\u001B[0m request \u001B[38;5;241m=\u001B[39m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mbuild_request(\n\u001B[0;32m    815\u001B[0m     method\u001B[38;5;241m=\u001B[39mmethod,\n\u001B[0;32m    816\u001B[0m     url\u001B[38;5;241m=\u001B[39murl,\n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m    825\u001B[0m     extensions\u001B[38;5;241m=\u001B[39mextensions,\n\u001B[0;32m    826\u001B[0m )\n\u001B[1;32m--> 827\u001B[0m \u001B[38;5;28;01mreturn\u001B[39;00m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43msend\u001B[49m\u001B[43m(\u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mauth\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mauth\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mfollow_redirects\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfollow_redirects\u001B[49m\u001B[43m)\u001B[49m\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:914\u001B[0m, in \u001B[0;36mClient.send\u001B[1;34m(self, request, stream, auth, follow_redirects)\u001B[0m\n\u001B[0;32m    906\u001B[0m follow_redirects \u001B[38;5;241m=\u001B[39m (\n\u001B[0;32m    907\u001B[0m     \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39mfollow_redirects\n\u001B[0;32m    908\u001B[0m     \u001B[38;5;28;01mif\u001B[39;00m \u001B[38;5;28misinstance\u001B[39m(follow_redirects, UseClientDefault)\n\u001B[0;32m    909\u001B[0m     \u001B[38;5;28;01melse\u001B[39;00m follow_redirects\n\u001B[0;32m    910\u001B[0m )\n\u001B[0;32m    912\u001B[0m auth \u001B[38;5;241m=\u001B[39m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_build_request_auth(request, auth)\n\u001B[1;32m--> 914\u001B[0m response \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43m_send_handling_auth\u001B[49m\u001B[43m(\u001B[49m\n\u001B[0;32m    915\u001B[0m \u001B[43m    \u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    916\u001B[0m \u001B[43m    \u001B[49m\u001B[43mauth\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mauth\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    917\u001B[0m \u001B[43m    \u001B[49m\u001B[43mfollow_redirects\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfollow_redirects\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    918\u001B[0m \u001B[43m    \u001B[49m\u001B[43mhistory\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43m[\u001B[49m\u001B[43m]\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    919\u001B[0m \u001B[43m\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    920\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[0;32m    921\u001B[0m     \u001B[38;5;28;01mif\u001B[39;00m \u001B[38;5;129;01mnot\u001B[39;00m stream:\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:942\u001B[0m, in \u001B[0;36mClient._send_handling_auth\u001B[1;34m(self, request, auth, follow_redirects, history)\u001B[0m\n\u001B[0;32m    939\u001B[0m request \u001B[38;5;241m=\u001B[39m \u001B[38;5;28mnext\u001B[39m(auth_flow)\n\u001B[0;32m    941\u001B[0m \u001B[38;5;28;01mwhile\u001B[39;00m \u001B[38;5;28;01mTrue\u001B[39;00m:\n\u001B[1;32m--> 942\u001B[0m     response \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43m_send_handling_redirects\u001B[49m\u001B[43m(\u001B[49m\n\u001B[0;32m    943\u001B[0m \u001B[43m        \u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    944\u001B[0m \u001B[43m        \u001B[49m\u001B[43mfollow_redirects\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mfollow_redirects\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    945\u001B[0m \u001B[43m        \u001B[49m\u001B[43mhistory\u001B[49m\u001B[38;5;241;43m=\u001B[39;49m\u001B[43mhistory\u001B[49m\u001B[43m,\u001B[49m\n\u001B[0;32m    946\u001B[0m \u001B[43m    \u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    947\u001B[0m     \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[0;32m    948\u001B[0m         \u001B[38;5;28;01mtry\u001B[39;00m:\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:979\u001B[0m, in \u001B[0;36mClient._send_handling_redirects\u001B[1;34m(self, request, follow_redirects, history)\u001B[0m\n\u001B[0;32m    976\u001B[0m \u001B[38;5;28;01mfor\u001B[39;00m hook \u001B[38;5;129;01min\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_event_hooks[\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mrequest\u001B[39m\u001B[38;5;124m\"\u001B[39m]:\n\u001B[0;32m    977\u001B[0m     hook(request)\n\u001B[1;32m--> 979\u001B[0m response \u001B[38;5;241m=\u001B[39m \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43m_send_single_request\u001B[49m\u001B[43m(\u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    980\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[0;32m    981\u001B[0m     \u001B[38;5;28;01mfor\u001B[39;00m hook \u001B[38;5;129;01min\u001B[39;00m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_event_hooks[\u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mresponse\u001B[39m\u001B[38;5;124m\"\u001B[39m]:\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:1015\u001B[0m, in \u001B[0;36mClient._send_single_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m   1010\u001B[0m     \u001B[38;5;28;01mraise\u001B[39;00m \u001B[38;5;167;01mRuntimeError\u001B[39;00m(\n\u001B[0;32m   1011\u001B[0m         \u001B[38;5;124m\"\u001B[39m\u001B[38;5;124mAttempted to send an async request with a sync Client instance.\u001B[39m\u001B[38;5;124m\"\u001B[39m\n\u001B[0;32m   1012\u001B[0m     )\n\u001B[0;32m   1014\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m request_context(request\u001B[38;5;241m=\u001B[39mrequest):\n\u001B[1;32m-> 1015\u001B[0m     response \u001B[38;5;241m=\u001B[39m \u001B[43mtransport\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mhandle_request\u001B[49m\u001B[43m(\u001B[49m\u001B[43mrequest\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m   1017\u001B[0m \u001B[38;5;28;01massert\u001B[39;00m \u001B[38;5;28misinstance\u001B[39m(response\u001B[38;5;241m.\u001B[39mstream, SyncByteStream)\n\u001B[0;32m   1019\u001B[0m response\u001B[38;5;241m.\u001B[39mrequest \u001B[38;5;241m=\u001B[39m request\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:233\u001B[0m, in \u001B[0;36mHTTPTransport.handle_request\u001B[1;34m(self, request)\u001B[0m\n\u001B[0;32m    220\u001B[0m req \u001B[38;5;241m=\u001B[39m httpcore\u001B[38;5;241m.\u001B[39mRequest(\n\u001B[0;32m    221\u001B[0m     method\u001B[38;5;241m=\u001B[39mrequest\u001B[38;5;241m.\u001B[39mmethod,\n\u001B[0;32m    222\u001B[0m     url\u001B[38;5;241m=\u001B[39mhttpcore\u001B[38;5;241m.\u001B[39mURL(\n\u001B[1;32m   (...)\u001B[0m\n\u001B[0;32m    230\u001B[0m     extensions\u001B[38;5;241m=\u001B[39mrequest\u001B[38;5;241m.\u001B[39mextensions,\n\u001B[0;32m    231\u001B[0m )\n\u001B[0;32m    232\u001B[0m \u001B[38;5;28;01mwith\u001B[39;00m map_httpcore_exceptions():\n\u001B[1;32m--> 233\u001B[0m     resp \u001B[38;5;241m=\u001B[39m \u001B[38;5;28mself\u001B[39m\u001B[38;5;241m.\u001B[39m_pool\u001B[38;5;241m.\u001B[39mhandle_request(req)\n\u001B[0;32m    235\u001B[0m \u001B[38;5;28;01massert\u001B[39;00m \u001B[38;5;28misinstance\u001B[39m(resp\u001B[38;5;241m.\u001B[39mstream, typing\u001B[38;5;241m.\u001B[39mIterable)\n\u001B[0;32m    237\u001B[0m \u001B[38;5;28;01mreturn\u001B[39;00m Response(\n\u001B[0;32m    238\u001B[0m     status_code\u001B[38;5;241m=\u001B[39mresp\u001B[38;5;241m.\u001B[39mstatus,\n\u001B[0;32m    239\u001B[0m     headers\u001B[38;5;241m=\u001B[39mresp\u001B[38;5;241m.\u001B[39mheaders,\n\u001B[0;32m    240\u001B[0m     stream\u001B[38;5;241m=\u001B[39mResponseStream(resp\u001B[38;5;241m.\u001B[39mstream),\n\u001B[0;32m    241\u001B[0m     extensions\u001B[38;5;241m=\u001B[39mresp\u001B[38;5;241m.\u001B[39mextensions,\n\u001B[0;32m    242\u001B[0m )\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\contextlib.py:137\u001B[0m, in \u001B[0;36m_GeneratorContextManager.__exit__\u001B[1;34m(self, typ, value, traceback)\u001B[0m\n\u001B[0;32m    135\u001B[0m     value \u001B[38;5;241m=\u001B[39m typ()\n\u001B[0;32m    136\u001B[0m \u001B[38;5;28;01mtry\u001B[39;00m:\n\u001B[1;32m--> 137\u001B[0m     \u001B[38;5;28;43mself\u001B[39;49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mgen\u001B[49m\u001B[38;5;241;43m.\u001B[39;49m\u001B[43mthrow\u001B[49m\u001B[43m(\u001B[49m\u001B[43mtyp\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mvalue\u001B[49m\u001B[43m,\u001B[49m\u001B[43m \u001B[49m\u001B[43mtraceback\u001B[49m\u001B[43m)\u001B[49m\n\u001B[0;32m    138\u001B[0m \u001B[38;5;28;01mexcept\u001B[39;00m \u001B[38;5;167;01mStopIteration\u001B[39;00m \u001B[38;5;28;01mas\u001B[39;00m exc:\n\u001B[0;32m    139\u001B[0m     \u001B[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001B[39;00m\n\u001B[0;32m    140\u001B[0m     \u001B[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001B[39;00m\n\u001B[0;32m    141\u001B[0m     \u001B[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001B[39;00m\n\u001B[0;32m    142\u001B[0m     \u001B[38;5;28;01mreturn\u001B[39;00m exc \u001B[38;5;129;01mis\u001B[39;00m \u001B[38;5;129;01mnot\u001B[39;00m value\n",
+-      "File \u001B[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:86\u001B[0m, in \u001B[0;36mmap_httpcore_exceptions\u001B[1;34m()\u001B[0m\n\u001B[0;32m     83\u001B[0m     \u001B[38;5;28;01mraise\u001B[39;00m\n\u001B[0;32m     85\u001B[0m message \u001B[38;5;241m=\u001B[39m \u001B[38;5;28mstr\u001B[39m(exc)\n\u001B[1;32m---> 86\u001B[0m \u001B[38;5;28;01mraise\u001B[39;00m mapped_exc(message) \u001B[38;5;28;01mfrom\u001B[39;00m \u001B[38;5;21;01mexc\u001B[39;00m\n",
+-      "\u001B[1;31mConnectTimeout\u001B[0m: _ssl.c:1112: The handshake operation timed out"
++      "\u001b[1;31mConnectTimeout\u001b[0m                            Traceback (most recent call last)",
++      "Cell \u001b[1;32mIn[1], line 204\u001b[0m\n\u001b[0;32m    195\u001b[0m     repair_button\u001b[38;5;241m.\u001b[39mclick(\n\u001b[0;32m    196\u001b[0m         fn\u001b[38;5;241m=\u001b[39mrepair_rna_structure,\n\u001b[0;32m    197\u001b[0m         inputs\u001b[38;5;241m=\u001b[39m[rna_input, pred_structure_output],\n\u001b[0;32m    198\u001b[0m         outputs\u001b[38;5;241m=\u001b[39m[pred_structure_output, predicted_image],\n\u001b[0;32m    199\u001b[0m     )\n\u001b[0;32m    201\u001b[0m     sample_button\u001b[38;5;241m.\u001b[39mclick(\n\u001b[0;32m    202\u001b[0m         fn\u001b[38;5;241m=\u001b[39msample_rna_sequence, outputs\u001b[38;5;241m=\u001b[39m[rna_input, strcut_input, anno_structure_output]\n\u001b[0;32m    203\u001b[0m     )\n\u001b[1;32m--> 204\u001b[0m \u001b[43mdemo\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mlaunch\u001b[49m\u001b[43m(\u001b[49m\u001b[43mshare\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43;01mTrue\u001b[39;49;00m\u001b[43m)\u001b[49m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\gradio\\blocks.py:2283\u001b[0m, in \u001b[0;36mBlocks.launch\u001b[1;34m(self, inline, inbrowser, share, debug, max_threads, auth, auth_message, prevent_thread_lock, show_error, server_name, server_port, height, width, favicon_path, ssl_keyfile, ssl_certfile, ssl_keyfile_password, ssl_verify, quiet, show_api, allowed_paths, blocked_paths, root_path, app_kwargs, state_session_capacity, share_server_address, share_server_protocol, auth_dependency, _frontend)\u001b[0m\n\u001b[0;32m   2280\u001b[0m \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mIPython\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mdisplay\u001b[39;00m \u001b[38;5;28;01mimport\u001b[39;00m HTML, Javascript, display  \u001b[38;5;66;03m# type: ignore\u001b[39;00m\n\u001b[0;32m   2282\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mshare \u001b[38;5;129;01mand\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mshare_url:\n\u001b[1;32m-> 2283\u001b[0m     \u001b[38;5;28;01mwhile\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m \u001b[43mnetworking\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43murl_ok\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mshare_url\u001b[49m\u001b[43m)\u001b[49m:\n\u001b[0;32m   2284\u001b[0m         time\u001b[38;5;241m.\u001b[39msleep(\u001b[38;5;241m0.25\u001b[39m)\n\u001b[0;32m   2285\u001b[0m     artifact \u001b[38;5;241m=\u001b[39m HTML(\n\u001b[0;32m   2286\u001b[0m         \u001b[38;5;124mf\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124m<div><iframe src=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mshare_url\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m width=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mwidth\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m height=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mheight\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m allow=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mautoplay; camera; microphone; clipboard-read; clipboard-write;\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m frameborder=\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m0\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124m allowfullscreen></iframe></div>\u001b[39m\u001b[38;5;124m'\u001b[39m\n\u001b[0;32m   2287\u001b[0m     )\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\gradio\\networking.py:53\u001b[0m, in \u001b[0;36murl_ok\u001b[1;34m(url)\u001b[0m\n\u001b[0;32m     51\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m warnings\u001b[38;5;241m.\u001b[39mcatch_warnings():\n\u001b[0;32m     52\u001b[0m     warnings\u001b[38;5;241m.\u001b[39mfilterwarnings(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mignore\u001b[39m\u001b[38;5;124m\"\u001b[39m)\n\u001b[1;32m---> 53\u001b[0m     r \u001b[38;5;241m=\u001b[39m \u001b[43mhttpx\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhead\u001b[49m\u001b[43m(\u001b[49m\u001b[43murl\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mtimeout\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;241;43m3\u001b[39;49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mverify\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[38;5;28;43;01mFalse\u001b[39;49;00m\u001b[43m)\u001b[49m\n\u001b[0;32m     54\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m r\u001b[38;5;241m.\u001b[39mstatus_code \u001b[38;5;129;01min\u001b[39;00m (\u001b[38;5;241m200\u001b[39m, \u001b[38;5;241m401\u001b[39m, \u001b[38;5;241m302\u001b[39m):  \u001b[38;5;66;03m# 401 or 302 if auth is set\u001b[39;00m\n\u001b[0;32m     55\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;01mTrue\u001b[39;00m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_api.py:278\u001b[0m, in \u001b[0;36mhead\u001b[1;34m(url, params, headers, cookies, auth, proxy, proxies, follow_redirects, cert, verify, timeout, trust_env)\u001b[0m\n\u001b[0;32m    255\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mhead\u001b[39m(\n\u001b[0;32m    256\u001b[0m     url: URLTypes,\n\u001b[0;32m    257\u001b[0m     \u001b[38;5;241m*\u001b[39m,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    268\u001b[0m     trust_env: \u001b[38;5;28mbool\u001b[39m \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mTrue\u001b[39;00m,\n\u001b[0;32m    269\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m Response:\n\u001b[0;32m    270\u001b[0m \u001b[38;5;250m    \u001b[39m\u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[0;32m    271\u001b[0m \u001b[38;5;124;03m    Sends a `HEAD` request.\u001b[39;00m\n\u001b[0;32m    272\u001b[0m \n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    276\u001b[0m \u001b[38;5;124;03m    on this function, as `HEAD` requests should not include a request body.\u001b[39;00m\n\u001b[0;32m    277\u001b[0m \u001b[38;5;124;03m    \"\"\"\u001b[39;00m\n\u001b[1;32m--> 278\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43mrequest\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    279\u001b[0m \u001b[43m        \u001b[49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[38;5;124;43mHEAD\u001b[39;49m\u001b[38;5;124;43m\"\u001b[39;49m\u001b[43m,\u001b[49m\n\u001b[0;32m    280\u001b[0m \u001b[43m        \u001b[49m\u001b[43murl\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    281\u001b[0m \u001b[43m        \u001b[49m\u001b[43mparams\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mparams\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    282\u001b[0m \u001b[43m        \u001b[49m\u001b[43mheaders\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mheaders\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    283\u001b[0m \u001b[43m        \u001b[49m\u001b[43mcookies\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mcookies\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    284\u001b[0m \u001b[43m        \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    285\u001b[0m \u001b[43m        \u001b[49m\u001b[43mproxy\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mproxy\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    286\u001b[0m \u001b[43m        \u001b[49m\u001b[43mproxies\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mproxies\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    287\u001b[0m \u001b[43m        \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    288\u001b[0m \u001b[43m        \u001b[49m\u001b[43mcert\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mcert\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    289\u001b[0m \u001b[43m        \u001b[49m\u001b[43mverify\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mverify\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    290\u001b[0m \u001b[43m        \u001b[49m\u001b[43mtimeout\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mtimeout\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    291\u001b[0m \u001b[43m        \u001b[49m\u001b[43mtrust_env\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mtrust_env\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    292\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_api.py:106\u001b[0m, in \u001b[0;36mrequest\u001b[1;34m(method, url, params, content, data, files, json, headers, cookies, auth, proxy, proxies, timeout, follow_redirects, verify, cert, trust_env)\u001b[0m\n\u001b[0;32m     46\u001b[0m \u001b[38;5;250m\u001b[39m\u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[0;32m     47\u001b[0m \u001b[38;5;124;03mSends an HTTP request.\u001b[39;00m\n\u001b[0;32m     48\u001b[0m \n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m     95\u001b[0m \u001b[38;5;124;03m```\u001b[39;00m\n\u001b[0;32m     96\u001b[0m \u001b[38;5;124;03m\"\"\"\u001b[39;00m\n\u001b[0;32m     97\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m Client(\n\u001b[0;32m     98\u001b[0m     cookies\u001b[38;5;241m=\u001b[39mcookies,\n\u001b[0;32m     99\u001b[0m     proxy\u001b[38;5;241m=\u001b[39mproxy,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    104\u001b[0m     trust_env\u001b[38;5;241m=\u001b[39mtrust_env,\n\u001b[0;32m    105\u001b[0m ) \u001b[38;5;28;01mas\u001b[39;00m client:\n\u001b[1;32m--> 106\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43mclient\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrequest\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    107\u001b[0m \u001b[43m        \u001b[49m\u001b[43mmethod\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mmethod\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    108\u001b[0m \u001b[43m        \u001b[49m\u001b[43murl\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43murl\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    109\u001b[0m \u001b[43m        \u001b[49m\u001b[43mcontent\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mcontent\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    110\u001b[0m \u001b[43m        \u001b[49m\u001b[43mdata\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mdata\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    111\u001b[0m \u001b[43m        \u001b[49m\u001b[43mfiles\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfiles\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    112\u001b[0m \u001b[43m        \u001b[49m\u001b[43mjson\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mjson\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    113\u001b[0m \u001b[43m        \u001b[49m\u001b[43mparams\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mparams\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    114\u001b[0m \u001b[43m        \u001b[49m\u001b[43mheaders\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mheaders\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    115\u001b[0m \u001b[43m        \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    116\u001b[0m \u001b[43m        \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    117\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:827\u001b[0m, in \u001b[0;36mClient.request\u001b[1;34m(self, method, url, content, data, files, json, params, headers, cookies, auth, follow_redirects, timeout, extensions)\u001b[0m\n\u001b[0;32m    812\u001b[0m     warnings\u001b[38;5;241m.\u001b[39mwarn(message, \u001b[38;5;167;01mDeprecationWarning\u001b[39;00m)\n\u001b[0;32m    814\u001b[0m request \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mbuild_request(\n\u001b[0;32m    815\u001b[0m     method\u001b[38;5;241m=\u001b[39mmethod,\n\u001b[0;32m    816\u001b[0m     url\u001b[38;5;241m=\u001b[39murl,\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    825\u001b[0m     extensions\u001b[38;5;241m=\u001b[39mextensions,\n\u001b[0;32m    826\u001b[0m )\n\u001b[1;32m--> 827\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43msend\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m)\u001b[49m\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:914\u001b[0m, in \u001b[0;36mClient.send\u001b[1;34m(self, request, stream, auth, follow_redirects)\u001b[0m\n\u001b[0;32m    906\u001b[0m follow_redirects \u001b[38;5;241m=\u001b[39m (\n\u001b[0;32m    907\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mfollow_redirects\n\u001b[0;32m    908\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(follow_redirects, UseClientDefault)\n\u001b[0;32m    909\u001b[0m     \u001b[38;5;28;01melse\u001b[39;00m follow_redirects\n\u001b[0;32m    910\u001b[0m )\n\u001b[0;32m    912\u001b[0m auth \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_build_request_auth(request, auth)\n\u001b[1;32m--> 914\u001b[0m response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_handling_auth\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    915\u001b[0m \u001b[43m    \u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    916\u001b[0m \u001b[43m    \u001b[49m\u001b[43mauth\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mauth\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    917\u001b[0m \u001b[43m    \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    918\u001b[0m \u001b[43m    \u001b[49m\u001b[43mhistory\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43m[\u001b[49m\u001b[43m]\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    919\u001b[0m \u001b[43m\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    920\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    921\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m stream:\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:942\u001b[0m, in \u001b[0;36mClient._send_handling_auth\u001b[1;34m(self, request, auth, follow_redirects, history)\u001b[0m\n\u001b[0;32m    939\u001b[0m request \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mnext\u001b[39m(auth_flow)\n\u001b[0;32m    941\u001b[0m \u001b[38;5;28;01mwhile\u001b[39;00m \u001b[38;5;28;01mTrue\u001b[39;00m:\n\u001b[1;32m--> 942\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_handling_redirects\u001b[49m\u001b[43m(\u001b[49m\n\u001b[0;32m    943\u001b[0m \u001b[43m        \u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    944\u001b[0m \u001b[43m        \u001b[49m\u001b[43mfollow_redirects\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mfollow_redirects\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    945\u001b[0m \u001b[43m        \u001b[49m\u001b[43mhistory\u001b[49m\u001b[38;5;241;43m=\u001b[39;49m\u001b[43mhistory\u001b[49m\u001b[43m,\u001b[49m\n\u001b[0;32m    946\u001b[0m \u001b[43m    \u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    947\u001b[0m     \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    948\u001b[0m         \u001b[38;5;28;01mtry\u001b[39;00m:\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:979\u001b[0m, in \u001b[0;36mClient._send_handling_redirects\u001b[1;34m(self, request, follow_redirects, history)\u001b[0m\n\u001b[0;32m    976\u001b[0m \u001b[38;5;28;01mfor\u001b[39;00m hook \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_event_hooks[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mrequest\u001b[39m\u001b[38;5;124m\"\u001b[39m]:\n\u001b[0;32m    977\u001b[0m     hook(request)\n\u001b[1;32m--> 979\u001b[0m response \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43m_send_single_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    980\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m    981\u001b[0m     \u001b[38;5;28;01mfor\u001b[39;00m hook \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_event_hooks[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mresponse\u001b[39m\u001b[38;5;124m\"\u001b[39m]:\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_client.py:1015\u001b[0m, in \u001b[0;36mClient._send_single_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m   1010\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m \u001b[38;5;167;01mRuntimeError\u001b[39;00m(\n\u001b[0;32m   1011\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mAttempted to send an async request with a sync Client instance.\u001b[39m\u001b[38;5;124m\"\u001b[39m\n\u001b[0;32m   1012\u001b[0m     )\n\u001b[0;32m   1014\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m request_context(request\u001b[38;5;241m=\u001b[39mrequest):\n\u001b[1;32m-> 1015\u001b[0m     response \u001b[38;5;241m=\u001b[39m \u001b[43mtransport\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mhandle_request\u001b[49m\u001b[43m(\u001b[49m\u001b[43mrequest\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m   1017\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(response\u001b[38;5;241m.\u001b[39mstream, SyncByteStream)\n\u001b[0;32m   1019\u001b[0m response\u001b[38;5;241m.\u001b[39mrequest \u001b[38;5;241m=\u001b[39m request\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:233\u001b[0m, in \u001b[0;36mHTTPTransport.handle_request\u001b[1;34m(self, request)\u001b[0m\n\u001b[0;32m    220\u001b[0m req \u001b[38;5;241m=\u001b[39m httpcore\u001b[38;5;241m.\u001b[39mRequest(\n\u001b[0;32m    221\u001b[0m     method\u001b[38;5;241m=\u001b[39mrequest\u001b[38;5;241m.\u001b[39mmethod,\n\u001b[0;32m    222\u001b[0m     url\u001b[38;5;241m=\u001b[39mhttpcore\u001b[38;5;241m.\u001b[39mURL(\n\u001b[1;32m   (...)\u001b[0m\n\u001b[0;32m    230\u001b[0m     extensions\u001b[38;5;241m=\u001b[39mrequest\u001b[38;5;241m.\u001b[39mextensions,\n\u001b[0;32m    231\u001b[0m )\n\u001b[0;32m    232\u001b[0m \u001b[38;5;28;01mwith\u001b[39;00m map_httpcore_exceptions():\n\u001b[1;32m--> 233\u001b[0m     resp \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_pool\u001b[38;5;241m.\u001b[39mhandle_request(req)\n\u001b[0;32m    235\u001b[0m \u001b[38;5;28;01massert\u001b[39;00m \u001b[38;5;28misinstance\u001b[39m(resp\u001b[38;5;241m.\u001b[39mstream, typing\u001b[38;5;241m.\u001b[39mIterable)\n\u001b[0;32m    237\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m Response(\n\u001b[0;32m    238\u001b[0m     status_code\u001b[38;5;241m=\u001b[39mresp\u001b[38;5;241m.\u001b[39mstatus,\n\u001b[0;32m    239\u001b[0m     headers\u001b[38;5;241m=\u001b[39mresp\u001b[38;5;241m.\u001b[39mheaders,\n\u001b[0;32m    240\u001b[0m     stream\u001b[38;5;241m=\u001b[39mResponseStream(resp\u001b[38;5;241m.\u001b[39mstream),\n\u001b[0;32m    241\u001b[0m     extensions\u001b[38;5;241m=\u001b[39mresp\u001b[38;5;241m.\u001b[39mextensions,\n\u001b[0;32m    242\u001b[0m )\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\contextlib.py:137\u001b[0m, in \u001b[0;36m_GeneratorContextManager.__exit__\u001b[1;34m(self, typ, value, traceback)\u001b[0m\n\u001b[0;32m    135\u001b[0m     value \u001b[38;5;241m=\u001b[39m typ()\n\u001b[0;32m    136\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m--> 137\u001b[0m     \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mgen\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mthrow\u001b[49m\u001b[43m(\u001b[49m\u001b[43mtyp\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mvalue\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mtraceback\u001b[49m\u001b[43m)\u001b[49m\n\u001b[0;32m    138\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mStopIteration\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m exc:\n\u001b[0;32m    139\u001b[0m     \u001b[38;5;66;03m# Suppress StopIteration *unless* it's the same exception that\u001b[39;00m\n\u001b[0;32m    140\u001b[0m     \u001b[38;5;66;03m# was passed to throw().  This prevents a StopIteration\u001b[39;00m\n\u001b[0;32m    141\u001b[0m     \u001b[38;5;66;03m# raised inside the \"with\" statement from being suppressed.\u001b[39;00m\n\u001b[0;32m    142\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m exc \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m value\n",
++      "File \u001b[1;32m~\\miniconda3\\lib\\site-packages\\httpx\\_transports\\default.py:86\u001b[0m, in \u001b[0;36mmap_httpcore_exceptions\u001b[1;34m()\u001b[0m\n\u001b[0;32m     83\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m\n\u001b[0;32m     85\u001b[0m message \u001b[38;5;241m=\u001b[39m \u001b[38;5;28mstr\u001b[39m(exc)\n\u001b[1;32m---> 86\u001b[0m \u001b[38;5;28;01mraise\u001b[39;00m mapped_exc(message) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;21;01mexc\u001b[39;00m\n",
++      "\u001b[1;31mConnectTimeout\u001b[0m: _ssl.c:1112: The handshake operation timed out"
+      ]
+     }
+    ],
+@@ -1551,15 +1551,16 @@
+     "import RNA\n",
+     "from omnigenome import ModelHub\n",
+     "\n",
+-    "# 加载模型\n",
++    "# Load the pre-trained model\n",
+     "ssp_model = ModelHub.load(\"OmniGenome-186M-SSP\")\n",
+     "\n",
+-    "# 临时 SVG 存储目录\n",
++    "# Temporary directory for storing SVG files\n",
+     "TEMP_DIR = Path(tempfile.mkdtemp())\n",
+     "print(f\"Using temporary directory: {TEMP_DIR}\")\n",
+     "\n",
+     "\n",
+     "def ss_validity_loss(rna_strct: str) -> float:\n",
++    "    \"\"\"Check validity of the secondary structure\"\"\"\n",
+     "    left = right = 0\n",
+     "    dots = rna_strct.count('.')\n",
+     "    for c in rna_strct:\n",
+@@ -1576,6 +1577,7 @@
+     "\n",
+     "\n",
+     "def find_invalid_positions(struct: str) -> list:\n",
++    "    \"\"\"Find unmatched parentheses in the structure\"\"\"\n",
+     "    stack, invalid = [], []\n",
+     "    for i, c in enumerate(struct):\n",
+     "        if c == '(': stack.append(i)\n",
+@@ -1589,7 +1591,7 @@
+     "\n",
+     "\n",
+     "def generate_svg_datauri(rna_seq: str, struct: str) -> str:\n",
+-    "    \"\"\"生成 SVG 并返回 Base64 URI\"\"\"\n",
++    "    \"\"\"Generate SVG and return as Base64 URI\"\"\"\n",
+     "    try:\n",
+     "        path = TEMP_DIR / f\"{hash(rna_seq+struct)}.svg\"\n",
+     "        RNA.svg_rna_plot(rna_seq, struct, str(path))\n",
+@@ -1604,18 +1606,18 @@
+     "\n",
+     "\n",
+     "def fold(rna_seq: str, gt_struct: str):\n",
+-    "    \"\"\"展示 Ground Truth、ViennaRNA 与模型预测的结构对比\"\"\"\n",
++    "    \"\"\"Display comparison between Ground Truth, ViennaRNA, and model prediction\"\"\"\n",
+     "    if not rna_seq.strip():\n",
+     "        return \"\", \"\", \"\", \"\"\n",
+-    "    # Ground Truth: 用户输入优先\n",
++    "    # Ground Truth: user input takes priority\n",
+     "    ground = gt_struct.strip() if gt_struct and gt_struct.strip() else \"\"\n",
+     "    gt_uri = generate_svg_datauri(rna_seq, ground) if ground else \"\"\n",
+     "\n",
+-    "    # ViennaRNA 预测\n",
++    "    # ViennaRNA prediction\n",
+     "    vienna_struct, vienna_energy = RNA.fold(rna_seq)\n",
+     "    vienna_uri = generate_svg_datauri(rna_seq, vienna_struct)\n",
+     "\n",
+-    "    # 模型预测\n",
++    "    # Model prediction\n",
+     "    result = ssp_model.inference(rna_seq)\n",
+     "    pred = \"\".join(result.get('predictions', []))\n",
+     "    if ss_validity_loss(pred):\n",
+@@ -1623,7 +1625,7 @@
+     "            pred = pred[:i] + '.' + pred[i+1:]\n",
+     "    pred_uri = generate_svg_datauri(rna_seq, pred)\n",
+     "\n",
+-    "    # 统计信息\n",
++    "    # Statistics\n",
+     "    match_gt = (sum(a==b for a,b in zip(ground, pred)) / len(ground)) if ground else 0\n",
+     "    match_vienna = sum(a==b for a,b in zip(vienna_struct, pred)) / len(vienna_struct)\n",
+     "    stats = (\n",
+@@ -1631,7 +1633,7 @@
+     "        f\"Vienna↔Pred Match: {match_vienna:.2%}\"\n",
+     "    )\n",
+     "\n",
+-    "    # 合并 HTML：三图水平排列\n",
++    "    # Merge three SVGs in horizontal layout\n",
+     "    combined = (\n",
+     "        '<div style=\"display:flex;justify-content:space-around;\">'\n",
+     "        f'{f\"<div><h4>Ground Truth</h4><img src=\\\"{gt_uri}\\\" style=\\\"max-width:100%;height:auto;\\\"/></div>\" if ground else \"\"}'\n",
+@@ -1643,13 +1645,13 @@
+     "\n",
+     "\n",
+     "def sample_rna_sequence():\n",
+-    "    \"\"\"从测试集中抽样，返回序列与 Ground Truth 结构\"\"\"\n",
++    "    \"\"\"Sample one RNA sequence and ground truth structure from test set\"\"\"\n",
+     "    try:\n",
+     "        exs = [json.loads(l) for l in open('toy_datasets/Archive2/test.json')]\n",
+     "        ex = exs[np.random.randint(len(exs))]\n",
+     "        return ex['seq'], ex.get('label','')\n",
+     "    except Exception as e:\n",
+-    "        return f\"加载样本出错: {e}\", \"\"\n",
++    "        return f\"Error loading sample: {e}\", \"\"\n",
+     "\n",
+     "# Gradio UI\n",
+     "with gr.Blocks(css=\"\"\"\n",
+@@ -1657,18 +1659,18 @@
+     ".controls {display:flex;gap:10px;margin:20px 0;}\n",
+     ".status {padding:10px;background:#f0f4f8;border-radius:4px;white-space:pre;}\n",
+     "\"\"\") as demo:\n",
+-    "    gr.Markdown(\"# RNA 结构预测对比\", elem_classes=\"heading\")\n",
++    "    gr.Markdown(\"# RNA Structure Prediction Comparison\", elem_classes=\"heading\")\n",
+     "    with gr.Row():\n",
+-    "        rna_input = gr.Textbox(label=\"RNA 序列\", lines=3)\n",
+-    "        structure_input = gr.Textbox(label=\"Ground Truth 结构 (可选)\", lines=3)\n",
++    "        rna_input = gr.Textbox(label=\"RNA Sequence\", lines=3)\n",
++    "        structure_input = gr.Textbox(label=\"Ground Truth Structure (Optional)\", lines=3)\n",
+     "    with gr.Row(elem_classes=\"controls\"):\n",
+-    "        sample_btn = gr.Button(\"抽取样本\")\n",
+-    "        run_btn = gr.Button(\"预测并对比\", variant=\"primary\")\n",
+-    "    stats_out    = gr.Textbox(label=\"统计信息\", interactive=False, elem_classes=\"status\")\n",
++    "        sample_btn = gr.Button(\"Sample Sequence\")\n",
++    "        run_btn = gr.Button(\"Predict & Compare\", variant=\"primary\")\n",
++    "    stats_out    = gr.Textbox(label=\"Statistics\", interactive=False, elem_classes=\"status\")\n",
+     "    gt_out       = gr.Textbox(label=\"Ground Truth\", interactive=False)\n",
+-    "    vienna_out   = gr.Textbox(label=\"ViennaRNA 结构\", interactive=False)\n",
+-    "    pred_out     = gr.Textbox(label=\"Prediction 结构\", interactive=False)\n",
+-    "    combined_view= gr.HTML(label=\"三图对比视图\")\n",
++    "    vienna_out   = gr.Textbox(label=\"ViennaRNA Structure\", interactive=False)\n",
++    "    pred_out     = gr.Textbox(label=\"Prediction Structure\", interactive=False)\n",
++    "    combined_view= gr.HTML(label=\"Side-by-Side Comparison View\")\n",
+     "\n",
+     "    run_btn.click(\n",
+     "        fold,\n",
+diff --git a/omnigenome/auto/auto_bench/auto_bench.py b/omnigenome/auto/auto_bench/auto_bench.py
+index 6028fdd..735b2e2 100644
+--- a/omnigenome/auto/auto_bench/auto_bench.py
++++ b/omnigenome/auto/auto_bench/auto_bench.py
+@@ -39,6 +39,13 @@ def __init__(
+         tokenizer=None,
+         **kwargs,
+     ):
++        """
++        Initialize AutoBench class.
++
++        - Set up benchmark directory and model/tokenizer configuration.
++        - Load existing metric visualizer or create a new one.
++        - Load benchmark metadata and version check.
++        """
+         self.benchmark = benchmark.rstrip("/")
+         self.autocast = kwargs.pop("autocast", "fp16")
+         self.overwrite = kwargs.pop("overwrite", False)
+@@ -86,6 +93,9 @@ def __init__(
+         self.bench_info()
+ 
+     def bench_info(self):
++        """
++        Print benchmark summary information.
++        """
+         info = f"Benchmark Root: {self.benchmark}\n"
+         info += f"Benchmark List: {self.bench_metadata.bench_list}\n"
+         info += f"Model Name or Path: {self.model_name}\n"
+@@ -97,9 +107,13 @@ def bench_info(self):
+ 
+     def run(self, **kwargs):
+         """
++        Run evaluation on each task in the benchmark list.
+ 
+-        :param kwargs: parameters in kwargs will be used to override the default parameters in the benchmark config
+-        :return:
++        - Load benchmark configuration
++        - Override configuration with kwargs
++        - Load tokenizer and model
++        - Run training and evaluation loop
++        - Save metrics and predictions
+         """
+         bs_scale = kwargs.pop("bs_scale", 1)
+         # Import benchmark config
+@@ -123,6 +137,7 @@ def run(self, **kwargs):
+             fprint(f"Loaded config for {bench} from {bench_config_path}")
+             fprint(bench_config)
+ 
++            # Override config using kwargs
+             for key, value in _kwargs.items():
+                 if key in bench_config:
+                     fprint(
+@@ -228,8 +243,8 @@ def run(self, **kwargs):
+                     **_kwargs,
+                 )
+ 
++                # Set up HuggingFace Trainer
+                 if self.trainer == "hf_trainer":
+-                    # Set up HuggingFace Trainer
+                     hf_kwargs = {
+                         k: v
+                         for k, v in kwargs.items()
+@@ -294,6 +309,7 @@ def run(self, **kwargs):
+                         "test": test_result,
+                     }
+                     fprint(metrics)
++                # Accelerate or custom trainer  
+                 else:
+                     optimizer = torch.optim.AdamW(
+                         model.parameters(),
+@@ -343,6 +359,7 @@ def run(self, **kwargs):
+ 
+                     predictions = trainer.predictions
+ 
++                    # Save predictions if required
+                     if bench_config.get("save_predictions", False):
+                         os.makedirs(f"predictions/{bench}", exist_ok=True)
+                         import numpy as np
+@@ -354,6 +371,7 @@ def run(self, **kwargs):
+                             ) as f:
+                                 np.save(f, predictions[split])
+ 
++                    # Log final test results
+                     if metrics:
+                         for key, value in metrics["test"][-1].items():
+                             try:
+diff --git a/omnigenome/src/abc/abstract_dataset.py b/omnigenome/src/abc/abstract_dataset.py
+index 26fdf0b..8f5e9b6 100644
+--- a/omnigenome/src/abc/abstract_dataset.py
++++ b/omnigenome/src/abc/abstract_dataset.py
+@@ -53,8 +53,16 @@ def to(self, device):
+ 
+ 
+ class OmniGenomeDataset(torch.utils.data.Dataset):
++    """
++    Custom dataset class for genomic data that supports flexible input formats,
++    automatic padding/truncation, optional structure augmentation, and label formatting.
++    """
+     def __init__(self, data_source, tokenizer, max_length=None, **kwargs):
+         super(OmniGenomeDataset, self).__init__()
++        """
++        Initialize dataset with tokenization, structure augmentation, label mapping, and filtering.
++        Loads raw data and converts it into processed format ready for model training.
++        """
+         self.metadata = env_meta_info()
+         self.tokenizer = tokenizer
+         self.label2id = kwargs.get("label2id", None)
+@@ -180,12 +188,16 @@ def to(self, device):
+         return self
+ 
+     def _pad_and_truncate(self, pad_value=0):
++        """
++        Automatically pad or truncate each sample in the dataset to a uniform length,
++        aligning input and label sequences. Supports adaptive adjustment based on max_length.
++        """
+         if hasattr(self.tokenizer, "pad_token_id"):
+             pad_token_id = self.tokenizer.pad_token_id
+         else:
+             pad_token_id = self.tokenizer.base_tokenizer.pad_token_id
+ 
+-        # 计算输入和标签的最大长度
++        # Compute the max length of input_ids and labels
+         max_input_length = max(
+             [
+                 torch.sum(data_item["input_ids"] != pad_token_id).item()
+@@ -199,11 +211,11 @@ def _pad_and_truncate(self, pad_value=0):
+             ]
+         )
+ 
+-        # 确定初始max_length，不超过self.max_length
++        # Make sure that max_length <= self.max_length
+         original_max_length = max(max_input_length, max_label_length)
+         original_max_length = min(original_max_length, self.max_length)
+ 
+-        # 调整到不超过self.max_length的最大的8的倍数
++        # Adjust to the largest multiple of 8 that does not exceed self.max_length
+         remainder = original_max_length % 8
+         if remainder != 0:
+             adjusted_max_length = original_max_length + (8 - remainder)
+@@ -212,7 +224,7 @@ def _pad_and_truncate(self, pad_value=0):
+             adjusted_max_length = original_max_length
+         max_length = adjusted_max_length
+ 
+-        # 处理标签的特殊情况（修复错误的关键部分）
++        # Fix key errors and handle edge cases in label processing
+         first_labels = self.data[0]["labels"]
+ 
+         label_shape = first_labels.shape
+@@ -230,7 +242,7 @@ def _pad_and_truncate(self, pad_value=0):
+ 
+         for data_item in self.data:
+             for key, value in data_item.items():
+-                # 确保转换为Tensor
++
+                 if not isinstance(value, torch.Tensor):
+                     value = torch.as_tensor(value)
+                 dtype = value.dtype
+@@ -238,18 +250,19 @@ def _pad_and_truncate(self, pad_value=0):
+                     value.dtype == torch.int16 or value.dtype == torch.int32
+                 ):
+                     data_item[key] = value.long()
+-                # 确定填充长度
++                
++                # Determine the padding length
+                 if "label" in key:
+-                    if value.ndim == 0:  # 处理标量标签
++                    if value.ndim == 0:  # Process scalar labels
+                         padding_length = 0
+                     else:
+                         padding_length = label_padding_length - value.size(0)
+                 else:
+                     padding_length = max_length - value.size(0)
+ 
+-                # 处理填充或截断
++                # Pad or truncate the tensor
+                 if padding_length > 0:
+-                    # 确定填充值
++                    # Determine the padding value
+                     if key == "input_ids":
+                         _pad_value = pad_token_id
+                     elif key == "attention_mask":
+@@ -263,7 +276,7 @@ def _pad_and_truncate(self, pad_value=0):
+                     else:
+                         _pad_value = pad_value
+ 
+-                    # 构建填充张量
++                    # Construct the padding tensor
+                     if value.ndim == 2:
+                         pad_shape = (padding_length, value.size(1))
+                     else:
+@@ -273,12 +286,16 @@ def _pad_and_truncate(self, pad_value=0):
+                 elif padding_length < 0:
+                     data_item[key] = value[:max_length]
+ 
+-                # 确保数据类型正确
++                # Make sure the tensor is on the same device as the original tensor
+                 data_item[key] = data_item[key].to(dtype)
+ 
+         return self.data
+ 
+     def load_data_source(self, data_source, **kwargs):
++        """
++        Load dataset examples from different file formats including .csv, .json, .parquet, and .txt.
++        Shuffles and trims examples if needed.
++        """
+         examples = []
+         max_examples = kwargs.get("max_examples", None)
+         if not isinstance(data_source, list):
+@@ -337,6 +354,10 @@ def prepare_input(self, instance, **kwargs):
+         )
+ 
+     def _preprocessing(self):
++        """
++        Normalize input fields (e.g., renaming 'seq' or 'text' to 'sequence').
++        If structure is enabled, append predicted structure to the sequence using RNA folding tools.
++        """
+         for idx, ex in enumerate(self.examples):
+             if (
+                 "seq" in self.examples[idx]
+@@ -361,6 +382,10 @@ def _preprocessing(self):
+                     ] = f"{sequence}{self.tokenizer.eos_token}{structure}"
+ 
+     def _postprocessing(self):
++        """
++        Finalize data format: ensure 'labels' field exists, convert missing ones to -100 (ignored),
++        and optionally print label distribution.
++        """
+         for idx, ex in enumerate(self.data):
+             if "label" in self.data[idx]:
+                 self.data[idx]["labels"] = self.data[idx]["label"]
+diff --git a/omnigenome/src/abc/abstract_model.py b/omnigenome/src/abc/abstract_model.py
+index 82f11e1..8365052 100644
+--- a/omnigenome/src/abc/abstract_model.py
++++ b/omnigenome/src/abc/abstract_model.py
+@@ -27,6 +27,16 @@ def count_parameters(model):
+ 
+ 
+ class OmniGenomeModel(torch.nn.Module):
++    """
++    A custom model class inheriting from PyTorch's nn.Module, designed to wrap around a HuggingFace model.
++    This class adds additional functionality such as custom loss functions, tokenization, and model saving/loading.
++
++    Args:
++        config_or_model_model (Union[str, torch.nn.Module, AutoConfig]): Model configuration or model instance.
++        tokenizer (PreTrainedTokenizer): The tokenizer used for encoding inputs.
++        *args: Additional arguments passed to the superclass constructor.
++        **kwargs: Additional keyword arguments such as label2id, num_labels, etc.
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         self.loss_fn = None
+ 
+@@ -38,7 +48,7 @@ def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         if label2id is not None and num_labels is None:
+             num_labels = len(label2id)
+ 
+-        # do not change the order of the following lines
++        # Do not change the order of the following lines
+         super().__init__(*args, **kwargs)
+ 
+         if isinstance(config_or_model_model, str):
+@@ -270,6 +280,15 @@ def _calculate_loss(self, outputs, labels):
+             )
+ 
+     def save(self, path, overwrite=False, dtype=torch.float16, **kwargs):
++        """
++        Save the model and its components to the specified directory.
++
++        Args:
++            path (str): The directory to save the model.
++            overwrite (bool): Whether to overwrite existing files.
++            dtype (torch.dtype): The data type of the model when saving.
++            **kwargs: Additional arguments passed to the save procedure.
++        """
+         self.eval()
+ 
+         if os.path.exists(path) and not overwrite:
+@@ -313,6 +332,16 @@ def save(self, path, overwrite=False, dtype=torch.float16, **kwargs):
+         fprint(f"The model is saved to {path}.")
+ 
+     def load(self, path, **kwargs):
++        """
++        Load the model and its components from the specified directory.
++
++        Args:
++            path (str): The directory to load the model from.
++            **kwargs: Additional arguments passed during model loading.
++
++        Returns:
++            OmniGenomeModel: The loaded model instance.
++        """
+         with open(f"{path}/metadata.json", "r", encoding="utf8") as f:
+             metadata = json.load(f)
+ 
+@@ -362,6 +391,16 @@ def load(self, path, **kwargs):
+         return self
+ 
+     def _forward_from_raw_input(self, sequence_or_inputs, **kwargs):
++        """
++        Convert raw inputs to tokenized form and pass them through the model for inference.
++
++        Args:
++            sequence_or_inputs (Union[str, dict, BatchEncoding]): The raw input data to be processed.
++            **kwargs: Additional arguments passed to the tokenizer.
++
++        Returns:
++            dict: The raw outputs from the model’s forward pass.
++        """
+         if not isinstance(sequence_or_inputs, BatchEncoding) and not isinstance(
+             sequence_or_inputs, dict
+         ):
+@@ -383,6 +422,17 @@ def _forward_from_raw_input(self, sequence_or_inputs, **kwargs):
+ 
+     @staticmethod
+     def from_pretrained(model_name_or_path, tokenizer, *args, **kwargs):
++        """
++        Load a pretrained model from a checkpoint or model hub.
++
++        Args:
++            model_name_or_path (str): The name or path of the pretrained model.
++            tokenizer (PreTrainedTokenizer): The tokenizer to use with the model.
++            *args, **kwargs: Additional arguments passed during the model initialization.
++
++        Returns:
++            OmniGenomeModel: The instantiated model.
++        """
+         config = kwargs.pop("config", None)
+         if config is None:
+             config = AutoConfig.from_pretrained(model_name_or_path, **kwargs)
+diff --git a/omnigenome/src/model/classiifcation/model.py b/omnigenome/src/model/classiifcation/model.py
+index 692e64c..e905747 100644
+--- a/omnigenome/src/model/classiifcation/model.py
++++ b/omnigenome/src/model/classiifcation/model.py
+@@ -14,7 +14,15 @@
+ 
+ 
+ class OmniGenomeModelForTokenClassification(OmniGenomeModel):
++    """ 
++    This class defines a model for token classification, extending from OmniGenomeModel.
++    It includes the necessary components such as a classifier, softmax layer, and cross-entropy loss function.
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
++        """
++        Initializes the OmniGenomeModelForTokenClassification with a configuration, tokenizer, and other parameters.
++        Sets up the classifier and loss function.
++        """
+         super().__init__(config_or_model_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+         self.softmax = torch.nn.Softmax(dim=-1)
+@@ -25,6 +33,10 @@ def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         self.model_info()
+ 
+     def forward(self, **inputs):
++        """
++        Forward pass for the model. Computes the logits for token classification.
++        Applies dropout, activation, and the classifier to the hidden state.
++        """
+         labels = inputs.pop("labels", None)
+         last_hidden_state = self.last_hidden_state_forward(**inputs)
+         last_hidden_state = self.dropout(last_hidden_state)
+@@ -39,6 +51,10 @@ def forward(self, **inputs):
+         return outputs
+ 
+     def predict(self, sequence_or_inputs, **kwargs):
++        """
++        Makes predictions based on input sequences. 
++        Extracts logits and the last hidden state, then returns predicted labels and other relevant outputs.
++        """
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+         logits = raw_outputs["logits"]
+         last_hidden_state = raw_outputs["last_hidden_state"]
+@@ -60,6 +76,10 @@ def predict(self, sequence_or_inputs, **kwargs):
+         return outputs
+ 
+     def inference(self, sequence_or_inputs, **kwargs):
++        """
++        Performs inference on the input data and returns predictions and additional outputs.
++        This method provides confidence scores along with the predicted labels.
++        """
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+         inputs = raw_outputs["inputs"]
+         logits = raw_outputs["logits"]
+@@ -100,7 +120,15 @@ def loss_function(self, logits, labels):
+ 
+ 
+ class OmniGenomeModelForSequenceClassification(OmniGenomeModel):
++    """ 
++    This class defines a model for sequence classification, with pooling and softmax layers, 
++    as well as a cross-entropy loss function for training.
++    """
+     def __init__(self, config_or_model, tokenizer, *args, **kwargs):
++        """
++        Initializes the OmniGenomeModelForSequenceClassification with a configuration, tokenizer, and other parameters.
++        Sets up the pooler, classifier, and loss function.
++        """
+         super().__init__(config_or_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+         self.pooler = OmniGenomePooling(self.config)
+@@ -112,6 +140,10 @@ def __init__(self, config_or_model, tokenizer, *args, **kwargs):
+         self.model_info()
+ 
+     def forward(self, **inputs):
++        """
++        Forward pass for the sequence classification model. 
++        Computes logits for the entire sequence using the last hidden state, pooling, and the classifier.
++        """
+         labels = inputs.pop("labels", None)
+         last_hidden_state = self.last_hidden_state_forward(**inputs)
+         last_hidden_state = self.dropout(last_hidden_state)
+@@ -127,6 +159,10 @@ def forward(self, **inputs):
+         return outputs
+ 
+     def predict(self, sequence_or_inputs, **kwargs):
++        """
++        Makes predictions for sequence classification. 
++        Outputs the predicted labels, logits, and last hidden state.
++        """
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+ 
+         logits = raw_outputs["logits"]
+@@ -149,6 +185,10 @@ def predict(self, sequence_or_inputs, **kwargs):
+         return outputs
+ 
+     def inference(self, sequence_or_inputs, **kwargs):
++        """
++        Performs inference on the input sequences for sequence classification.
++        Provides predicted labels along with logits and confidence scores.
++        """
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+ 
+         logits = raw_outputs["logits"]
+@@ -185,7 +225,15 @@ def loss_function(self, logits, labels):
+ class OmniGenomeModelForMultiLabelSequenceClassification(
+     OmniGenomeModelForSequenceClassification
+ ):
++    """ 
++    This class is an extension of OmniGenomeModelForSequenceClassification for multi-label sequence classification tasks. 
++    It uses a sigmoid activation and binary cross-entropy loss.
++    """
+     def __init__(self, config_or_model, tokenizer, *args, **kwargs):
++        """
++        Initializes the OmniGenomeModelForMultiLabelSequenceClassification with the required components,
++        including the sigmoid activation and binary cross-entropy loss.
++        """
+         super().__init__(config_or_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+         self.softmax = torch.nn.Sigmoid()
+@@ -193,10 +241,17 @@ def __init__(self, config_or_model, tokenizer, *args, **kwargs):
+         self.model_info()
+ 
+     def loss_function(self, logits, labels):
++        """
++        Computes the loss using binary cross-entropy for multi-label classification.
++        """
+         loss = self.loss_fn(logits.view(-1), labels.view(-1).to(torch.float32))
+         return loss
+ 
+     def predict(self, sequence_or_inputs, **kwargs):
++        """
++        Predicts multi-label classification outcomes based on logits.
++        Uses a threshold of 0.5 for label assignment.
++        """
+         raw_outputs = self._forward_from_raw_input(sequence_or_inputs, **kwargs)
+ 
+         logits = raw_outputs["logits"]
+@@ -226,6 +281,11 @@ def inference(self, sequence_or_inputs, **kwargs):
+ class OmniGenomeModelForTokenClassificationWith2DStructure(
+     OmniGenomeModelForTokenClassification
+ ):
++    """ 
++    This class extends OmniGenomeModelForTokenClassification and adds support for 2D structures 
++    in token classification tasks. It utilizes a pooling layer to process the input sequence 
++    and outputs the logits, last hidden states, and labels.
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         super().__init__(config_or_model_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+@@ -250,6 +310,10 @@ def forward(self, **inputs):
+ class OmniGenomeModelForSequenceClassificationWith2DStructure(
+     OmniGenomeModelForSequenceClassification
+ ):
++    """
++    This class extends OmniGenomeModelForSequenceClassification and adds support for 2D structures
++    in sequence classification tasks. The pooling layer is applied to the hidden states before classification.
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         super().__init__(config_or_model_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+@@ -276,6 +340,11 @@ def forward(self, **inputs):
+ class OmniGenomeModelForMultiLabelSequenceClassificationWith2DStructure(
+     OmniGenomeModelForSequenceClassificationWith2DStructure
+ ):
++    """
++    This class extends OmniGenomeModelForSequenceClassificationWith2DStructure and supports 
++    multi-label classification tasks. The model uses a sigmoid activation function for multi-label classification 
++    and computes the binary cross-entropy loss.
++    """
+     def __init__(self, config_or_model_model, tokenizer, *args, **kwargs):
+         super().__init__(config_or_model_model, tokenizer, *args, **kwargs)
+         self.metadata["model_name"] = self.__class__.__name__
+diff --git a/omnigenome/src/trainer/accelerate_trainer.py b/omnigenome/src/trainer/accelerate_trainer.py
+index 07a8007..7094880 100644
+--- a/omnigenome/src/trainer/accelerate_trainer.py
++++ b/omnigenome/src/trainer/accelerate_trainer.py
+@@ -18,6 +18,10 @@
+ from ..misc.utils import env_meta_info, fprint, seed_everything
+ 
+ def _infer_optimization_direction(metrics, prev_metrics):
++    """
++    This function infers whether the optimization direction is 'larger_is_better' or 'smaller_is_better'
++    based on the comparison of the current and previous metrics.
++    """
+     larger_is_better_metrics = [
+         "accuracy",
+         "f1",
+@@ -82,12 +86,13 @@ def __init__(
+ 
+         self.model = model
+ 
+-        # DataLoaders
++        # # Set up DataLoaders based on the given datasets or keyword arguments
+         if kwargs.get("train_loader"):
+             self.train_loader = kwargs.get("train_loader")
+             self.eval_loader = kwargs.get("eval_loader", None)
+             self.test_loader = kwargs.get("test_loader", None)
+         else:
++            # If no DataLoader is provided, create DataLoader from datasets
+             self.train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                            shuffle=True) if train_dataset else None
+             self.eval_loader = DataLoader(eval_dataset, batch_size=batch_size) if eval_dataset else None
+@@ -140,9 +145,10 @@ def __init__(
+         self.accelerator = Accelerator(
+             mixed_precision=mp_setting, kwargs_handlers=[ddp_kwargs]
+         )
++        # If loss_fn is provided, set it to the model
+         if self.loss_fn is not None:
+             self.model.set_loss_fn(self.loss_fn)
+-            # 创建 dataloaders
++            # Prepare the model, optimizer, and data loaders for distributed training
+             if kwargs.get("train_loader"):
+                 self.train_loader = kwargs.get("train_loader")
+                 self.eval_loader = kwargs.get("eval_loader", None)
+@@ -162,7 +168,7 @@ def __init__(
+                     batch_size=batch_size
+                 ) if test_dataset else None
+ 
+-        # 让 accelerate 处理模型和优化器的准备
++        # Call Accelerator.prepare to wrap the model and optimizers for multi-GPU or multi-device support
+         to_prepare = [self.model]
+         if optimizer is not None:
+             to_prepare.append(optimizer)
+@@ -199,7 +205,7 @@ def evaluate(self):
+         all_truth = []
+         all_preds = []
+ 
+-        # 禁用进度条在非主进程上显示
++        # Use tqdm for progress bar and disable it in non-main processes
+         it = tqdm(self.eval_loader, desc="Evaluating", disable=not self.accelerator.is_main_process)
+ 
+         with torch.no_grad():
+@@ -208,21 +214,20 @@ def evaluate(self):
+                 predictions = output["predictions"]
+                 labels = batch["labels"]
+ 
+-                # 收集所有进程的预测结果和标签
++                # Gather predictions and labels from all processes
+                 gathered_predictions = self.accelerator.gather(predictions)
+                 gathered_labels = self.accelerator.gather(labels)
+ 
+-                # 只在主进程中处理收集到的数据
++                # Only in the main process, collect the predictions and labels
+                 if self.accelerator.is_main_process:
+                     gathered_predictions = gathered_predictions.cpu().numpy(force=True)
+                     gathered_labels = gathered_labels.cpu().numpy(force=True)
+                     all_preds.append(gathered_predictions)
+                     all_truth.append(gathered_labels)
+ 
+-        # # 同步所有进程
+         # self.accelerator.wait_for_everyone()
+ 
+-        # 只在主进程中计算指标
++        # Only in the main process, compute metrics
+         if self.accelerator.is_main_process:
+             all_preds = np.concatenate(all_preds, axis=0)
+             all_truth = np.concatenate(all_truth, axis=0)
+@@ -231,7 +236,6 @@ def evaluate(self):
+             for metric_func in self.compute_metrics:
+                 valid_metrics.update(metric_func(all_truth, all_preds))
+ 
+-            # 打印指标信息
+             fprint(valid_metrics)
+         else:
+             valid_metrics = None
+@@ -239,6 +243,15 @@ def evaluate(self):
+         return valid_metrics
+ 
+     def unwrap_model(self, model):
++        """
++        Unwrap the model from a distributed training wrapper (if needed).
++        
++        Parameters:
++            model (nn.Module): The model to unwrap.
++            
++        Returns:
++            nn.Module: The unwrapped model.
++        """
+         try:
+             return self.accelerator.unwrap_model(model)
+         except:
+@@ -248,6 +261,12 @@ def unwrap_model(self, model):
+                 return model
+ 
+     def test(self):
++        """
++        Test the model on the test dataset.
++
++        Returns:
++            dict: A dictionary of test metrics.
++        """
+         self.model.eval()
+         all_truth = []
+         all_preds = []
+@@ -269,10 +288,9 @@ def test(self):
+                     all_preds.append(gathered_predictions)
+                     all_truth.append(gathered_labels)
+ 
+-        # # 同步所有进程
+         # self.accelerator.wait_for_everyone()
+ 
+-        # 只在主进程中计算指标
++        # Only in the main process, compute metrics
+         if self.accelerator.is_main_process:
+             all_preds = np.concatenate(all_preds, axis=0)
+             all_truth = np.concatenate(all_truth, axis=0)
+@@ -281,7 +299,6 @@ def test(self):
+             for metric_func in self.compute_metrics:
+                 test_metrics.update(metric_func(all_truth, all_preds))
+ 
+-            # 打印指标信息
+             fprint(test_metrics)
+         else:
+             test_metrics = None
+@@ -289,11 +306,18 @@ def test(self):
+         return test_metrics
+ 
+     def train(self, path_to_save=None, **kwargs):
++        """
++        Train the model, evaluate periodically, and save the best model.
++
++        Parameters:
++            path_to_save (str, optional): Path to save the model checkpoints.
++            **kwargs: Additional arguments for saving the model.
++        """
+         seed_everything(self.seed)
+-        # 在所有进程上创建早停标志
++        # # Initialize early stopping flag
+         early_stop_flag = torch.tensor(0, device=self.accelerator.device)
+ 
+-        # 确保所有进程同步启动
++        # Ensure synchronization of all processes before starting
+         self.accelerator.wait_for_everyone()
+ 
+         # Initial validation or test
+@@ -302,15 +326,15 @@ def train(self, path_to_save=None, **kwargs):
+         else:
+             valid_metrics = self.test()
+ 
+-        # 在主进程中更新指标和保存模型
++        # In the main process, update metrics and save the model if necessary
+         if self.accelerator.is_main_process:
+             if self._is_metric_better(valid_metrics, stage="valid"):
+                 self._save_state_dict()
+                 early_stop_flag = torch.tensor(0, device=self.accelerator.device)
+ 
+-        # 使用 all_gather 同步早停标志
++        # Synchronize early stop flags across all processes
+         gathered_flags = self.accelerator.gather(early_stop_flag)
+-        early_stop_flag = gathered_flags if gathered_flags.ndim==0 else gathered_flags[0] # 使用主进程的值
++        early_stop_flag = gathered_flags if gathered_flags.ndim==0 else gathered_flags[0] 
+ 
+         for epoch in range(self.epochs):
+             self.model.train()
+@@ -323,7 +347,7 @@ def train(self, path_to_save=None, **kwargs):
+                 disable=not self.accelerator.is_main_process,
+             )
+ 
+-            # 使用 accelerator.accumulate 控制梯度累积
++            # Use accelerator.accumulate to control gradient accumulation
+             for step, batch in enumerate(train_it):
+                 with self.accelerator.accumulate(self.model):
+                     outputs = self.model(**batch)
+@@ -333,7 +357,7 @@ def train(self, path_to_save=None, **kwargs):
+                     self.optimizer.step()
+                     self.optimizer.zero_grad()
+ 
+-            # 同步所有进程后再进行评估
++            # Synchronize all processes before evaluation
+             self.accelerator.wait_for_everyone()
+ 
+             if self.eval_loader is not None and len(self.eval_loader) > 0:
+@@ -341,7 +365,7 @@ def train(self, path_to_save=None, **kwargs):
+             else:
+                 valid_metrics = self.test()
+ 
+-            # 在主进程中更新指标和判断是否需要早停
++            # Update metrics and check early stopping condition in the main process
+             if self.accelerator.is_main_process:
+                 if self._is_metric_better(valid_metrics, stage="valid"):
+                     self._save_state_dict()
+@@ -349,19 +373,19 @@ def train(self, path_to_save=None, **kwargs):
+                 else:
+                     early_stop_flag += 1
+ 
+-            # 使用 all_gather 同步早停标志
++            # Synchronize early stop flag across all processes
+             gathered_flags = self.accelerator.gather(early_stop_flag)
+-            early_stop_flag = gathered_flags if gathered_flags.ndim == 0 else gathered_flags[0]  # 使用主进程的值
++            early_stop_flag = gathered_flags if gathered_flags.ndim == 0 else gathered_flags[0]  # Use the main process value
+ 
+ 
+-            # 检查是否需要早停
++            # Check if early stopping is needed
+             if early_stop_flag.item() > self.patience:
+                 if self.accelerator.is_main_process:
+                     print(f"Early stopping at epoch {epoch + 1}.")
+                     fprint(f"Early stopping at epoch {epoch + 1}.")
+                 break
+ 
+-            # 只在主进程中保存检查点
++            # Save the checkpoint only in the main process
+             if path_to_save and self.accelerator.is_main_process:
+                 _path_to_save = path_to_save + "_epoch_" + str(epoch + 1)
+                 if valid_metrics:
+@@ -369,18 +393,18 @@ def train(self, path_to_save=None, **kwargs):
+                         _path_to_save += f"_seed_{self.seed}_{key}_{value:.4f}"
+                 self.save_model(_path_to_save, **kwargs)
+ 
+-            # 确保所有进程同步后再进入下一轮
++            # Ensure all processes synchronize before the next epoch
+             self.accelerator.wait_for_everyone()
+ 
+         # Final test using the best checkpoint
+         if self.test_loader is not None and len(self.test_loader) > 0:
+             self._load_state_dict()
+-            self.accelerator.wait_for_everyone()  # 确保加载完成后再测试
++            self.accelerator.wait_for_everyone()  # Ensure loading is complete before testing
+             test_metrics = self.test()
+             if self.accelerator.is_main_process:
+                 self._is_metric_better(test_metrics, stage="test")
+ 
+-        # 只在主进程中保存最终模型
++        # Save the final model only in the main process
+         if path_to_save and self.accelerator.is_main_process:
+             _path_to_save = path_to_save + "_final"
+             if self.metrics.get("test"):
+@@ -390,6 +414,7 @@ def train(self, path_to_save=None, **kwargs):
+ 
+         self._remove_state_dict()
+ 
++        # Free accelerator memory
+         self.accelerator.free_memory()
+         del (
+             self.model,
+@@ -402,7 +427,7 @@ def train(self, path_to_save=None, **kwargs):
+         return self.metrics
+ 
+     def _is_metric_better(self, metrics, stage="valid"):
+-        # 只在主进程中进行metric比较
++        # Only compare metrics in the main process
+         if not self.accelerator.is_main_process:
+             return False
+ 
+@@ -427,7 +452,8 @@ def _is_metric_better(self, metrics, stage="valid"):
+             if self._optimization_direction is None
+             else self._optimization_direction
+         )
+-
++        
++        # Compare metrics for optimization direction
+         if self._optimization_direction == "larger_is_better":
+             if np.mean(list(metrics.values())[0]) > np.mean(
+                 list(self.metrics["best_valid"].values())[0]
+@@ -469,6 +495,7 @@ def _load_state_dict(self):
+             self.accelerator.unwrap_model(self.model).load_state_dict(weights)
+ 
+     def _save_state_dict(self):
++        # Generate a unique path for saving state dict
+         if not hasattr(self, "_model_state_dict_path"):
+             from hashlib import sha256
+ 
+@@ -487,6 +514,7 @@ def _save_state_dict(self):
+             )
+ 
+     def _remove_state_dict(self):
++        # Remove the model's state dict after training is complete
+         if not hasattr(self, "_model_state_dict_path"):
+             from hashlib import sha256
+ 
+diff --git a/omnigenome/src/trainer/trainer.py b/omnigenome/src/trainer/trainer.py
+index d51f13f..178bf11 100644
+--- a/omnigenome/src/trainer/trainer.py
++++ b/omnigenome/src/trainer/trainer.py
+@@ -22,6 +22,10 @@
+ 
+ 
+ def _infer_optimization_direction(metrics, prev_metrics):
++    """
++    This function infers whether the optimization direction is 'larger_is_better' or 'smaller_is_better'
++    based on the comparison of the current and previous metrics.
++    """
+     larger_is_better_metrics = [
+         "accuracy",
+         "f1",
+@@ -75,6 +79,10 @@ def _infer_optimization_direction(metrics, prev_metrics):
+ 
+ 
+ class Trainer:
++    """
++    A class that manages the training, evaluation, and testing process for a model.
++    Handles various aspects of training such as batch processing, optimization, early stopping, and model saving.
++    """
+     def __init__(
+         self,
+         model,
+@@ -150,6 +158,10 @@ def __init__(
+         self.predictions = {}
+ 
+     def _is_metric_better(self, metrics, stage="valid"):
++        """
++        Compares the current metrics with previous ones to check if the current metrics are better.
++        Based on this comparison, the model may be saved if it improves.
++        """
+         assert stage in [
+             "valid",
+             "test",
+@@ -193,6 +205,10 @@ def _is_metric_better(self, metrics, stage="valid"):
+         return False
+ 
+     def train(self, path_to_save=None, **kwargs):
++        """
++        The main training loop. Handles training, validation, and early stopping.
++        Saves the model when it improves on the validation set.
++        """
+         seed_everything(self.seed)
+         patience = 0
+ 
+@@ -284,6 +300,10 @@ def train(self, path_to_save=None, **kwargs):
+         return self.metrics
+ 
+     def evaluate(self):
++        """
++        Evaluates the model on the validation dataset. 
++        Calculates and returns metrics such as accuracy, loss, etc.
++        """
+         with torch.no_grad():
+             self.model.eval()
+             val_truth = []
+@@ -320,6 +340,9 @@ def evaluate(self):
+         return valid_metrics
+ 
+     def test(self):
++        """
++        Test the model on the test dataset.
++        """
+         with torch.no_grad():
+             self.model.eval()
+             preds = []
+diff --git a/omnigenome/utility/model_hub/model_hub.py b/omnigenome/utility/model_hub/model_hub.py
+index d4bb0c1..4f931c9 100644
+--- a/omnigenome/utility/model_hub/model_hub.py
++++ b/omnigenome/utility/model_hub/model_hub.py
+@@ -18,6 +18,9 @@
+ 
+ 
+ class ModelHub:
++    """
++    A class to handle the loading and management of models from the model hub.
++    """
+     def __init__(self, *args, **kwargs):
+         super(ModelHub, self).__init__(*args, **kwargs)
+ 
+@@ -31,6 +34,19 @@ def load_model_and_tokenizer(
+         fast_dtype=torch.float16,
+         **kwargs,
+     ):
++        """
++        Loads both the model and tokenizer from a specified model path or hub.
++
++        Args:
++            model_name_or_path: The model's name or path.
++            local_only: Whether to load only from local sources.
++            device: The device to load the model to (if None, auto-selects device).
++            fast_dtype: Data type to use (default: float16).
++            **kwargs: Additional arguments passed to model and tokenizer loading.
++
++        Returns:
++            model, tokenizer: The loaded model and tokenizer.
++        """
+         model = ModelHub.load(model_name_or_path, local_only=local_only, **kwargs)
+         fprint(f"The model and tokenizer has been loaded from {model_name_or_path}.")
+         model.to(fast_type=fast_dtype)
+@@ -52,6 +68,19 @@ def load(
+         fast_dtype=torch.float16,
+         **kwargs,
+     ):
++        """
++        Loads a model from a specified path or the model hub.
++
++        Args:
++            model_name_or_path: The model's name or path.
++            local_only: Whether to load only from local sources.
++            device: The device to load the model to (if None, auto-selects device).
++            fast_dtype: Data type to use (default: float16).
++            **kwargs: Additional arguments passed to model loading.
++
++        Returns:
++            model: The loaded model.
++        """
+         if isinstance(model_name_or_path, str) and os.path.exists(model_name_or_path):
+             path = model_name_or_path
+         elif isinstance(model_name_or_path, str) and not os.path.exists(
+@@ -105,10 +134,29 @@ def load(
+     def available_models(
+         self, model_name_or_path=None, local_only=False, repo="", **kwargs
+     ):
++        """
++        Queries and returns information about available models in the hub.
++
++        Args:
++            model_name_or_path: The model's name or path (optional).
++            local_only: Whether to load models only from local sources.
++            repo: The repository to query models from.
++            **kwargs: Additional arguments passed to the query.
++
++        Returns:
++            models_info: A list or dictionary with information about the available models.
++        """
+         models_info = query_models_info(
+             model_name_or_path, local_only=local_only, repo=repo, **kwargs
+         )
+         return models_info
+ 
+     def push(self, model, **kwargs):
++        """
++        Pushes a model to the model hub (not implemented).
++
++        Args:
++            model: The model to be pushed.
++            **kwargs: Additional arguments for pushing the model.
++        """
+         raise NotImplementedError("This method has not implemented yet.")

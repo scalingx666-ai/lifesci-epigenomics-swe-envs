@@ -1,0 +1,66 @@
+version = "1.0"
+
+[task]
+name = "default/showteeth__ggcoverage-44"
+description = "fix: example run time exceeded for 2 geoms"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "ggcoverage",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "showteeth/ggcoverage"
+ref = "9959cb7ff3dc1325b8238a8ec8a365d3f400ca88"
+reference = "https://github.com/showteeth/ggcoverage/pull/44"
+source_access = "auto"
+built_at = "2026-11-14T07:14:13.759608+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:5ac38523edceb192901e913133c482f7457d4286fe686238515fa33f2f0ec1cd"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-17T06:14:54Z"
+diff_format = "unified"
+context_files = [
+    "R/geom_cnv.R",
+    "R/geom_gc.R",
+    "cran-comments.md",
+    "man/geom_cnv.Rd",
+    "man/geom_gc.Rd",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 26
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

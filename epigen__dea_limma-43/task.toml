@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/epigen__dea_limma-43"
+description = "Bug fix: reference_group variable renamed to group in last PR"
+
+[metadata]
+difficulty = "easy"
+category = "bugfix"
+keywords = [
+    "dea_limma",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "epigen/dea_limma"
+ref = "c4908fcaaf81b554a05a90442d12f291e76f3e26"
+reference = "https://github.com/epigen/dea_limma/pull/43"
+source_access = "auto"
+built_at = "2026-11-14T07:17:40.171691+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:b9f0eb3d75b3962a1291bea207f5a8dcafd22863b3e006126768f0d446c6c520"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-07-10T06:51:35Z"
+diff_format = "unified"
+context_files = [
+    "workflow/rules/dea.smk",
+    "workflow/scripts/one_vs_all_contrasts.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 5
+difficulty = "trivial"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

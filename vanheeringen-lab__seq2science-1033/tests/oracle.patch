@@ -1,0 +1,300 @@
+diff --git a/.github/workflows/continuousdeployment.yml b/.github/workflows/continuousdeployment.yml
+index 47757cc54..cdb4645df 100644
+--- a/.github/workflows/continuousdeployment.yml
++++ b/.github/workflows/continuousdeployment.yml
+@@ -30,7 +30,7 @@ jobs:
+         version: ${{ steps.tag_name.outputs.current_version }}
+         path: ./CHANGELOG.md
+ 
+-    - name: Create Release
++    - name: Create Release  # TODO: fix
+       uses: actions/create-release@latest
+       env:
+         GITHUB_TOKEN: ${{ secrets.AccessToken }}
+diff --git a/.gitignore b/.gitignore
+index d890c83f2..5eb56b0eb 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,6 +6,7 @@ report.html
+ *config*yaml*
+ seq2science.*.log
+ **/.tmp_graph.txt
++__pycache__/
+ *test*
+ build/
+ *.egg*
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 5a0b41449..a424d1d8a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -15,9 +15,13 @@ All changed fall under either one of these types: `Added`, `Changed`, `Deprecate
+ 
+ ### Fixed
+ 
++- downloading of gene annotation from NCBI (updated genomepy to 0.16.4)
+ - raise a descriptive error if the specified aligner/quantifier is incorrect
+ - raise a descriptive error if the gene annotation is required, but is not found locally, and cannot be downloaded
+ - integration test for rna-seq
++- error message when SRA is down
++- rule multiqc_explain now works with compound binary CLI arguments (e.g. -rk)
++- rule motif2factors (updated to gimmemotifs 0.18.4 + orthofinder 3.1.5)
+ 
+ ## [1.2.5] - 2026-02-24
+ 
+diff --git a/requirements.yaml b/requirements.yaml
+index 27baa14b8..01c200185 100644
+--- a/requirements.yaml
++++ b/requirements.yaml
+@@ -7,7 +7,7 @@ dependencies:
+   - bioconda::snakemake-minimal=7.25.0
+   - conda-forge::conda=24.1.2
+   - conda-forge::mamba=1.5.9
+-  - bioconda::genomepy=0.16.2
++  - bioconda::genomepy=0.16.4
+   - conda-forge::biopython=1.81
+   - conda-forge::filelock=3.10.7
+   - conda-forge::pyyaml=6.0
+@@ -21,3 +21,6 @@ dependencies:
+   - conda-forge::tabulate=0.9.0
+   - conda-forge::setuptools=60  # for the pkg_resources module
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
++
++  # build requirement only
++  - conda-forge::toml=0.10.2
+diff --git a/seq2science/cli.py b/seq2science/cli.py
+index bfb5a0d59..59fb6e67d 100644
+--- a/seq2science/cli.py
++++ b/seq2science/cli.py
+@@ -337,7 +337,7 @@ def _run(args, base_dir, workflows_dir, config_path):
+         "use_conda": True,
+         "conda_cleanup_pkgs": "cache",
+         "conda_frontend": "mamba",
+-        "conda_prefix": os.path.join(base_dir, ".snakemake"),
++        "conda_prefix": os.path.join(base_dir, ".snakemake"),  # TODO: "{.condarc:envs_dirs}/.snakemake"
+         "dryrun": args.dryrun,
+         "printreason": args.reason,
+         "keepgoing": args.keep_going,
+diff --git a/seq2science/envs/assembly_stats.yaml b/seq2science/envs/assembly_stats.yaml
+index b76720419..fcfb76b7c 100644
+--- a/seq2science/envs/assembly_stats.yaml
++++ b/seq2science/envs/assembly_stats.yaml
+@@ -5,6 +5,5 @@ channels:
+ dependencies:
+   - conda-forge::python=3.9
+   - conda-forge::matplotlib-base=3.7.1
+-  - bioconda::genomepy=0.15.0
+-  - conda-forge::setuptools=60  # for the pkg_resources module
++  - bioconda::genomepy=0.16.4
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
+diff --git a/seq2science/envs/gimme.yaml b/seq2science/envs/gimme.yaml
+index 0ebffbcb5..afbc7331b 100644
+--- a/seq2science/envs/gimme.yaml
++++ b/seq2science/envs/gimme.yaml
+@@ -3,9 +3,10 @@ channels:
+   - conda-forge
+   - bioconda
+ dependencies:
+-  - bioconda::gimmemotifs-minimal=0.18.0
++  - conda-forge::python=3.12
++  - bioconda::gimmemotifs-minimal=0.18.4
+   - bioconda::gffread=0.12.7
+-  - bioconda::orthofinder=2.5.4
+-  - conda-forge::xgboost=1.0.2
++  - bioconda::orthofinder=3.1.5
++  - conda-forge::xgboost=3.2.0
+   - conda-forge::cpulimit=0.2
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
+diff --git a/seq2science/envs/pytxi.yaml b/seq2science/envs/pytxi.yaml
+index 418932f66..a246e231a 100644
+--- a/seq2science/envs/pytxi.yaml
++++ b/seq2science/envs/pytxi.yaml
+@@ -3,8 +3,9 @@ channels:
+   - conda-forge
+   - bioconda
+ dependencies:
+-  - bioconda::genomepy=0.15.0
+-  - conda-forge::setuptools=60  # for the pkg_resources module
++  - bioconda::genomepy=0.16.4
+   - conda-forge::conda-ecosystem-user-package-isolation=1.0
++
++  - pip
+   - pip:
+     - git+https://github.com/vanheeringen-lab/pytxi.git@v0.1.2
+diff --git a/seq2science/rules/configuration_generic.smk b/seq2science/rules/configuration_generic.smk
+index f64a9663f..9f0c16353 100644
+--- a/seq2science/rules/configuration_generic.smk
++++ b/seq2science/rules/configuration_generic.smk
+@@ -336,10 +336,13 @@ if WORKFLOW != "download_fastq":
+         used_assemblies = list(set(samples["assembly"]))
+         # we make a temporary _used assemblies as gimme maelstrom might need more assemblies downloaded
+         # and those assemblies need to be saved in the local/remote assemblies variable
+-        if "motif2factors_reference" in config and config["run_gimme_maelstrom"]:
+-            _used_assemblies = used_assemblies + config["motif2factors_reference"] + config["motif2factors_database_references"]
+-        else:
+-            _used_assemblies = used_assemblies
++        _used_assemblies = used_assemblies
++        if config.get("run_gimme_maelstrom") and config.get("infer_motif2factors"):
++            _used_assemblies = list(set(
++                    used_assemblies +
++                    config["motif2factors_reference"] +
++                    config["motif2factors_database_references"]
++            ))
+ 
+         # dictionary with which providers to use per genome
+         providers = PickleDict(os.path.join(CACHE_DIR, "providers.p"))
+diff --git a/seq2science/rules/configuration_logging.smk b/seq2science/rules/configuration_logging.smk
+index 11db16087..c4b32fba3 100644
+--- a/seq2science/rules/configuration_logging.smk
++++ b/seq2science/rules/configuration_logging.smk
+@@ -154,6 +154,8 @@ if not config.get("no_config_log"):
+         ("min_mapping_quality", no_aligners),
+         ("only_primary_align", no_aligners),
+         ("remove_blacklist", no_aligners),
++        ("motif2factors_database_references", not config.get("motif2factors_database_references")),
++        ("motif2factors_reference", not config.get("motif2factors_reference")),
+         ("tx2gene_from_gtf", config.get("quantifier") != "salmon"),
+         ("tximeta", config.get("quantifier") != "salmon"),
+         ("deseq2", not config.get("contrasts")),
+diff --git a/seq2science/rules/configuration_workflows.smk b/seq2science/rules/configuration_workflows.smk
+index 61aed28e5..3f17e2e52 100644
+--- a/seq2science/rules/configuration_workflows.smk
++++ b/seq2science/rules/configuration_workflows.smk
+@@ -66,11 +66,22 @@ if config.get("peak_caller", False):
+         else:
+             config["macs2_types"].extend(["summits.bed", "peaks.narrowPeak"])
+ 
+-    if "run_gimme_maelstrom" in config and config["run_gimme_maelstrom"]:
++    if config.get("run_gimme_maelstrom"):
+         assert len(breps.index) > 1, (
+             "To run gimme maelstrom you need more than one biological replicate!"
+         )
+ 
++        # only need additional assemblies when ortholog inference is truly needed
++        if len(set(samples["assembly"]) - set(config["motif2factors_database_references"])) == 0:
++            config["infer_motif2factors"] = False
++        if config["infer_motif2factors"] is False:
++            config["motif2factors_database_references"] = []
++            config["motif2factors_reference"] = []
++    else:
++        config["infer_motif2factors"] = False
++        config["motif2factors_database_references"] = []
++        config["motif2factors_reference"] = []
++
+ # make sure that both maximum and minimum insert sizes are existing when one of them is used
+ if config.get("min_template_length") and not config.get("max_template_length"):
+     config["max_template_length"] = 1_000_000_000
+diff --git a/seq2science/rules/qc.smk b/seq2science/rules/qc.smk
+index 4aabcb299..be872076b 100755
+--- a/seq2science/rules/qc.smk
++++ b/seq2science/rules/qc.smk
+@@ -2,6 +2,7 @@
+ all rules/logic related to quality control and the final multiQC report should be here.
+ """
+ 
++import itertools
+ import glob
+ import re
+ 
+@@ -528,22 +529,22 @@ rule multiqc_explain:
+         cli_call[1] = "explain"
+ 
+         # remove run specific commands
+-        cli_call = [
+-            arg
+-            for arg in cli_call
+-            if arg
+-            not in {
+-                "--unlock",
+-                "--rerun-incomplete",
+-                "-k",
+-                "--keep-going",
+-                "--skip-rerun",
+-                "--reason",
+-                "-r",
+-                "--dryrun",
+-                "-n",
+-            }
+-        ]
++        blacklist = {
++            "--unlock",
++            "--rerun-incomplete",
++            "--keep-going",
++            "--skip-rerun",
++            "--reason",
++            "--dryrun",
++        }
++        # all permutations of the binary flags -n, -r and -k
++        for a in ["r", "n", "k"]:
++            blacklist.add(f"-{a}")
++        for a, b in itertools.permutations(["r", "n", "k"],2):
++            blacklist.add(f"-{a}{b}")
++        for a, b, c in itertools.permutations(["r", "n", "k"],3):
++            blacklist.add(f"-{a}{b}{c}")
++        cli_call = [arg for arg in cli_call if arg not in blacklist]
+         if "--cores" in cli_call:
+             cores_index = cli_call.index("--cores")
+             del cli_call[cores_index : cores_index + 2]
+diff --git a/seq2science/util.py b/seq2science/util.py
+index 1145f06ac..136140c62 100644
+--- a/seq2science/util.py
++++ b/seq2science/util.py
+@@ -285,7 +285,7 @@ def samples2metadata_sra(samples: List[str], logger) -> dict:
+                 "seq2science does not support downloading those..\n\n"
+             )
+             logger.debug(f"Affected samples: {', '.join(geo_samples)}")
+-            tb_str = traceback.format_exception(value=e, tb=e.__traceback__)
++            tb_str = traceback.format_exception(e)
+             logger.debug("".join(tb_str))
+             os._exit(1)  # noqa
+ 
+@@ -307,7 +307,7 @@ def samples2metadata_sra(samples: List[str], logger) -> dict:
+             "seq2science does not support downloading those..\n\n"
+         )
+         logger.debug(f"Affected samples: {', '.join(sample2clean.values())}")
+-        tb_str = traceback.format_exception(value=e, tb=e.__traceback__)
++        tb_str = traceback.format_exception(e)
+         logger.debug("".join(tb_str))
+         os._exit(1)  # noqa
+ 
+@@ -1039,12 +1039,15 @@ def _get_current_version(package):
+     """
+     Attempt to return a given package's version
+     """
+-    # package-isolation is not a package
+-    # xdg keeps its version in a pyproject.toml (not included)
+-    # argcomplete keeps its version in a setup.py (not included)
+-    # trackhub versioning is weird
+-    # mamba is not a package
+-    if package in ["conda-ecosystem-user-package-isolation", "xdg", "argcomplete", "trackhub", "mamba"]:
++    if package in [
++        "conda-ecosystem-user-package-isolation",  # not a package
++        "xdg",  # keeps its version in a pyproject.toml (not included)
++        "argcomplete",  # keeps its version in a setup.py (not included)
++        "trackhub",  # versioning is weird
++        "mamba",  # not a package
++        "setuptools",  # for packaging purposes only
++        "toml",  # for packaging purposes only
++    ]:
+         return None
+     if package == "python":
+         return sys.version.split()[0]
+diff --git a/tests/dag_tests.sh b/tests/dag_tests.sh
+index 98ec661b6..ca0d35265 100644
+--- a/tests/dag_tests.sh
++++ b/tests/dag_tests.sh
+@@ -1,5 +1,4 @@
+ # to run these tests locally:
+-#   mamba install toml --yes
+ #   python setup.py develop
+ #   bash ./tests/dag_tests.sh TEST
+ 
+diff --git a/tests/run_tests.sh b/tests/run_tests.sh
+index ba3c733cc..de7b1a4a6 100755
+--- a/tests/run_tests.sh
++++ b/tests/run_tests.sh
+@@ -1,5 +1,4 @@
+ # to run these tests locally:
+-#   mamba install toml --yes
+ #   python setup.py develop
+ #   bash ./tests/run_tests.sh TEST
+ 

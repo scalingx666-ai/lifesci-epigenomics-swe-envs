@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/drostlab__philentropy-43"
+description = "Fix and add option for `mute.message` "
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "philentropy",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "drostlab/philentropy"
+ref = "8c2c9cf1c8922e28288b8cd6242bb6bd4c3836f3"
+reference = "https://github.com/drostlab/philentropy/pull/43"
+source_access = "auto"
+built_at = "2026-11-14T07:15:59.228690+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:619575dcba408b553fc077c209501b5cbc8d17f885b7e58ea610eb03e1bec410"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-12-10T18:03:38Z"
+diff_format = "unified"
+context_files = [
+    "R/distance.R",
+    "man/distance.Rd",
+    "tests/testthat/test-distances.R",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 29
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,69 @@
+version = "1.0"
+
+[task]
+name = "default/lhqing__ALLCools-61"
+description = "Update utilities.py for recognizing CH"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "ALLCools",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "lhqing/ALLCools"
+ref = "0c20014f10cd74c38e705b2ddf0ee90a272ee0cf"
+reference = "https://github.com/lhqing/ALLCools/pull/61"
+source_access = "auto"
+built_at = "2026-11-14T07:18:00.015925+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8c524abe99b34ba1db6050af9204995a0b54487308b8d33645be264c5cfbbd41"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2025-01-17T20:01:43Z"
+diff_format = "unified"
+context_files = [
+    "ALLCools/utilities.py",
+    "docs/CONDUCT.md",
+    "docs/CONTRIBUTING.md",
+    "docs/README.md",
+    "docs/allcools/cell_level/basic/intro_basic_clustering.md",
+    "docs/allcools/intro.md",
+    "docs/allcools/start/analysis_steps.md",
+    "docs/allcools/start/installation.md",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 102
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

@@ -1,0 +1,13 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 320e007..b00e2ae 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -10,7 +10,7 @@ repos:
+       - id: check-case-conflict
+ 
+   - repo: https://github.com/astral-sh/ruff-pre-commit
+-    rev: v0.17.2
++    rev: v0.17.3
+     hooks:
+       - id: ruff
+         args: [--fix, --show-fixes, --exit-non-zero-on-fix]

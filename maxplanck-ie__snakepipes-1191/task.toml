@@ -1,0 +1,65 @@
+version = "1.0"
+
+[task]
+name = "default/maxplanck-ie__snakepipes-1191"
+description = "fix rule Eisar"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "snakepipes",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "maxplanck-ie/snakepipes"
+ref = "05976a6f0e167f7b113afd46bb7c082885c6eeb3"
+reference = "https://github.com/maxplanck-ie/snakepipes/pull/1191"
+source_access = "auto"
+built_at = "2026-11-14T06:59:13.382875+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:8a4f636eebd5e724335684d7e3fca45b0e220ea677e0d25f52c726d4d39631e4"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-10T08:42:12Z"
+diff_format = "unified"
+context_files = [
+    "docs/content/News.rst",
+    "snakePipes/shared/rscripts/extractIntronSeqs.R",
+    "snakePipes/shared/rscripts/extractTxSeqs.R",
+    "snakePipes/shared/rules/envs/sc_rna_seq_eisaR.yaml",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 20
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

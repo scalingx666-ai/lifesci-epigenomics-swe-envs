@@ -1,0 +1,63 @@
+version = "1.0"
+
+[task]
+name = "default/genomicsxai__alphagenome-pytorch-65"
+description = "Junction head: apply RoPE in float32 under autocast, as in JAX"
+
+[metadata]
+difficulty = "medium"
+category = "bugfix"
+keywords = [
+    "alphagenome-pytorch",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "genomicsxai/alphagenome-pytorch"
+ref = "72268c011d37cf2d387506493614952d85abe21b"
+reference = "https://github.com/genomicsxai/alphagenome-pytorch/pull/65"
+source_access = "auto"
+built_at = "2026-11-14T07:15:36.711334+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:790d3aa71661bd6bf369e9c7ef187f5135452ad7a3f5f73f280b246d53ba8bf8"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-11-13T16:30:40Z"
+diff_format = "unified"
+context_files = [
+    "src/alphagenome_pytorch/heads.py",
+    "tests/unit/test_heads.py",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 43
+difficulty = "medium"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

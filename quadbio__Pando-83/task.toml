@@ -1,0 +1,71 @@
+version = "1.0"
+
+[task]
+name = "default/quadbio__Pando-83"
+description = "dependency issues and version bugs"
+
+[metadata]
+difficulty = "large"
+category = "bugfix"
+keywords = [
+    "Pando",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "quadbio/Pando"
+ref = "454563733cf39b3ccb395431ee818ca8f65f6f2e"
+reference = "https://github.com/quadbio/Pando/pull/83"
+source_access = "auto"
+built_at = "2026-11-14T05:51:29.087928+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:79413a5f9e227dbd04261688762a17ecfdbbd76a4a89f4614450d60cac296da3"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2026-10-13T15:18:49Z"
+diff_format = "unified"
+context_files = [
+    ".omc/sessions/021c5471-285e-4ab1-ac12-cd3a101b600b.json",
+    ".omc/state/agent-replay-6b862b0a-ab13-4a4e-bdfd-7e9f34711496.jsonl",
+    ".omc/state/last-tool-error.json",
+    ".omc/state/mission-state.json",
+    ".omc/state/subagent-tracking.json",
+    "DESCRIPTION",
+    "R/motifmatchr_patched.R",
+    "R/utils.R",
+    "tests/testthat/test_motifmatchr_patched.R",
+    "vignettes/.omc/state/last-tool-error.json",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 444
+difficulty = "large"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

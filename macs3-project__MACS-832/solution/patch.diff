@@ -1,0 +1,787 @@
+diff --git a/MACS3/Signal/HMMR_HMM.py b/MACS3/Signal/HMMR_HMM.py
+index 5e4bddcd..6e2ddd6e 100644
+--- a/MACS3/Signal/HMMR_HMM.py
++++ b/MACS3/Signal/HMMR_HMM.py
+@@ -52,6 +52,95 @@ def get_weighted_density(x: cython.int, m: cython.float,
+ # ------------------------------------
+ 
+ 
++def _invalid_hmm_model(reason):
++    return ValueError(
++        f"Invalid HMM model: {reason}. Review the training regions and "
++        "adjust -l/--lower or -u/--upper cutoffs, or supply representative "
++        "regions with -t/--training. Retrain if using a saved model.")
++
++
++def _hmm_array(value, shape, name):
++    try:
++        values = np.asarray(value)
++    except (TypeError, ValueError) as exc:
++        raise _invalid_hmm_model(f"{name} must contain numeric values") from exc
++    if values.dtype.kind not in "biuf":
++        raise _invalid_hmm_model(f"{name} must contain numeric values")
++    if values.shape != shape:
++        raise _invalid_hmm_model(f"{name} must have shape {shape}")
++    if not np.isfinite(values).all():
++        raise _invalid_hmm_model(f"{name} must contain only finite values")
++    return values
++
++
++def _validate_hmm_model(hmm_model):
++    """Reject unusable fitted parameters without modifying the model.
++
++    A convergence flag does not guarantee usable emission parameters.
++    In particular, hmmlearn's final M-step can leave invalid covariances
++    that are only discovered on the next prediction.
++    """
++    n = getattr(hmm_model, "n_components", None)
++    f = getattr(hmm_model, "n_features", None)
++    if not hasattr(hmm_model, "n_features"):
++        # hmmlearn also accepts manually configured models and infers
++        # their feature count from the emissions on first prediction.
++        emissions = (getattr(hmm_model, "means_", None)
++                     if isinstance(hmm_model, GaussianHMM)
++                     else getattr(hmm_model, "lambdas_", None))
++        try:
++            if isinstance(hmm_model, PoissonHMM):
++                emissions = np.atleast_2d(emissions)
++            f = np.asarray(emissions).shape[1]
++        except (TypeError, ValueError, IndexError):
++            pass
++    if not isinstance(n, (int, np.integer)) or n <= 0:
++        raise _invalid_hmm_model("n_components must be a positive integer")
++    if not isinstance(f, (int, np.integer)) or f <= 0:
++        raise _invalid_hmm_model("n_features must be a positive integer")
++    for name, shape in (("startprob_", (n,)), ("transmat_", (n, n))):
++        probabilities = _hmm_array(getattr(hmm_model, name, None), shape, name)
++        if (np.any(probabilities < 0)
++                or not np.allclose(probabilities.sum(axis=-1), 1)):
++            raise _invalid_hmm_model(
++                f"{name} must be nonnegative and sum to 1 per distribution")
++
++    if isinstance(hmm_model, PoissonHMM):
++        rates = _hmm_array(np.atleast_2d(getattr(hmm_model, "lambdas_", None)),
++                           (n, f), "lambdas_")
++        if np.any(rates < 0):
++            raise _invalid_hmm_model("lambdas_ must be nonnegative")
++    elif isinstance(hmm_model, GaussianHMM):
++        _hmm_array(getattr(hmm_model, "means_", None), (n, f), "means_")
++        kind = hmm_model.covariance_type
++        # Inspect hmmlearn's stored representation: the public covars_
++        # property expands diagonal/tied/spherical arrays and can conceal
++        # malformed shapes (or expand spherical training arrays repeatedly).
++        covars = getattr(hmm_model, "_covars_", None)
++        if kind == "spherical":
++            shape = np.shape(covars)
++            if shape not in ((n,), (n, 1), (n, f)):
++                raise _invalid_hmm_model("spherical covariance has an invalid shape")
++        elif kind in ("full", "diag", "tied"):
++            shape = {"full": (n, f, f), "diag": (n, f), "tied": (f, f)}[kind]
++        else:
++            raise _invalid_hmm_model(f"unknown covariance type {kind}")
++        covars = _hmm_array(covars, shape, "covariance")
++        if kind in ("diag", "spherical"):
++            if np.any(covars <= 0):
++                raise _invalid_hmm_model("covariance variances must be positive")
++        else:
++            matrices = covars if kind == "full" else covars[np.newaxis, :, :]
++            for state, covariance in enumerate(matrices):
++                label = f"state {state} covariance" if kind == "full" else "shared covariance"
++                if not np.allclose(covariance, covariance.T):
++                    raise _invalid_hmm_model(f"{label} must be symmetric")
++                try:
++                    np.linalg.cholesky(covariance.astype(float, copy=False))
++                except np.linalg.LinAlgError as exc:
++                    raise _invalid_hmm_model(f"{label} must be positive-definite") from exc
++
++
+ @cython.ccall
+ def hmm_training(training_data: list, training_data_lengths: list,
+                  n_states: cython.int = 3, random_seed: cython.int = 12345,
+@@ -65,14 +154,25 @@ def hmm_training(training_data: list, training_data_lengths: list,
+         hmm_model = GaussianHMM(n_components=n_states, covariance_type=covar, random_state=rs, verbose=False)
+     if hmm_type == "poisson":
+         hmm_model = PoissonHMM(n_components=n_states, random_state=rs, verbose=False)
+-    hmm_model = hmm_model.fit(training_data, training_data_lengths)
++    try:
++        hmm_model = hmm_model.fit(training_data, training_data_lengths)
++    except ValueError as exc:
++        # Some numerical backends detect a degenerate M-step during the
++        # following E-step, before fit() can return for validation below.
++        if (hmm_type == "gaussian" and "covars" in str(exc)
++                and "positive-definite" in str(exc)):
++            raise _invalid_hmm_model(
++                f"Gaussian covariance failure during training: {exc}") from exc
++        raise
+     assert hmm_model.n_features == 4
++    _validate_hmm_model(hmm_model)
+     return hmm_model
+ 
+ 
+ @cython.ccall
+ @cython.returns(cnp.ndarray)
+ def hmm_predict(signals: list, lens: list, hmm_model):
++    _validate_hmm_model(hmm_model)
+     predictions = hmm_model.predict_proba(signals, lens)
+     return predictions
+ 
+@@ -82,12 +182,13 @@ def hmm_model_save(model_file: str, hmm_model, hmm_binsize: cython.int,
+                    i_open_region: cython.int, i_nucleosomal_region: cython.int,
+                    i_background_region: cython.int, hmm_type: str):
+     if hmm_type == "gaussian":
++        if hmm_model.covariance_type not in ("diag", "full"):
++            raise Exception(f"Unknown covariance type {hmm_model.covariance_type}")
++        _validate_hmm_model(hmm_model)
+         if hmm_model.covariance_type == "diag":
+             covars = hmm_model.covars_.diagonal(axis1=1, axis2=2)
+         elif hmm_model.covariance_type == "full":
+             covars = hmm_model.covars_
+-        else:
+-            raise Exception(f"Unknown covariance type {hmm_model.covariance_type}")
+         with open(model_file, "w") as f:
+             json.dump({"startprob": hmm_model.startprob_.tolist(),
+                        "transmat": hmm_model.transmat_.tolist(),
+@@ -101,6 +202,7 @@ def hmm_model_save(model_file: str, hmm_model, hmm_binsize: cython.int,
+                        "hmm_binsize": int(hmm_binsize),
+                        "hmm_type": hmm_type}, f)
+     if hmm_type == "poisson":
++        _validate_hmm_model(hmm_model)
+         with open(model_file, "w") as f:
+             json.dump({"startprob": hmm_model.startprob_.tolist(),
+                        "transmat": hmm_model.transmat_.tolist(),
+@@ -121,7 +223,11 @@ def hmm_model_init(model_file: str) -> list:
+         if hmm_type == "gaussian":
+             hmm_model = GaussianHMM(n_components=3, covariance_type=m["covariance_type"])
+             hmm_model.means_ = np.array(m["means"])
+-            hmm_model.covars_ = np.array(m["covars"])
++            try:
++                covars = np.array(m["covars"])
++                hmm_model.covars_ = covars
++            except (ValueError, TypeError, IndexError) as exc:
++                raise _invalid_hmm_model(f"invalid covariance: {exc}") from exc
+             hmm_model.covariance_type = m["covariance_type"]
+         if hmm_type == "poisson":
+             hmm_model = PoissonHMM(n_components=3)
+@@ -129,5 +235,6 @@ def hmm_model_init(model_file: str) -> list:
+         hmm_model.startprob_ = np.array(m["startprob"])
+         hmm_model.transmat_ = np.array(m["transmat"])
+         hmm_model.n_features = m["n_features"]
++        _validate_hmm_model(hmm_model)
+         return [hmm_model, m["i_open_region"], m["i_background_region"],
+                 m["i_nucleosomal_region"], m["hmm_binsize"], hmm_type]
+diff --git a/docs/source/docs/hmmratac.md b/docs/source/docs/hmmratac.md
+index 8e7b62d3..e73f6999 100644
+--- a/docs/source/docs/hmmratac.md
++++ b/docs/source/docs/hmmratac.md
+@@ -297,6 +297,21 @@ While there's no universal rule, here are a few suggestions:
+   
+ ## Tune the HMM model
+ 
++HMMRATAC checks fitted and loaded models before decoding. Gaussian
++covariances must be finite, symmetric, and positive definite; invalid
++emission parameters or state probabilities also stop the run. A model
++that fails these checks is rejected before saving the trained model,
++including with `--modelonly`. A convergence message alone does not
++guarantee valid parameters.
++
++If training produces a degenerate model, review the cutoff analysis and
++adjust `-l/--lower` and `-u/--upper` to select representative training
++regions, or supply regions with `-t/--training`. A single region is
++allowed when it provides sufficient variation. The `-c/--prescan-cutoff`
++option controls regions selected for decoding and does not change the
++training data. If a saved model fails validation, retrain it with suitable
++training regions.
++
+ It's highly recommended to check the runtime message of the HMM model
+ after training. An example is like this:
+ 
+diff --git a/test/hmm_model_probe.py b/test/hmm_model_probe.py
+new file mode 100644
+index 00000000..10a09818
+--- /dev/null
++++ b/test/hmm_model_probe.py
+@@ -0,0 +1,55 @@
++"""Bounded training/CLI probes for #814; always use the parent's build."""
++
++from pathlib import Path
++import runpy
++import sys
++
++import numpy as np
++
++from MACS3.Signal import HMMR_HMM as hmm
++
++
++def main():
++    expected_extension, case, *args = sys.argv[1:]
++    assert Path(hmm.__file__).resolve() == Path(expected_extension).resolve()
++    assert Path(hmm.__file__).suffix != ".py", hmm.__file__
++    if case == "constant-training":
++        try:
++            hmm.hmm_training([[1.0] * 4 for _ in range(200)], [200])
++        except ValueError as exc:
++            assert "Invalid HMM model" in str(exc), str(exc)
++            assert "-l/--lower" in str(exc), str(exc)
++            assert "-u/--upper" in str(exc), str(exc)
++        else:
++            raise AssertionError("Training returned a rank-deficient model")
++    elif case in ("cli-training", "cli-training-estep"):
++        script, bedpe, outdir, *extra = args
++        if case == "cli-training":
++            real_fit = hmm.GaussianHMM.fit
++
++            def degenerate_fit(self, *fit_args, **fit_kwargs):
++                # A controlled final M-step result, not a reproduction of
++                # the reporter's unavailable BAM-driven training failure.
++                fitted = real_fit(self, *fit_args, **fit_kwargs)
++                fitted.covars_[1] = np.diag([1e12, 1e12, 1e12, -3e-5])
++                return fitted
++
++            hmm.GaussianHMM.fit = degenerate_fit
++        else:
++            real_mstep = hmm.GaussianHMM._do_mstep
++
++            def degenerate_step(self, stats):
++                real_mstep(self, stats)
++                self.covars_[1] = np.diag([1e12, 1e12, 1e12, -3e-5])
++
++            hmm.GaussianHMM._do_mstep = degenerate_step
++        sys.argv = [script, "hmmratac", "-i", bedpe, "-f", "BEDPE",
++                    "--outdir", outdir, "-l", "4", "-u", "20", "-c", "2",
++                    *extra]
++        runpy.run_path(script, run_name="__main__")
++    else:
++        raise AssertionError(case)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/test/issue_814_verification.md b/test/issue_814_verification.md
+new file mode 100644
+index 00000000..92b6bbba
+--- /dev/null
++++ b/test/issue_814_verification.md
+@@ -0,0 +1,190 @@
++# Degenerate HMM model verification
++
++Issue: [#814](https://github.com/macs3-project/MACS/issues/814),
++part of [#757](https://github.com/macs3-project/MACS/issues/757).
++Branch: `fix/macs/814-degenerate-hmm-models`.
++Baseline: current `origin/main` at
++`ebdc4417ab304b2cd9e00486800e6f349d06ef9c`.
++
++## Compiled baseline verification
++
++Built the unchanged HMMR_HMM and Prob extensions from this revision with
++the macs3dev interpreter: Python 3.14.6, Cython 3.3.0, NumPy 2.5.1,
++hmmlearn 0.3.3.
++The full in-place build initially lacked SIMDe headers; supplied the
++locally available headers from earlier verification work and retried.
++The full `python setup.py build_ext --inplace -j 4` retry succeeded.
++Each API probe runs in a separate subprocess with a 30-second timeout,
++the parent's interpreter and MACS3 package, and an assertion that the
++child imports the exact same compiled HMMR_HMM extension as the parent.
++
++| Probe | Baseline result |
++| --- | --- |
++| Valid full-covariance model | Saved; finite posterior probabilities |
++| Deliberately indefinite covariance, diagonal entries including `1e12` and `-3e-5` | Saved; decoding raises `ValueError: 'covars' must be symmetric, positive-definite` |
++| Singular covariance | Saved; decoding accepts it through hmmlearn's covariance jitter |
++| Asymmetric covariance | Saved; decoding accepts it |
++| NaN or infinite covariance | Saved; decoding raises `ValueError: array must not contain infs or NaNs` |
++| Zero transition row | Saved; decoding raises a transition normalization error |
++| Empty prediction/training data | Rejected with `ValueError` |
++| Prediction lengths that do not sum to sample count | Rejected with `ValueError` |
++| 200 identical four-feature training observations | Training returns a model with `converged == True` and rank-deficient covariances; decoding produces finite posteriors |
++| One varied training sequence of 240 observations | Training and decoding succeed with positive-definite covariances |
++
++The intentionally invalid covariance probes modify the public `covars_`
++array of an otherwise valid GaussianHMM, then call MACS3's public
++`hmm_model_save` and `hmm_predict`. These verify missing validation;
++they do **not** reproduce the original training failure. The reporter's
++small BAM is unavailable, and the constant-data example does not reproduce
++the reported decoding exception either.
++
++Baseline code returned the fitted model without validating covariance
++matrices. The CLI then logged `monitor_.converged`, assigned states, and
++saved the model before decoding. In installed hmmlearn, the convergence
++property can be true after a negative likelihood change or reaching its
++iteration limit. It is not a covariance validity check.
++
++Existing `test/test_HMMR_HMM.py`: **51 passed, 1 skipped**, with 196
++hmmlearn/NumPy deprecation warnings, in 42.55 seconds.
++The legacy prediction test is explicitly skipped for sklearn/hmmlearn
++version variation.
++
++Temporary evidence: `/private/tmp/macs814_probe.py`,
++`/private/tmp/macs814-baseline-results.json`,
++`/private/tmp/macs814-baseline-build.log`, and
++`/private/tmp/macs814-baseline-hmm-tests.log`.
++
++## Implementation
++
++Added shared validation after training and at the prediction, save, and
++load boundaries. It checks the number of states/features, emission
++dimensions and finite values, nonnegative normalized probabilities, and
++nonnegative Poisson rates. Gaussian full/shared covariance matrices must
++be symmetric and pass Cholesky without jitter; diagonal/spherical
++variances must be positive. The stored covariance representation is
++checked because hmmlearn's public getter expands several covariance
++types and can conceal invalid dimensions. Validation does not modify
++parameters or depend on the convergence monitor.
++
++Invalid models raise `ValueError` identifying the parameter (and the
++state for a full covariance failure), with guidance on representative
++training regions, `-l/--lower`, `-u/--upper`, and `-t/--training`.
++The existing CLI error handler logs validation errors and exits with
++status 1 before model saving, convergence reporting, or decoding.
++Public save validation also preserves an existing destination file.
++Documentation explains why
++`-c/--prescan-cutoff` affects decoding candidates rather than training.
++
++`test_HMMR_validation.py` covers invalid full/diagonal covariances,
++nonfinite and malformed emission parameters, invalid state probability
++arrays, invalid Poisson rates, all four public boundaries, constant-data
++training, empty/malformed observations, and CLI failure before output
++including `--modelonly`. A controlled final-fit fixture verifies that
++the CLI rejects the reported covariance pattern before saving. This
++fixture is explicitly distinct from reproducing the unavailable BAM's
++training failure. The constant-data fit is an actual training example
++whose rank-deficient result is now rejected.
++
++Valid controls include a single training sequence for every supported
++training covariance type (full, diagonal, tied, spherical), tiny positive
++variances, zero Poisson rates, zero probability entries, and a valid model
++that has not converged. Manually configured models can still infer
++their feature count, and a single-state Poisson model can use flat rates.
++Existing tests retain exact JSON output, trained parameter expectations,
++model round trips, forward/backward
++posterior comparisons, and ordinary CLI output checks. The existing
++two-state saved-model test now expects rejection during load rather
++than delayed failure during prediction.
++
++Against the baseline compiled HMM extension, the initial regression set reported
++**75 failed, 15 passed** in 46.07 seconds. Failures include rejection
++timing and actionable-diagnostic assertions for models that hmmlearn
++already rejected with a less useful error. The HMM extension was still
++the unmodified baseline build. Each new training/CLI probe uses the parent's
++interpreter and installation, with a 30-second timeout. The training
++probe also verifies the exact compiled extension path.
++
++## Validation
++
++- In-place Cython build succeeded with `python setup.py build_ext
++  --inplace -j 4`.
++- Broader HMM suite (`test_HMMR_validation`, `test_HMMR_HMM`,
++  `test_hmmratac_cmd`, `test_HMMR_EM`, `test_HMMR_Signal_Processing`,
++  `test_HMMR_poisson`): **423 passed, 7 skipped** in 193.06 seconds.
++- In-place CLI rejection checks and all five slow real-data controls:
++  **11 passed** in 274.39 seconds. Gaussian BAMPE/BEDPE, Poisson, and
++  fragment/barcode runs retain the expected peak regions or existing
++  output checks. The standard-result comparisons require Jaccard > 0.99.
++- Built a wheel from a Git archive plus the changed sources/tests and
++  local SIMDe headers, with no preexisting extensions or build artifacts.
++  Installed with `pip --no-deps --no-index --no-compile --target` into a
++  separate temporary directory. The runner uses `python -P`, asserts
++  that MACS3 and the compiled HMM module come from that target, and
++  asserts that the clean source package has no in-place `.so` files.
++- Broader installed-wheel suite with `--run-slow`: **428 passed,
++  2 skipped** in 440.86 seconds.
++- After the final integer-covariance JSON preservation adjustment,
++  rebuilt both packages and repeated the two affected API modules,
++  including every new subprocess regression: **145 passed, 1 skipped**
++  in-place (61.49 seconds) and **145 passed, 1 skipped** against the
++  rebuilt installed wheel (63.59 seconds). The integer covariance model
++  retains byte-for-byte JSON on load/save. Checked that the installed
++  HMM and CLI source files, and the clean source regression/probe files,
++  match the workspace's final versions.
++- `git diff --check` passes.
++
++The broader wheel run's two skips are the explicitly disabled legacy
++prediction test and an existing synthetic BAM generation test requiring
++unavailable optional pysam. The final API runs skip only that legacy
++prediction test. Warnings are hmmlearn/NumPy deprecations and the expected
++duplicate-cluster warning from a malformed-input training control.
++
++Further evidence: `/private/tmp/macs814-final-inplace.log`,
++`/private/tmp/macs814-realdata-inplace.log`,
++`/private/tmp/macs814-release-inplace.log`, and
++`/private/tmp/macs814-verification/` (`final-build-wheel.log`,
++`final-install-wheel.log`, `final-wheel-tests.log`,
++`release-wheel-tests.log`, clean source, and the installed wheel).
++
++## CI follow-up: covariance failure inside training
++
++The initial commit `40fe08d` failed the constant-data probe in the
++[x64 Python 3.14 PR job](https://github.com/macs3-project/MACS/actions/runs/41972723326/job/127064434750)
++and its
++[push job](https://github.com/macs3-project/MACS/actions/runs/41972662476/job/127064247673).
++Each run had one failing test, with 5,453 passes and 471 skips; fail-fast
++cancelled the Python 3.12/3.13 companion jobs. Linux used NumPy 2.5.4,
++SciPy 1.18.1, scikit-learn 1.9.1, and hmmlearn 0.3.3.
++
++On that backend, the constant-data model becomes unusable before fitting
++finishes: a later E-step raises hmmlearn's covariance `ValueError` inside
++`fit()`. On the local backend, fitting returns and post-fit validation
++rejects the covariance. The probe previously assumed the latter path.
++This synthetic failure is distinct from reproducing the unavailable
++original BAM-driven failure.
++
++Translate Gaussian positive-definiteness errors raised inside `fit()`
++into the same actionable model error, retaining the original exception
++as its cause. Other input errors and Poisson fitting errors propagate
++unchanged. The constant-data probe requires rejection with training
++guidance without depending on which invalid parameter is detected first.
++
++A deterministic regression forces an invalid covariance in a real M-step
++and observes the next real E-step fail inside `fit()`. Against the
++initial compiled extension, it fails with the same unwrapped covariance
++error as CI (the three unrelated-error controls pass). CLI probes cover
++both early E-step failure and invalid models returned by fitting, with
++and without `--modelonly`, using the parent's compiled installation and
++30-second timeouts.
++
++Follow-up validation: the two affected API modules, including all new
++CLI/training subprocess probes, pass **151 tests with 1 existing skip**
++in-place (61.80 seconds) and against the rebuilt installed wheel
++(61.99 seconds). The wheel runner verifies the installed compiled module
++path and absence of in-place source extensions; the installed HMM source
++and clean-source tests/probe match the final workspace files. The skip
++remains the explicitly disabled legacy prediction test. Build and test
++evidence is in `/private/tmp/macs814-ci-build.log`,
++`/private/tmp/macs814-ci-repro.log`, `/private/tmp/macs814-ci-inplace.log`,
++and `/private/tmp/macs814-ci-fix/` (`build-wheel.log`, `install-wheel.log`,
++`wheel-tests.log`, and the installed wheel).
+diff --git a/test/test_HMMR_HMM.py b/test/test_HMMR_HMM.py
+index e8c13d6d..44c245e5 100644
+--- a/test/test_HMMR_HMM.py
++++ b/test/test_HMMR_HMM.py
+@@ -653,16 +653,10 @@ def test_hmm_model_init_not_json(tmp_path):
+ def test_hmm_model_init_always_builds_three_states(tmp_path):
+     # The model file labels exactly three states (i_open_region,
+     # i_nucleosomal_region, i_background_region) and hmmratac only trains
+-    # 3-state models, so hmm_model_init builds 3 components whatever the
+-    # file holds. A 2-state model written by hmm_model_save loads, but
+-    # hmmlearn rejects it when it is used.
++    # 3-state models, so a saved 2-state model must be rejected on load.
+     X, lens, _ = sample_hmm(14)
+     model = hmm_training(X, lens, n_states=2, random_seed=5)
+     f = str(tmp_path / "model.json")
+     hmm_model_save(f, model, 10, 1, 0, 0, "gaussian")
+-    loaded = hmm_model_init(f)[0]
+-    assert loaded.n_components == 3
+-    assert loaded.startprob_.shape == (2,)
+-    with pytest.raises(ValueError,
+-                       match="startprob_ must have length n_components"):
+-        hmm_predict(X, lens, loaded)
++    with pytest.raises(ValueError, match="startprob_ must have shape"):
++        hmm_model_init(f)
+diff --git a/test/test_HMMR_validation.py b/test/test_HMMR_validation.py
+new file mode 100644
+index 00000000..dbb5a7a0
+--- /dev/null
++++ b/test/test_HMMR_validation.py
+@@ -0,0 +1,303 @@
++"""Public API and CLI regressions for degenerate HMM models (#814/#757)."""
++
++import json
++from pathlib import Path
++import subprocess
++import sys
++
++import numpy as np
++import pytest
++
++from conftest import MACS3_SCRIPT, macs3_env, no_core_dumps
++from MACS3.Signal import HMMR_HMM as hmm
++from test_HMMR_HMM import hand_gaussian, hand_poisson, sample_hmm
++from test_hmmratac_cmd import atac  # shared synthetic ATAC input fixture
++
++
++def damage(model, case):
++    """Simulate invalid stored parameters left by a final fitting step."""
++    if case == "indefinite":
++        model.covars_[1] = np.diag([1e12, 1e12, 1e12, -3e-5])
++    elif case == "singular":
++        model.covars_[1] = 0
++    elif case == "asymmetric":
++        model.covars_[1, 0, 1] += 2
++    elif case == "nan-covariance":
++        model.covars_[1, 0, 0] = np.nan
++    elif case == "infinite-covariance":
++        model.covars_[1, 0, 0] = np.inf
++    elif case == "covariance-shape":
++        model._covars_ = np.tile(np.eye(3), (3, 1, 1))
++    elif case == "zero-diagonal":
++        # The public diag getter returns a copy. Mutate the stored
++        # representation to simulate fitting bypassing the setter.
++        model._covars_[1, 0] = 0
++    elif case == "negative-diagonal":
++        model._covars_[1, 0] = -1
++    elif case == "nan-mean":
++        model.means_[1, 0] = np.nan
++    elif case == "mean-shape":
++        model.means_ = np.ones((3, 3))
++    elif case == "zero-transition":
++        model.transmat_[1] = 0
++    elif case == "negative-transition":
++        model.transmat_[1] = [-.1, .5, .6]  # sums to one
++    elif case == "nan-transition":
++        model.transmat_[1, 0] = np.nan
++    elif case == "negative-start":
++        model.startprob_ = np.array([-.1, .5, .6])
++    elif case == "infinite-start":
++        model.startprob_[0] = np.inf
++    elif case == "negative-rate":
++        model.lambdas_[1, 0] = -1
++    elif case == "nan-rate":
++        model.lambdas_[1, 0] = np.nan
++    else:
++        raise AssertionError(case)
++    return model
++
++
++CASES = [
++    ("full", "indefinite", "state 1 covariance.*positive-definite"),
++    ("full", "singular", "state 1 covariance.*positive-definite"),
++    ("full", "asymmetric", "state 1 covariance.*symmetric"),
++    ("full", "nan-covariance", "covariance.*finite"),
++    ("full", "infinite-covariance", "covariance.*finite"),
++    ("full", "covariance-shape", "covariance.*shape"),
++    ("diag", "zero-diagonal", "covariance.*positive"),
++    ("diag", "negative-diagonal", "covariance.*positive"),
++    ("full", "nan-mean", "means_.*finite"),
++    ("full", "mean-shape", "means_.*shape"),
++    ("full", "zero-transition", "transmat_.*sum to 1"),
++    ("full", "negative-transition", "transmat_.*nonnegative"),
++    ("full", "nan-transition", "transmat_.*finite"),
++    ("full", "negative-start", "startprob_.*nonnegative"),
++    ("full", "infinite-start", "startprob_.*finite"),
++    ("poisson", "negative-rate", "lambdas_.*nonnegative"),
++    ("poisson", "nan-rate", "lambdas_.*finite"),
++]
++
++
++def make_model(kind):
++    return hand_poisson() if kind == "poisson" else hand_gaussian(kind)
++
++
++@pytest.mark.parametrize("operation", ["train", "predict", "save"])
++@pytest.mark.parametrize("kind,case,message", CASES)
++def test_reject_invalid_parameters(tmp_path, monkeypatch, operation, kind,
++                                   case, message):
++    model = damage(make_model(kind), case)
++    model_type = "poisson" if kind == "poisson" else "gaussian"
++    target = tmp_path / "model.json"
++    # Rejection must also preserve an existing file, before opening it.
++    target.write_text("existing model\n")
++    if operation == "train":
++        monkeypatch.setattr(type(model), "fit", lambda *a, **kw: model)
++        call = lambda: hmm.hmm_training([[1.] * 4] * 3, [3], hmm_type=model_type)
++    elif operation == "predict":
++        call = lambda: hmm.hmm_predict([[1.] * 4] * 3, [3], model)
++    else:
++        call = lambda: hmm.hmm_model_save(str(target), model, 10, 2, 1, 0, model_type)
++    with pytest.raises(ValueError, match=message) as error:
++        call()
++    assert "Invalid HMM model:" in str(error.value)
++    assert "-l/--lower" in str(error.value)
++    assert "-u/--upper" in str(error.value)
++    assert target.read_text() == "existing model\n"
++
++
++@pytest.mark.parametrize("kind,case,message", CASES)
++def test_reject_invalid_saved_model(tmp_path, kind, case, message):
++    model = make_model(kind)
++    model_type = "poisson" if kind == "poisson" else "gaussian"
++    path = tmp_path / "model.json"
++    hmm.hmm_model_save(str(path), model, 10, 2, 1, 0, model_type)
++    document = json.loads(path.read_text())
++    damage(model, case)
++    document.update(startprob=model.startprob_.tolist(),
++                    transmat=model.transmat_.tolist())
++    if kind == "poisson":
++        document["lambdas"] = model.lambdas_.tolist()
++    else:
++        document["means"] = model.means_.tolist()
++        document["covars"] = model._covars_.tolist()
++    path.write_text(json.dumps(document))
++    # hmmlearn's covariance setter may reject before our post-load check.
++    with pytest.raises(ValueError, match="Invalid HMM model"):
++        hmm.hmm_model_init(str(path))
++
++
++@pytest.mark.parametrize("covariance_type", ["full", "diag", "tied", "spherical"])
++def test_valid_single_sequence_covariance_types(covariance_type):
++    observations, lengths, _ = sample_hmm(814, n_seq=1, length=240)
++    model = hmm.hmm_training(observations, lengths, covar=covariance_type)
++    expected = model.predict_proba(observations, lengths)
++    actual = hmm.hmm_predict(observations, lengths, model)
++    np.testing.assert_array_equal(actual, expected)
++    assert np.isfinite(actual).all()
++    np.testing.assert_allclose(actual.sum(axis=1), 1)
++
++
++def test_valid_small_variance_is_not_rejected():
++    model = hand_gaussian()
++    model.covars_[1] = np.diag([1e-12, 1., 1., 1.])
++    observations = model.means_.tolist()
++    np.testing.assert_array_equal(
++        hmm.hmm_predict(observations, [3], model),
++        model.predict_proba(observations, [3]))
++
++
++def test_integer_covariance_round_trip_preserves_json(tmp_path):
++    model = hand_gaussian()
++    model.covars_ = np.tile(np.eye(4, dtype=int), (3, 1, 1))
++    original = str(tmp_path / "original.json")
++    restored = str(tmp_path / "restored.json")
++    hmm.hmm_model_save(original, model, 10, 2, 1, 0, "gaussian")
++    loaded = hmm.hmm_model_init(original)[0]
++    hmm.hmm_model_save(restored, loaded, 10, 2, 1, 0, "gaussian")
++    assert Path(restored).read_text() == Path(original).read_text()
++
++
++@pytest.mark.parametrize("kind", ["full", "poisson"])
++def test_prediction_infers_features_for_manually_configured_models(kind):
++    expected_model = make_model(kind)
++    model = make_model(kind)
++    del model.n_features
++    observations = [[1.] * 4] * 3
++    np.testing.assert_array_equal(
++        hmm.hmm_predict(observations, [3], model),
++        expected_model.predict_proba(observations, [3]))
++
++
++def test_valid_parameters_do_not_require_convergence(monkeypatch):
++    model = hand_gaussian()
++    assert not model.monitor_.converged
++    monkeypatch.setattr(hmm.GaussianHMM, "fit", lambda *a, **kw: model)
++    assert hmm.hmm_training([[1.] * 4] * 3, [3]) is model
++
++
++def test_training_covariance_failure_during_estep(monkeypatch):
++    # Force a bad M-step so the next real E-step fails inside fit(),
++    # independently of platform-specific BLAS rounding on constant data.
++    original = hmm.GaussianHMM._do_mstep
++
++    def degenerate_step(model, stats):
++        original(model, stats)
++        damage(model, "indefinite")
++
++    monkeypatch.setattr(hmm.GaussianHMM, "_do_mstep", degenerate_step)
++    observations, lengths, _ = sample_hmm(814, n_seq=1, length=240)
++    with pytest.raises(ValueError, match="Invalid HMM model:.*during training") as error:
++        hmm.hmm_training(observations, lengths)
++    assert "-l/--lower" in str(error.value)
++    assert str(error.value.__cause__) == "'covars' must be symmetric, positive-definite"
++
++
++@pytest.mark.parametrize("kind,message", [
++    ("gaussian", "lengths array does not sum to samples"),
++    ("gaussian", "Input contains NaN"),
++    ("poisson", "'covars' must be symmetric, positive-definite"),
++])
++def test_unrelated_training_errors_are_preserved(monkeypatch, kind, message):
++    failure = ValueError(message)
++
++    def fail_fit(*args, **kwargs):
++        raise failure
++
++    model_class = hmm.GaussianHMM if kind == "gaussian" else hmm.PoissonHMM
++    monkeypatch.setattr(model_class, "fit", fail_fit)
++    with pytest.raises(ValueError) as error:
++        hmm.hmm_training([[1.] * 4] * 3, [3], hmm_type=kind)
++    assert error.value is failure
++
++
++def test_zero_poisson_rates_and_zero_probabilities_are_valid():
++    model = hand_poisson()
++    model.lambdas_[0, 0] = 0
++    model.startprob_ = np.array([1., 0., 0.])
++    model.transmat_ = np.eye(3)
++    observations = [[0., 1., 1., 1.]] * 3
++    np.testing.assert_array_equal(
++        hmm.hmm_predict(observations, [3], model),
++        model.predict_proba(observations, [3]))
++
++
++def test_single_state_poisson_accepts_flat_rates():
++    model = hmm.PoissonHMM(n_components=1)
++    model.startprob_ = np.ones(1)
++    model.transmat_ = np.ones((1, 1))
++    model.lambdas_ = np.array([0., 1., 2., 3.])
++    np.testing.assert_array_equal(
++        hmm.hmm_predict([[0., 1., 2., 3.]] * 3, [3], model), np.ones((3, 1)))
++
++
++@pytest.mark.parametrize("operation", ["train", "predict"])
++@pytest.mark.parametrize("observations,lengths", [
++    ([], []), ([[1.] * 4] * 3, [2]), ([[np.nan] * 4] * 3, [3]),
++    ([[1.] * 4, [1.] * 3], [2]),
++])
++def test_empty_and_malformed_observations(operation, observations, lengths):
++    with pytest.raises(ValueError):
++        if operation == "train":
++            hmm.hmm_training(observations, lengths)
++        else:
++            hmm.hmm_predict(observations, lengths, hand_gaussian())
++
++
++def run_probe(tmp_path, case, *args):
++    return subprocess.run(
++        [sys.executable, str(Path(__file__).with_name("hmm_model_probe.py")),
++         hmm.__file__, case, *map(str, args)],
++        cwd=tmp_path, env=macs3_env(tmp_path), capture_output=True, text=True,
++        timeout=30, preexec_fn=no_core_dumps)
++
++
++def test_constant_training_rejected_in_compiled_build(tmp_path):
++    result = run_probe(tmp_path, "constant-training")
++    assert result.returncode == 0, result.stdout + result.stderr
++
++
++@pytest.mark.parametrize("extra", [[], ["--modelonly"]])
++@pytest.mark.parametrize("case", ["cli-training", "cli-training-estep"])
++def test_cli_rejects_degenerate_fit_before_saving(tmp_path, atac, extra, case):
++    output = tmp_path / "out"
++    result = run_probe(tmp_path, case, MACS3_SCRIPT, atac.bedpe,
++                       output, *extra)
++    assert result.returncode == 1, result.stdout + result.stderr
++    assert "Invalid HMM model:" in result.stderr
++    assert "positive-definite" in result.stderr
++    if case == "cli-training-estep":
++        assert "covariance failure during training" in result.stderr
++    else:
++        assert "state 1 covariance must be positive-definite" in result.stderr
++    assert "-l/--lower" in result.stderr
++    assert "HMM converged:" not in result.stderr
++    assert "Write HMM parameters" not in result.stderr
++    assert "Traceback" not in result.stderr
++    assert not (output / "NA_model.json").exists()
++    assert not (output / "NA_accessible_regions.narrowPeak").exists()
++
++
++@pytest.mark.parametrize("kind,case", [
++    ("full", "indefinite"), ("full", "asymmetric"),
++    ("diag", "zero-diagonal"), ("poisson", "nan-rate"),
++])
++def test_cli_rejects_invalid_loaded_model(tmp_path, atac, run_macs3, kind, case):
++    model = make_model(kind)
++    path = tmp_path / "invalid.json"
++    hmm.hmm_model_save(str(path), model, 10, 2, 1, 0,
++                       "poisson" if kind == "poisson" else "gaussian")
++    document = json.loads(path.read_text())
++    damage(model, case)
++    document["lambdas" if kind == "poisson" else "covars"] = (
++        model.lambdas_ if kind == "poisson" else model._covars_).tolist()
++    path.write_text(json.dumps(document))
++    output = tmp_path / "out"
++    result = run_macs3(["hmmratac", "-i", atac.bedpe, "-f", "BEDPE",
++                        "--model", path, "--outdir", output,
++                        "-l", "4", "-u", "20", "-c", "2"], timeout=30)
++    assert result.returncode == 1, result.stderr
++    assert "Invalid HMM model:" in result.stderr
++    assert "Retrain if using a saved model" in result.stderr
++    assert "Traceback" not in result.stderr
++    assert not (output / "NA_accessible_regions.narrowPeak").exists()

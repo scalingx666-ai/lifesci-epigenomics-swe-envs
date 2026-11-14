@@ -1,0 +1,64 @@
+version = "1.0"
+
+[task]
+name = "default/fl-yu__CUT-RUNTools-2.0-84"
+description = "Edits in installation script and bulk-pipeline script"
+
+[metadata]
+difficulty = "small"
+category = "bugfix"
+keywords = [
+    "CUT-RUNTools-2.0",
+    "pr_diff",
+]
+
+[metadata.repo2env]
+pipeline = "pr_diff"
+pipeline_version = "0.3.0"
+repo = "fl-yu/CUT-RUNTools-2.0"
+ref = "cf72ca5d0801ccab46ca7cfdb6810628797f4c9b"
+reference = "https://github.com/fl-yu/CUT-RUNTools-2.0/pull/84"
+source_access = "auto"
+built_at = "2026-11-14T07:16:29.720924+00:00"
+reward_kinds = [
+    "diff_similarity",
+]
+spec_version = "0.2.0"
+content_hash = "sha256:d816a801b07bfb2b9fcd12a4555116ba0eb3f9ca5bc2f62b86bcc2d444479425"
+
+[metadata.repo2env.pr_diff]
+pr_merged_at = "2024-10-27T02:12:21Z"
+diff_format = "unified"
+context_files = [
+    "install/environment1.yml",
+    "install/validate.py",
+    "src/bulk/bulk-pipeline.sh",
+]
+
+[metadata.repo2env.reward_calibration]
+baseline_reward = 0.0
+loc_changed = 8
+difficulty = "small"
+
+[metadata.repo2env.evaluation]
+schema_version = "1"
+status = "unverified"
+stage = "generation"
+reason_codes = [
+    "validation_not_run",
+]
+detail = "Generated task; validation has not been established."
+provenance = "unknown"
+evidence = []
+
+[metadata.repo2env.reproducibility]
+mode = "local_only"
+image_ref = "python:3.12-slim"
+image_tag = "python:3.12-slim"
+image_visibility = "private"
+
+[agent]
+timeout_sec = 1800.0
+
+[verifier]
+timeout_sec = 300.0

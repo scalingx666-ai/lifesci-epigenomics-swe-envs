@@ -1,0 +1,868 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+index 347be2c..3c32724 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,7 +1,7 @@
+ Package: philentropy
+ Type: Package
+ Title: Similarity and Distance Quantification Between Probability Functions
+-Version: 0.10.0
++Version: 0.10.1
+ Authors@R: c(person("Hajk-Georg", "Drost",
+                 role = c("aut", "cre"),
+                 email = "hajk-georg.drost@tuebingen.mpg.de",
+diff --git a/inst/include/philentropy_RcppExports.h b/inst/include/philentropy_RcppExports.h
+index 11b6bd7..5c22eac 100644
+--- a/inst/include/philentropy_RcppExports.h
++++ b/inst/include/philentropy_RcppExports.h
+@@ -24,17 +24,17 @@ namespace philentropy {
+         }
+     }
+ 
+-    inline Rcpp::NumericMatrix as_matrix(Rcpp::DataFrame x) {
+-        typedef SEXP(*Ptr_as_matrix)(SEXP);
+-        static Ptr_as_matrix p_as_matrix = NULL;
+-        if (p_as_matrix == NULL) {
+-            validateSignature("Rcpp::NumericMatrix(*as_matrix)(Rcpp::DataFrame)");
+-            p_as_matrix = (Ptr_as_matrix)R_GetCCallable("philentropy", "_philentropy_as_matrix");
++    inline double dist_one_one(const Rcpp::NumericVector& P, const Rcpp::NumericVector& Q, const Rcpp::String& method, Rcpp::Nullable<double> p = R_NilValue, const bool& testNA = true, const Rcpp::String& unit = "log", const double& epsilon = 0.00001) {
++        typedef SEXP(*Ptr_dist_one_one)(SEXP,SEXP,SEXP,SEXP,SEXP,SEXP,SEXP);
++        static Ptr_dist_one_one p_dist_one_one = NULL;
++        if (p_dist_one_one == NULL) {
++            validateSignature("double(*dist_one_one)(const Rcpp::NumericVector&,const Rcpp::NumericVector&,const Rcpp::String&,Rcpp::Nullable<double>,const bool&,const Rcpp::String&,const double&)");
++            p_dist_one_one = (Ptr_dist_one_one)R_GetCCallable("philentropy", "_philentropy_dist_one_one");
+         }
+         RObject rcpp_result_gen;
+         {
+             RNGScope RCPP_rngScope_gen;
+-            rcpp_result_gen = p_as_matrix(Shield<SEXP>(Rcpp::wrap(x)));
++            rcpp_result_gen = p_dist_one_one(Shield<SEXP>(Rcpp::wrap(P)), Shield<SEXP>(Rcpp::wrap(Q)), Shield<SEXP>(Rcpp::wrap(method)), Shield<SEXP>(Rcpp::wrap(p)), Shield<SEXP>(Rcpp::wrap(testNA)), Shield<SEXP>(Rcpp::wrap(unit)), Shield<SEXP>(Rcpp::wrap(epsilon)));
+         }
+         if (rcpp_result_gen.inherits("interrupted-error"))
+             throw Rcpp::internal::InterruptedException();
+@@ -42,20 +42,20 @@ namespace philentropy {
+             throw Rcpp::LongjumpException(rcpp_result_gen);
+         if (rcpp_result_gen.inherits("try-error"))
+             throw Rcpp::exception(Rcpp::as<std::string>(rcpp_result_gen).c_str());
+-        return Rcpp::as<Rcpp::NumericMatrix >(rcpp_result_gen);
++        return Rcpp::as<double >(rcpp_result_gen);
+     }
+ 
+-    inline Rcpp::DataFrame as_data_frame(Rcpp::NumericMatrix mat) {
+-        typedef SEXP(*Ptr_as_data_frame)(SEXP);
+-        static Ptr_as_data_frame p_as_data_frame = NULL;
+-        if (p_as_data_frame == NULL) {
+-            validateSignature("Rcpp::DataFrame(*as_data_frame)(Rcpp::NumericMatrix)");
+-            p_as_data_frame = (Ptr_as_data_frame)R_GetCCallable("philentropy", "_philentropy_as_data_frame");
++    inline Rcpp::NumericVector dist_one_many(const Rcpp::NumericVector& P, Rcpp::NumericMatrix dists, Rcpp::String method, Rcpp::Nullable<double> p = R_NilValue, bool testNA = true, Rcpp::String unit = "log", double epsilon = 0.00001, Rcpp::Nullable<int> num_threads = R_NilValue) {
++        typedef SEXP(*Ptr_dist_one_many)(SEXP,SEXP,SEXP,SEXP,SEXP,SEXP,SEXP,SEXP);
++        static Ptr_dist_one_many p_dist_one_many = NULL;
++        if (p_dist_one_many == NULL) {
++            validateSignature("Rcpp::NumericVector(*dist_one_many)(const Rcpp::NumericVector&,Rcpp::NumericMatrix,Rcpp::String,Rcpp::Nullable<double>,bool,Rcpp::String,double,Rcpp::Nullable<int>)");
++            p_dist_one_many = (Ptr_dist_one_many)R_GetCCallable("philentropy", "_philentropy_dist_one_many");
+         }
+         RObject rcpp_result_gen;
+         {
+             RNGScope RCPP_rngScope_gen;
+-            rcpp_result_gen = p_as_data_frame(Shield<SEXP>(Rcpp::wrap(mat)));
++            rcpp_result_gen = p_dist_one_many(Shield<SEXP>(Rcpp::wrap(P)), Shield<SEXP>(Rcpp::wrap(dists)), Shield<SEXP>(Rcpp::wrap(method)), Shield<SEXP>(Rcpp::wrap(p)), Shield<SEXP>(Rcpp::wrap(testNA)), Shield<SEXP>(Rcpp::wrap(unit)), Shield<SEXP>(Rcpp::wrap(epsilon)), Shield<SEXP>(Rcpp::wrap(num_threads)));
+         }
+         if (rcpp_result_gen.inherits("interrupted-error"))
+             throw Rcpp::internal::InterruptedException();
+@@ -63,20 +63,20 @@ namespace philentropy {
+             throw Rcpp::LongjumpException(rcpp_result_gen);
+         if (rcpp_result_gen.inherits("try-error"))
+             throw Rcpp::exception(Rcpp::as<std::string>(rcpp_result_gen).c_str());
+-        return Rcpp::as<Rcpp::DataFrame >(rcpp_result_gen);
++        return Rcpp::as<Rcpp::NumericVector >(rcpp_result_gen);
+     }
+ 
+-    inline SEXP sum_rcpp(SEXP vec) {
+-        typedef SEXP(*Ptr_sum_rcpp)(SEXP);
+-        static Ptr_sum_rcpp p_sum_rcpp = NULL;
+-        if (p_sum_rcpp == NULL) {
+-            validateSignature("SEXP(*sum_rcpp)(SEXP)");
+-            p_sum_rcpp = (Ptr_sum_rcpp)R_GetCCallable("philentropy", "_philentropy_sum_rcpp");
++    inline Rcpp::NumericMatrix dist_many_many(Rcpp::NumericMatrix& dists1, Rcpp::NumericMatrix& dists2, Rcpp::String method, Rcpp::Nullable<double> p = R_NilValue, bool testNA = true, Rcpp::String unit = "log", double epsilon = 0.00001, Rcpp::Nullable<int> num_threads = R_NilValue) {
++        typedef SEXP(*Ptr_dist_many_many)(SEXP,SEXP,SEXP,SEXP,SEXP,SEXP,SEXP,SEXP);
++        static Ptr_dist_many_many p_dist_many_many = NULL;
++        if (p_dist_many_many == NULL) {
++            validateSignature("Rcpp::NumericMatrix(*dist_many_many)(Rcpp::NumericMatrix&,Rcpp::NumericMatrix&,Rcpp::String,Rcpp::Nullable<double>,bool,Rcpp::String,double,Rcpp::Nullable<int>)");
++            p_dist_many_many = (Ptr_dist_many_many)R_GetCCallable("philentropy", "_philentropy_dist_many_many");
+         }
+         RObject rcpp_result_gen;
+         {
+             RNGScope RCPP_rngScope_gen;
+-            rcpp_result_gen = p_sum_rcpp(Shield<SEXP>(Rcpp::wrap(vec)));
++            rcpp_result_gen = p_dist_many_many(Shield<SEXP>(Rcpp::wrap(dists1)), Shield<SEXP>(Rcpp::wrap(dists2)), Shield<SEXP>(Rcpp::wrap(method)), Shield<SEXP>(Rcpp::wrap(p)), Shield<SEXP>(Rcpp::wrap(testNA)), Shield<SEXP>(Rcpp::wrap(unit)), Shield<SEXP>(Rcpp::wrap(epsilon)), Shield<SEXP>(Rcpp::wrap(num_threads)));
+         }
+         if (rcpp_result_gen.inherits("interrupted-error"))
+             throw Rcpp::internal::InterruptedException();
+@@ -84,28 +84,7 @@ namespace philentropy {
+             throw Rcpp::LongjumpException(rcpp_result_gen);
+         if (rcpp_result_gen.inherits("try-error"))
+             throw Rcpp::exception(Rcpp::as<std::string>(rcpp_result_gen).c_str());
+-        return Rcpp::as<SEXP >(rcpp_result_gen);
+-    }
+-
+-    inline SEXP est_prob_empirical(SEXP CountVec) {
+-        typedef SEXP(*Ptr_est_prob_empirical)(SEXP);
+-        static Ptr_est_prob_empirical p_est_prob_empirical = NULL;
+-        if (p_est_prob_empirical == NULL) {
+-            validateSignature("SEXP(*est_prob_empirical)(SEXP)");
+-            p_est_prob_empirical = (Ptr_est_prob_empirical)R_GetCCallable("philentropy", "_philentropy_est_prob_empirical");
+-        }
+-        RObject rcpp_result_gen;
+-        {
+-            RNGScope RCPP_rngScope_gen;
+-            rcpp_result_gen = p_est_prob_empirical(Shield<SEXP>(Rcpp::wrap(CountVec)));
+-        }
+-        if (rcpp_result_gen.inherits("interrupted-error"))
+-            throw Rcpp::internal::InterruptedException();
+-        if (Rcpp::internal::isLongjumpSentinel(rcpp_result_gen))
+-            throw Rcpp::LongjumpException(rcpp_result_gen);
+-        if (rcpp_result_gen.inherits("try-error"))
+-            throw Rcpp::exception(Rcpp::as<std::string>(rcpp_result_gen).c_str());
+-        return Rcpp::as<SEXP >(rcpp_result_gen);
++        return Rcpp::as<Rcpp::NumericMatrix >(rcpp_result_gen);
+     }
+ 
+ }
+diff --git a/src/RcppExports.cpp b/src/RcppExports.cpp
+index dbc419e..d564d3b 100644
+--- a/src/RcppExports.cpp
++++ b/src/RcppExports.cpp
+@@ -105,10 +105,9 @@ END_RCPP
+ }
+ // dist_one_one
+ double dist_one_one(const Rcpp::NumericVector& P, const Rcpp::NumericVector& Q, const Rcpp::String& method, Rcpp::Nullable<double> p, const bool& testNA, const Rcpp::String& unit, const double& epsilon);
+-RcppExport SEXP _philentropy_dist_one_one(SEXP PSEXP, SEXP QSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP) {
++static SEXP _philentropy_dist_one_one_try(SEXP PSEXP, SEXP QSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
+-    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type P(PSEXP);
+     Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type Q(QSEXP);
+     Rcpp::traits::input_parameter< const Rcpp::String& >::type method(methodSEXP);
+@@ -118,14 +117,37 @@ BEGIN_RCPP
+     Rcpp::traits::input_parameter< const double& >::type epsilon(epsilonSEXP);
+     rcpp_result_gen = Rcpp::wrap(dist_one_one(P, Q, method, p, testNA, unit, epsilon));
+     return rcpp_result_gen;
+-END_RCPP
++END_RCPP_RETURN_ERROR
++}
++RcppExport SEXP _philentropy_dist_one_one(SEXP PSEXP, SEXP QSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP) {
++    SEXP rcpp_result_gen;
++    {
++        Rcpp::RNGScope rcpp_rngScope_gen;
++        rcpp_result_gen = PROTECT(_philentropy_dist_one_one_try(PSEXP, QSEXP, methodSEXP, pSEXP, testNASEXP, unitSEXP, epsilonSEXP));
++    }
++    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
++    if (rcpp_isInterrupt_gen) {
++        UNPROTECT(1);
++        Rf_onintr();
++    }
++    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
++    if (rcpp_isLongjump_gen) {
++        Rcpp::internal::resumeJump(rcpp_result_gen);
++    }
++    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
++    if (rcpp_isError_gen) {
++        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
++        UNPROTECT(1);
++        (Rf_error)("%s", CHAR(rcpp_msgSEXP_gen));
++    }
++    UNPROTECT(1);
++    return rcpp_result_gen;
+ }
+ // dist_one_many_cpp
+ Rcpp::NumericVector dist_one_many_cpp(const Rcpp::NumericVector& P, Rcpp::NumericMatrix dists, Rcpp::String method, Rcpp::Nullable<double> p, bool testNA, Rcpp::String unit, double epsilon, Rcpp::Nullable<int> num_threads);
+-RcppExport SEXP _philentropy_dist_one_many_cpp(SEXP PSEXP, SEXP distsSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
++static SEXP _philentropy_dist_one_many_cpp_try(SEXP PSEXP, SEXP distsSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
+-    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type P(PSEXP);
+     Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type dists(distsSEXP);
+     Rcpp::traits::input_parameter< Rcpp::String >::type method(methodSEXP);
+@@ -136,14 +158,37 @@ BEGIN_RCPP
+     Rcpp::traits::input_parameter< Rcpp::Nullable<int> >::type num_threads(num_threadsSEXP);
+     rcpp_result_gen = Rcpp::wrap(dist_one_many_cpp(P, dists, method, p, testNA, unit, epsilon, num_threads));
+     return rcpp_result_gen;
+-END_RCPP
++END_RCPP_RETURN_ERROR
++}
++RcppExport SEXP _philentropy_dist_one_many_cpp(SEXP PSEXP, SEXP distsSEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
++    SEXP rcpp_result_gen;
++    {
++        Rcpp::RNGScope rcpp_rngScope_gen;
++        rcpp_result_gen = PROTECT(_philentropy_dist_one_many_cpp_try(PSEXP, distsSEXP, methodSEXP, pSEXP, testNASEXP, unitSEXP, epsilonSEXP, num_threadsSEXP));
++    }
++    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
++    if (rcpp_isInterrupt_gen) {
++        UNPROTECT(1);
++        Rf_onintr();
++    }
++    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
++    if (rcpp_isLongjump_gen) {
++        Rcpp::internal::resumeJump(rcpp_result_gen);
++    }
++    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
++    if (rcpp_isError_gen) {
++        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
++        UNPROTECT(1);
++        (Rf_error)("%s", CHAR(rcpp_msgSEXP_gen));
++    }
++    UNPROTECT(1);
++    return rcpp_result_gen;
+ }
+ // dist_many_many_cpp
+ Rcpp::NumericMatrix dist_many_many_cpp(Rcpp::NumericMatrix& dists1, Rcpp::NumericMatrix& dists2, Rcpp::String method, Rcpp::Nullable<double> p, bool testNA, Rcpp::String unit, double epsilon, Rcpp::Nullable<int> num_threads);
+-RcppExport SEXP _philentropy_dist_many_many_cpp(SEXP dists1SEXP, SEXP dists2SEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
++static SEXP _philentropy_dist_many_many_cpp_try(SEXP dists1SEXP, SEXP dists2SEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
+-    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< Rcpp::NumericMatrix& >::type dists1(dists1SEXP);
+     Rcpp::traits::input_parameter< Rcpp::NumericMatrix& >::type dists2(dists2SEXP);
+     Rcpp::traits::input_parameter< Rcpp::String >::type method(methodSEXP);
+@@ -154,7 +199,31 @@ BEGIN_RCPP
+     Rcpp::traits::input_parameter< Rcpp::Nullable<int> >::type num_threads(num_threadsSEXP);
+     rcpp_result_gen = Rcpp::wrap(dist_many_many_cpp(dists1, dists2, method, p, testNA, unit, epsilon, num_threads));
+     return rcpp_result_gen;
+-END_RCPP
++END_RCPP_RETURN_ERROR
++}
++RcppExport SEXP _philentropy_dist_many_many_cpp(SEXP dists1SEXP, SEXP dists2SEXP, SEXP methodSEXP, SEXP pSEXP, SEXP testNASEXP, SEXP unitSEXP, SEXP epsilonSEXP, SEXP num_threadsSEXP) {
++    SEXP rcpp_result_gen;
++    {
++        Rcpp::RNGScope rcpp_rngScope_gen;
++        rcpp_result_gen = PROTECT(_philentropy_dist_many_many_cpp_try(dists1SEXP, dists2SEXP, methodSEXP, pSEXP, testNASEXP, unitSEXP, epsilonSEXP, num_threadsSEXP));
++    }
++    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
++    if (rcpp_isInterrupt_gen) {
++        UNPROTECT(1);
++        Rf_onintr();
++    }
++    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
++    if (rcpp_isLongjump_gen) {
++        Rcpp::internal::resumeJump(rcpp_result_gen);
++    }
++    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
++    if (rcpp_isError_gen) {
++        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
++        UNPROTECT(1);
++        (Rf_error)("%s", CHAR(rcpp_msgSEXP_gen));
++    }
++    UNPROTECT(1);
++    return rcpp_result_gen;
+ }
+ // distance_cpp
+ Rcpp::NumericMatrix distance_cpp(Rcpp::NumericMatrix x, std::string method, Rcpp::Nullable<double> p, bool test_na, std::string unit, double epsilon, Rcpp::Nullable<int> num_threads);
+@@ -787,159 +856,65 @@ END_RCPP
+ }
+ // as_matrix
+ Rcpp::NumericMatrix as_matrix(Rcpp::DataFrame x);
+-static SEXP _philentropy_as_matrix_try(SEXP xSEXP) {
++RcppExport SEXP _philentropy_as_matrix(SEXP xSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
++    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type x(xSEXP);
+     rcpp_result_gen = Rcpp::wrap(as_matrix(x));
+     return rcpp_result_gen;
+-END_RCPP_RETURN_ERROR
+-}
+-RcppExport SEXP _philentropy_as_matrix(SEXP xSEXP) {
+-    SEXP rcpp_result_gen;
+-    {
+-        Rcpp::RNGScope rcpp_rngScope_gen;
+-        rcpp_result_gen = PROTECT(_philentropy_as_matrix_try(xSEXP));
+-    }
+-    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
+-    if (rcpp_isInterrupt_gen) {
+-        UNPROTECT(1);
+-        Rf_onintr();
+-    }
+-    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
+-    if (rcpp_isLongjump_gen) {
+-        Rcpp::internal::resumeJump(rcpp_result_gen);
+-    }
+-    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
+-    if (rcpp_isError_gen) {
+-        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
+-        UNPROTECT(1);
+-        Rf_error("%s", CHAR(rcpp_msgSEXP_gen));
+-    }
+-    UNPROTECT(1);
+-    return rcpp_result_gen;
++END_RCPP
+ }
+ // as_data_frame
+ Rcpp::DataFrame as_data_frame(Rcpp::NumericMatrix mat);
+-static SEXP _philentropy_as_data_frame_try(SEXP matSEXP) {
++RcppExport SEXP _philentropy_as_data_frame(SEXP matSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
++    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type mat(matSEXP);
+     rcpp_result_gen = Rcpp::wrap(as_data_frame(mat));
+     return rcpp_result_gen;
+-END_RCPP_RETURN_ERROR
+-}
+-RcppExport SEXP _philentropy_as_data_frame(SEXP matSEXP) {
+-    SEXP rcpp_result_gen;
+-    {
+-        Rcpp::RNGScope rcpp_rngScope_gen;
+-        rcpp_result_gen = PROTECT(_philentropy_as_data_frame_try(matSEXP));
+-    }
+-    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
+-    if (rcpp_isInterrupt_gen) {
+-        UNPROTECT(1);
+-        Rf_onintr();
+-    }
+-    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
+-    if (rcpp_isLongjump_gen) {
+-        Rcpp::internal::resumeJump(rcpp_result_gen);
+-    }
+-    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
+-    if (rcpp_isError_gen) {
+-        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
+-        UNPROTECT(1);
+-        Rf_error("%s", CHAR(rcpp_msgSEXP_gen));
+-    }
+-    UNPROTECT(1);
+-    return rcpp_result_gen;
++END_RCPP
+ }
+ // sum_rcpp
+ SEXP sum_rcpp(SEXP vec);
+-static SEXP _philentropy_sum_rcpp_try(SEXP vecSEXP) {
++RcppExport SEXP _philentropy_sum_rcpp(SEXP vecSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
++    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< SEXP >::type vec(vecSEXP);
+     rcpp_result_gen = Rcpp::wrap(sum_rcpp(vec));
+     return rcpp_result_gen;
+-END_RCPP_RETURN_ERROR
+-}
+-RcppExport SEXP _philentropy_sum_rcpp(SEXP vecSEXP) {
+-    SEXP rcpp_result_gen;
+-    {
+-        Rcpp::RNGScope rcpp_rngScope_gen;
+-        rcpp_result_gen = PROTECT(_philentropy_sum_rcpp_try(vecSEXP));
+-    }
+-    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
+-    if (rcpp_isInterrupt_gen) {
+-        UNPROTECT(1);
+-        Rf_onintr();
+-    }
+-    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
+-    if (rcpp_isLongjump_gen) {
+-        Rcpp::internal::resumeJump(rcpp_result_gen);
+-    }
+-    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
+-    if (rcpp_isError_gen) {
+-        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
+-        UNPROTECT(1);
+-        Rf_error("%s", CHAR(rcpp_msgSEXP_gen));
+-    }
+-    UNPROTECT(1);
+-    return rcpp_result_gen;
++END_RCPP
+ }
+ // est_prob_empirical
+ SEXP est_prob_empirical(SEXP CountVec);
+-static SEXP _philentropy_est_prob_empirical_try(SEXP CountVecSEXP) {
++RcppExport SEXP _philentropy_est_prob_empirical(SEXP CountVecSEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
++    Rcpp::RNGScope rcpp_rngScope_gen;
+     Rcpp::traits::input_parameter< SEXP >::type CountVec(CountVecSEXP);
+     rcpp_result_gen = Rcpp::wrap(est_prob_empirical(CountVec));
+     return rcpp_result_gen;
+-END_RCPP_RETURN_ERROR
+-}
+-RcppExport SEXP _philentropy_est_prob_empirical(SEXP CountVecSEXP) {
+-    SEXP rcpp_result_gen;
+-    {
+-        Rcpp::RNGScope rcpp_rngScope_gen;
+-        rcpp_result_gen = PROTECT(_philentropy_est_prob_empirical_try(CountVecSEXP));
+-    }
+-    Rboolean rcpp_isInterrupt_gen = Rf_inherits(rcpp_result_gen, "interrupted-error");
+-    if (rcpp_isInterrupt_gen) {
+-        UNPROTECT(1);
+-        Rf_onintr();
+-    }
+-    bool rcpp_isLongjump_gen = Rcpp::internal::isLongjumpSentinel(rcpp_result_gen);
+-    if (rcpp_isLongjump_gen) {
+-        Rcpp::internal::resumeJump(rcpp_result_gen);
+-    }
+-    Rboolean rcpp_isError_gen = Rf_inherits(rcpp_result_gen, "try-error");
+-    if (rcpp_isError_gen) {
+-        SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
+-        UNPROTECT(1);
+-        Rf_error("%s", CHAR(rcpp_msgSEXP_gen));
+-    }
+-    UNPROTECT(1);
+-    return rcpp_result_gen;
++END_RCPP
+ }
+ 
+ // validate (ensure exported C++ functions exist before calling them)
+ static int _philentropy_RcppExport_validate(const char* sig) { 
+     static std::set<std::string> signatures;
+     if (signatures.empty()) {
+-        signatures.insert("Rcpp::NumericMatrix(*as_matrix)(Rcpp::DataFrame)");
+-        signatures.insert("Rcpp::DataFrame(*as_data_frame)(Rcpp::NumericMatrix)");
+-        signatures.insert("SEXP(*sum_rcpp)(SEXP)");
+-        signatures.insert("SEXP(*est_prob_empirical)(SEXP)");
++        signatures.insert("double(*dist_one_one)(const Rcpp::NumericVector&,const Rcpp::NumericVector&,const Rcpp::String&,Rcpp::Nullable<double>,const bool&,const Rcpp::String&,const double&)");
++        signatures.insert("Rcpp::NumericVector(*dist_one_many)(const Rcpp::NumericVector&,Rcpp::NumericMatrix,Rcpp::String,Rcpp::Nullable<double>,bool,Rcpp::String,double,Rcpp::Nullable<int>)");
++        signatures.insert("Rcpp::NumericMatrix(*dist_many_many)(Rcpp::NumericMatrix&,Rcpp::NumericMatrix&,Rcpp::String,Rcpp::Nullable<double>,bool,Rcpp::String,double,Rcpp::Nullable<int>)");
+     }
+     return signatures.find(sig) != signatures.end();
+ }
+ 
+ // registerCCallable (register entry points for exported C++ functions)
+ RcppExport SEXP _philentropy_RcppExport_registerCCallable() { 
+-    R_RegisterCCallable("philentropy", "_philentropy_as_matrix", (DL_FUNC)_philentropy_as_matrix_try);
+-    R_RegisterCCallable("philentropy", "_philentropy_as_data_frame", (DL_FUNC)_philentropy_as_data_frame_try);
+-    R_RegisterCCallable("philentropy", "_philentropy_sum_rcpp", (DL_FUNC)_philentropy_sum_rcpp_try);
+-    R_RegisterCCallable("philentropy", "_philentropy_est_prob_empirical", (DL_FUNC)_philentropy_est_prob_empirical_try);
++    R_RegisterCCallable("philentropy", "_philentropy_dist_one_one", (DL_FUNC)_philentropy_dist_one_one_try);
++    R_RegisterCCallable("philentropy", "_philentropy_dist_one_many", (DL_FUNC)_philentropy_dist_one_many_cpp_try);
++    R_RegisterCCallable("philentropy", "_philentropy_dist_many_many", (DL_FUNC)_philentropy_dist_many_many_cpp_try);
+     R_RegisterCCallable("philentropy", "_philentropy_RcppExport_validate", (DL_FUNC)_philentropy_RcppExport_validate);
+     return R_NilValue;
+ }
+diff --git a/src/dist_matrix.cpp b/src/dist_functions.cpp
+similarity index 66%
+rename from src/dist_matrix.cpp
+rename to src/dist_functions.cpp
+index fb60323..4e0cac3 100644
+--- a/src/dist_matrix.cpp
++++ b/src/dist_functions.cpp
+@@ -1,5 +1,6 @@
+ // [[Rcpp::plugins(cpp11)]]
+ // [[Rcpp::depends(RcppParallel)]]
++// [[Rcpp::interfaces(r, cpp)]] 
+ 
+ #include <Rcpp.h>
+ #include "utils.h"
+@@ -216,138 +217,3 @@ Rcpp::NumericMatrix dist_many_many_cpp(Rcpp::NumericMatrix& dists1, Rcpp::Numeri
+     RcppParallel::parallelFor(0, n1, worker, 1, n_threads);
+     return dist_matrix;
+ }
+-
+-struct DistMatrixWorker : public RcppParallel::Worker {
+-    RcppParallel::RMatrix<double> dists;
+-    RcppParallel::RMatrix<double> dist_matrix;
+-    std::string method;
+-    double epsilon;
+-    double p;
+-
+-    DistMatrixWorker(Rcpp::NumericMatrix& dists,
+-                            Rcpp::NumericMatrix& dist_matrix,
+-                            std::string method,
+-                            double epsilon,
+-                            double p)
+-        : dists(dists), dist_matrix(dist_matrix), method(method), epsilon(epsilon), p(p) {}
+-
+-    void operator()(std::size_t begin, std::size_t end) {
+-        for (std::size_t i = begin; i < end; ++i) {
+-            for (std::size_t j = i; j < (std::size_t)dists.ncol(); ++j) {
+-                double dist = 0.0;
+-                auto col_i = dists.column(i);
+-                auto col_j = dists.column(j);
+-                dist = dispatch_dist_internal(col_i.begin(), col_i.end(), col_j.begin(),
+-                                              method, "log", epsilon, p);
+-                dist_matrix(i, j) = dist;
+-                dist_matrix(j, i) = dist;
+-            }
+-        }
+-    }
+-};
+-
+-Rcpp::NumericMatrix DistMatrixWithoutUnitMAT_internal(Rcpp::NumericMatrix dists,
+-                                                      std::string method,
+-                                                      bool testNA,
+-                                                      double epsilon,
+-                                                      Rcpp::Nullable<double> p,
+-                                                      Rcpp::Nullable<int> num_threads) {
+-    int n = dists.ncol();
+-    Rcpp::NumericMatrix dist_matrix(n, n);
+-    int n_threads = get_num_threads_cpp(num_threads);
+-
+-    double p_val = NAN;
+-    if (p.isNotNull()) p_val = Rcpp::as<double>(p);
+-    validate_p_parameter(method, p_val);
+-    DistMatrixWorker worker(dists, dist_matrix, method, epsilon, p_val);
+-    RcppParallel::parallelFor(0, n, worker, 1, n_threads);
+-
+-    return dist_matrix;
+-}
+-
+-struct DistMatrixWorkerWithUnit : public RcppParallel::Worker {
+-    RcppParallel::RMatrix<double> dists;
+-    RcppParallel::RMatrix<double> dist_matrix;
+-    std::string method;
+-    std::string unit;
+-    double epsilon;
+-
+-    DistMatrixWorkerWithUnit(Rcpp::NumericMatrix& dists,
+-                             Rcpp::NumericMatrix& dist_matrix,
+-                             std::string method,
+-                             std::string unit,
+-                             double epsilon)
+-        : dists(dists), dist_matrix(dist_matrix), method(method), unit(unit), epsilon(epsilon) {}
+-
+-    void operator()(std::size_t begin, std::size_t end) {
+-        for (std::size_t i = begin; i < end; ++i) {
+-            for (std::size_t j = i; j < (std::size_t)dists.ncol(); ++j) {
+-                double dist = 0.0;
+-                auto col_i = dists.column(i);
+-                auto col_j = dists.column(j);
+-                dist = dispatch_dist_internal(col_i.begin(), col_i.end(), col_j.begin(), method, unit, epsilon, NAN);
+-                dist_matrix(i, j) = dist;
+-                dist_matrix(j, i) = dist;
+-            }
+-        }
+-    }
+-};
+-
+-Rcpp::NumericMatrix DistMatrixWithUnitMAT_internal(Rcpp::NumericMatrix dists,
+-                                                   std::string method,
+-                                                   bool testNA,
+-                                                   double epsilon,
+-                                                   std::string unit,
+-                                                   Rcpp::Nullable<int> num_threads) {
+-    int n = dists.ncol();
+-    Rcpp::NumericMatrix dist_matrix(n, n);
+-    int n_threads = get_num_threads_cpp(num_threads);
+-
+-    DistMatrixWorkerWithUnit worker(dists, dist_matrix, method, unit, epsilon);
+-    RcppParallel::parallelFor(0, n, worker, 1, n_threads);
+-
+-    return dist_matrix;
+-}
+-
+-// [[Rcpp::export]]
+-Rcpp::NumericMatrix distance_cpp(Rcpp::NumericMatrix x,
+-                                 std::string method,
+-                                 Rcpp::Nullable<double> p,
+-                                 bool test_na,
+-                                 std::string unit,
+-                                 double epsilon,
+-                                 Rcpp::Nullable<int> num_threads) {
+-
+-    // Define groups of methods
+-    const std::set<std::string> unit_methods = {
+-      "lorentzian", "bhattacharyya", "kullback-leibler", "jeffreys",
+-      "k_divergence", "topsoe", "jensen-shannon", "jensen_difference", "taneja"
+-    };
+-
+-    if (unit_methods.count(method)) {
+-        return DistMatrixWithUnitMAT_internal(x, method, test_na, epsilon, unit, num_threads);
+-    } else if (method == "minkowski") {
+-        if (!p.isNotNull()) {
+-            Rcpp::stop("Please specify p for the Minkowski distance.");
+-        }
+-        return DistMatrixWithoutUnitMAT_internal(x, method, test_na, epsilon, p, num_threads);
+-    } else if (method == "non-intersection") {
+-        Rcpp::NumericMatrix intersection_matrix = DistMatrixWithoutUnitMAT_internal(x, "intersection", test_na, epsilon, p, num_threads);
+-        return 1.0 - intersection_matrix;
+-    } else if (method == "kulczynski_s") {
+-        Rcpp::NumericMatrix kulczynski_d_matrix = DistMatrixWithoutUnitMAT_internal(x, "kulczynski_d", test_na, epsilon, p, num_threads);
+-        // Element-wise division, handling potential division by zero
+-        for (int i = 0; i < kulczynski_d_matrix.nrow(); ++i) {
+-            for (int j = 0; j < kulczynski_d_matrix.ncol(); ++j) {
+-                if (kulczynski_d_matrix(i, j) != 0) {
+-                    kulczynski_d_matrix(i, j) = 1.0 / kulczynski_d_matrix(i, j);
+-                } else {
+-                    kulczynski_d_matrix(i, j) = R_PosInf; 
+-                }
+-            }
+-        }
+-        return kulczynski_d_matrix;
+-    } else {
+-        return DistMatrixWithoutUnitMAT_internal(x, method, test_na, epsilon, p, num_threads);
+-    }
+-}
+\ No newline at end of file
+diff --git a/src/distance_cpp.cpp b/src/distance_cpp.cpp
+new file mode 100644
+index 0000000..28ab8fb
+--- /dev/null
++++ b/src/distance_cpp.cpp
+@@ -0,0 +1,142 @@
++// [[Rcpp::plugins(cpp11)]]
++// [[Rcpp::depends(RcppParallel)]]
++
++#include <Rcpp.h>
++#include "utils.h"
++#include "dist_dispatch.h"
++#include <RcppParallel.h>
++
++struct DistMatrixWorker : public RcppParallel::Worker {
++    RcppParallel::RMatrix<double> dists;
++    RcppParallel::RMatrix<double> dist_matrix;
++    std::string method;
++    double epsilon;
++    double p;
++
++    DistMatrixWorker(Rcpp::NumericMatrix& dists,
++                            Rcpp::NumericMatrix& dist_matrix,
++                            std::string method,
++                            double epsilon,
++                            double p)
++        : dists(dists), dist_matrix(dist_matrix), method(method), epsilon(epsilon), p(p) {}
++
++    void operator()(std::size_t begin, std::size_t end) {
++        for (std::size_t i = begin; i < end; ++i) {
++            for (std::size_t j = i; j < (std::size_t)dists.ncol(); ++j) {
++                double dist = 0.0;
++                auto col_i = dists.column(i);
++                auto col_j = dists.column(j);
++                dist = dispatch_dist_internal(col_i.begin(), col_i.end(), col_j.begin(),
++                                              method, "log", epsilon, p);
++                dist_matrix(i, j) = dist;
++                dist_matrix(j, i) = dist;
++            }
++        }
++    }
++};
++
++Rcpp::NumericMatrix DistMatrixWithoutUnitMAT_internal(Rcpp::NumericMatrix dists,
++                                                      std::string method,
++                                                      bool testNA,
++                                                      double epsilon,
++                                                      Rcpp::Nullable<double> p,
++                                                      Rcpp::Nullable<int> num_threads) {
++    int n = dists.ncol();
++    Rcpp::NumericMatrix dist_matrix(n, n);
++    int n_threads = get_num_threads_cpp(num_threads);
++
++    double p_val = NAN;
++    if (p.isNotNull()) p_val = Rcpp::as<double>(p);
++    validate_p_parameter(method, p_val);
++    DistMatrixWorker worker(dists, dist_matrix, method, epsilon, p_val);
++    RcppParallel::parallelFor(0, n, worker, 1, n_threads);
++
++    return dist_matrix;
++}
++
++struct DistMatrixWorkerWithUnit : public RcppParallel::Worker {
++    RcppParallel::RMatrix<double> dists;
++    RcppParallel::RMatrix<double> dist_matrix;
++    std::string method;
++    std::string unit;
++    double epsilon;
++
++    DistMatrixWorkerWithUnit(Rcpp::NumericMatrix& dists,
++                             Rcpp::NumericMatrix& dist_matrix,
++                             std::string method,
++                             std::string unit,
++                             double epsilon)
++        : dists(dists), dist_matrix(dist_matrix), method(method), unit(unit), epsilon(epsilon) {}
++
++    void operator()(std::size_t begin, std::size_t end) {
++        for (std::size_t i = begin; i < end; ++i) {
++            for (std::size_t j = i; j < (std::size_t)dists.ncol(); ++j) {
++                double dist = 0.0;
++                auto col_i = dists.column(i);
++                auto col_j = dists.column(j);
++                dist = dispatch_dist_internal(col_i.begin(), col_i.end(), col_j.begin(), method, unit, epsilon, NAN);
++                dist_matrix(i, j) = dist;
++                dist_matrix(j, i) = dist;
++            }
++        }
++    }
++};
++
++Rcpp::NumericMatrix DistMatrixWithUnitMAT_internal(Rcpp::NumericMatrix dists,
++                                                   std::string method,
++                                                   bool testNA,
++                                                   double epsilon,
++                                                   std::string unit,
++                                                   Rcpp::Nullable<int> num_threads) {
++    int n = dists.ncol();
++    Rcpp::NumericMatrix dist_matrix(n, n);
++    int n_threads = get_num_threads_cpp(num_threads);
++
++    DistMatrixWorkerWithUnit worker(dists, dist_matrix, method, unit, epsilon);
++    RcppParallel::parallelFor(0, n, worker, 1, n_threads);
++
++    return dist_matrix;
++}
++
++// [[Rcpp::export]]
++Rcpp::NumericMatrix distance_cpp(Rcpp::NumericMatrix x,
++                                 std::string method,
++                                 Rcpp::Nullable<double> p,
++                                 bool test_na,
++                                 std::string unit,
++                                 double epsilon,
++                                 Rcpp::Nullable<int> num_threads) {
++
++    // Define groups of methods
++    const std::set<std::string> unit_methods = {
++      "lorentzian", "bhattacharyya", "kullback-leibler", "jeffreys",
++      "k_divergence", "topsoe", "jensen-shannon", "jensen_difference", "taneja"
++    };
++
++    if (unit_methods.count(method)) {
++        return DistMatrixWithUnitMAT_internal(x, method, test_na, epsilon, unit, num_threads);
++    } else if (method == "minkowski") {
++        if (!p.isNotNull()) {
++            Rcpp::stop("Please specify p for the Minkowski distance.");
++        }
++        return DistMatrixWithoutUnitMAT_internal(x, method, test_na, epsilon, p, num_threads);
++    } else if (method == "non-intersection") {
++        Rcpp::NumericMatrix intersection_matrix = DistMatrixWithoutUnitMAT_internal(x, "intersection", test_na, epsilon, p, num_threads);
++        return 1.0 - intersection_matrix;
++    } else if (method == "kulczynski_s") {
++        Rcpp::NumericMatrix kulczynski_d_matrix = DistMatrixWithoutUnitMAT_internal(x, "kulczynski_d", test_na, epsilon, p, num_threads);
++        // Element-wise division, handling potential division by zero
++        for (int i = 0; i < kulczynski_d_matrix.nrow(); ++i) {
++            for (int j = 0; j < kulczynski_d_matrix.ncol(); ++j) {
++                if (kulczynski_d_matrix(i, j) != 0) {
++                    kulczynski_d_matrix(i, j) = 1.0 / kulczynski_d_matrix(i, j);
++                } else {
++                    kulczynski_d_matrix(i, j) = R_PosInf; 
++                }
++            }
++        }
++        return kulczynski_d_matrix;
++    } else {
++        return DistMatrixWithoutUnitMAT_internal(x, method, test_na, epsilon, p, num_threads);
++    }
++}
+diff --git a/src/utils.cpp b/src/utils.cpp
+new file mode 100644
+index 0000000..511a4e5
+--- /dev/null
++++ b/src/utils.cpp
+@@ -0,0 +1,46 @@
++// [[Rcpp::plugins(cpp11)]]
++// [[Rcpp::depends(RcppParallel)]]
++
++#include <Rcpp.h>
++#include "utils.h"
++
++// [[Rcpp::export]]
++Rcpp::NumericMatrix as_matrix(Rcpp::DataFrame x) {
++// taken from: http://stackoverflow.com/questions/24352208/best-way-to-convert-dataframe-to-matrix-in-rcpp?rq=1
++  int nRows = x.nrows();
++  Rcpp::NumericMatrix y(nRows, x.size());
++  for (int i = 0; i < x.size(); i++) {
++       y(Rcpp::_, i) = Rcpp::NumericVector(x[i]);
++  }
++  return y;
++}
++
++// @export
++// [[Rcpp::export]]
++Rcpp::DataFrame as_data_frame(Rcpp::NumericMatrix mat) {
++  Rcpp::DataFrame y;
++  for (int i = 0; i < mat.ncol(); i++) {
++       y[i] = mat(Rcpp::_, i);
++  }
++  return y;
++}
++
++// @export
++// [[Rcpp::export]]
++SEXP sum_rcpp(SEXP vec) {
++   Rcpp::NumericVector x(vec);
++   double res = sum(x);
++   return Rcpp::wrap(res);
++}
++
++// @export
++// [[Rcpp::export]]
++SEXP est_prob_empirical(SEXP CountVec) {
++   Rcpp::NumericVector x(CountVec);
++   double ProbMass = sum(x);
++   Rcpp::NumericVector EmpiricalProb(x.size());
++
++   EmpiricalProb = x / ProbMass;
++
++   return Rcpp::wrap(EmpiricalProb);
++}
+\ No newline at end of file
+diff --git a/src/utils.h b/src/utils.h
+index ee34458..a2f60ad 100644
+--- a/src/utils.h
++++ b/src/utils.h
+@@ -4,59 +4,22 @@
+ #define philentropy_UTILS_H philentropy_UTILS_H
+ 
+ // [[Rcpp::plugins(cpp11)]]
+-// [[Rcpp::interfaces(r, cpp)]]
++// [[Rcpp::depends(RcppParallel)]]
+ 
+-
+-// #include <Rcpp.h>
++#include <Rcpp.h>
+ #include <algorithm>
++#include <cmath>
++#include <cstdlib>
++#include <set>
++#include <string>
+ 
++Rcpp::NumericMatrix as_matrix(Rcpp::DataFrame x);
+ 
+-//[[Rcpp::export]]
+-Rcpp::NumericMatrix as_matrix(Rcpp::DataFrame x) {
+-// taken from: http://stackoverflow.com/questions/24352208/best-way-to-convert-dataframe-to-matrix-in-rcpp?rq=1        
+-  int nRows=x.nrows();  
+-  Rcpp::NumericMatrix y(nRows,x.size());
+-  for (int i=0; i<x.size();i++) {
+-       y(Rcpp::_,i) = Rcpp::NumericVector(x[i]);
+-  }  
+-  return y;
+-}
++Rcpp::DataFrame as_data_frame(Rcpp::NumericMatrix mat);
+ 
+-// @export
+-// [[Rcpp::export]]
+-Rcpp::DataFrame as_data_frame(Rcpp::NumericMatrix mat){
+- 
+- //int nRows=mat.nrow();  
+-  Rcpp::DataFrame y;
+-  for (int i=0; i<mat.ncol();i++) {
+-       y[i] = mat(Rcpp::_,i);
+-  }  
+-  return y;
+-}
++SEXP sum_rcpp(SEXP vec);
+ 
+-// @export
+-// [[Rcpp::export]]
+-SEXP sum_rcpp( SEXP vec ){
+-   Rcpp::NumericVector x(vec);
+-   double res = sum( x );
+-   return Rcpp::wrap( res );
+-}
+-
+-
+-// @export
+-// [[Rcpp::export]]
+-SEXP est_prob_empirical( SEXP CountVec ){
+-   Rcpp::NumericVector x(CountVec);
+-   double ProbMass = sum( x );
+-   Rcpp::NumericVector EmpiricalProb(x.size());
+-   
+-   EmpiricalProb = x / ProbMass;
+-   
+-   //for(int i = 0; i < x.size(); i++){
+-   //        EmpiricalProb[i] = static_cast<double>(x[i]/ProbMass);
+-   //}
+-   return Rcpp::wrap( EmpiricalProb );
+-}
++SEXP est_prob_empirical(SEXP CountVec);
+ 
+ inline void check_na(const Rcpp::NumericVector& P, const Rcpp::NumericVector& Q) {
+     if (P.size() != Q.size())

@@ -1,0 +1,172 @@
+diff --git a/config/config.yaml b/config/config.yaml
+index 42ca8ae..8a0fc7c 100644
+--- a/config/config.yaml
++++ b/config/config.yaml
+@@ -79,6 +79,8 @@ voom_parameters:
+ # limma::removeBatchEffect -> https://rdrr.io/bioc/limma/man/removeBatchEffect.html
+ # use case: remove unwanted (batch) effects from data, while desired effects are preserved, prior to downstream analyses e.g., dimensionality reduction with PCA/UMAP
+ # to skip leave desired empty i.e., []
++# If you specify a column/variable in desired, unwanted_categorical or unwanted_numerical
++# that is *not present* in a particular data split it will be ignored silently.
+ removeBatchEffect_parameters:
+     norm_methods: ["CQN", "TMM"] # list of normalization outputs to be integrated; have to be configured above; options: "TMM","TMMwsp","RLE","upperquartile","CPM","RPKM","CQN","VOOM"
+     desired: [] # list of the column names of desired variation in annotation
+diff --git a/workflow/envs/ComplexHeatmap.yaml b/workflow/envs/ComplexHeatmap.yaml
+index c60bd93..219f896 100644
+--- a/workflow/envs/ComplexHeatmap.yaml
++++ b/workflow/envs/ComplexHeatmap.yaml
+@@ -8,4 +8,5 @@ dependencies:
+   - r-rcolorbrewer=1.1_3
+   - r-fastcluster=1.2.3
+   - r-magick=2.7.3
+-  - r-data.table=1.14.8
+\ No newline at end of file
++  - r-data.table=1.14.8
++  - r-ggplot2=3.4.2
+\ No newline at end of file
+diff --git a/workflow/scripts/limma_removeBatchEffect.R b/workflow/scripts/limma_removeBatchEffect.R
+index b2277f0..3c3503d 100644
+--- a/workflow/scripts/limma_removeBatchEffect.R
++++ b/workflow/scripts/limma_removeBatchEffect.R
+@@ -23,19 +23,53 @@ unwanted_numerical_cols <- snakemake@params[["unwanted_numerical"]]
+ data <- data.frame(fread(file.path(data_path), header=TRUE), row.names=1)
+ annot <- data.frame(fread(file.path(annot_path), header=TRUE), row.names=1)
+ 
+-# create design based on desired effects
+-design <- model.matrix(reformulate(desired_cols), data = annot)
++# We can only integrate data for splits where the desired_cols have more than one level.
++# This allows desired_cols to be over-specified in the config and impossible cols are dropped.
+ 
+-# extract unwanted categorical effects for batch variables
+-if(length(unwanted_categorical_cols) == 2){
+-    batch <- annot[[unwanted_categorical_cols[1]]]
+-    batch2 <- annot[[unwanted_categorical_cols[2]]]
+-} else if(length(unwanted_categorical_cols) == 1){
+-    batch <- annot[[unwanted_categorical_cols[1]]]
+-    batch2 <- NULL
++valid_desired_cols <- character(0)
++if (length(desired_cols) > 0) {
++    # Check number of levels for each desired column
++    n_levels <- sapply(desired_cols, function(col) length(unique(annot[[col]])))
++
++    # Identify and warn about columns with a single level that will be dropped
++    cols_to_drop <- n_levels <= 1
++    if(any(cols_to_drop)){
++        warning(paste("The following desired_cols had only a single level and were dropped:",
++                      paste(desired_cols[cols_to_drop], collapse = ", ")))
++    }
++    valid_desired_cols <- desired_cols[!cols_to_drop]
++}
++
++# create design based on desired effects
++if (length(valid_desired_cols) > 0) {
++    # If valid columns remain, create the design matrix from the formula
++    design <- model.matrix(reformulate(valid_desired_cols), data = annot)
+ } else {
+-    batch <- NULL
+-    batch2 <- NULL
++    # If no valid desired columns remain, write a warning the the output file.
++    warning_message <- "No valid desired_cols with multiple levels were specified. Batch correction not possible for this split."
++    warning(warning_message)
++    writeLines(warning_message, con = file.path(result_path))
++    exit()
++}
++                       
++# extract unwanted categorical effects for batch variables
++# if if(is.null(batch) && is.null(batch2) && is.null(covariates)) removeBatchEffect returns as.matrix(x)
++                       
++batch <- NULL
++batch2 <- NULL
++if (length(unwanted_categorical_cols) >= 1) {
++    if (length(unique(annot[[unwanted_categorical_cols[1]]])) > 1) {
++        batch <- annot[[unwanted_categorical_cols[1]]]
++    } else {
++        warning("Not all batch effects can be modelled for this split (not enough levels in batch).")
++    }
++}
++if (length(unwanted_categorical_cols) == 2) {
++    if (length(unique(annot[[unwanted_categorical_cols[2]]])) > 1) {
++        batch2 <- annot[[unwanted_categorical_cols[2]]]
++    } else {
++        warning("Not all batch effects can be modelled for this split (not enough levels in batch2).")
++    }
+ }
+ 
+ # extract unwanted numerical effects for covariates variables
+diff --git a/workflow/scripts/plot_diagnostics.R b/workflow/scripts/plot_diagnostics.R
+index b3d43e7..b6e308e 100644
+--- a/workflow/scripts/plot_diagnostics.R
++++ b/workflow/scripts/plot_diagnostics.R
+@@ -26,12 +26,32 @@ label <- snakemake@wildcards[["label"]]
+ data <- data.frame(fread(file.path(data_path), header=TRUE), row.names=1)
+ annot <- data.frame(fread(file.path(annot_path), header=TRUE), row.names=1)
+ 
++# need to handle empty data, e.g. if no HVFs
++if (nrow(data) == 0) {
++    error_message <- paste("Input data is empty!",
++                           "Most likely you have no HVFs, check your config under 'hvf_parameters'.",
++                           sep = "\n")
++
++    # Create a ggplot object that displays the error message
++    error_plot <- ggplot() +
++      annotate("text", x = 0.5, y = 0.5, label = error_message, size = 5, color = "darkred", fontface="bold") +
++      theme_void() +
++      labs(title = "Data Processing Error") +
++      theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"))
++
++    ggsave(plot_path, error_plot, width=8, height=12, dpi = 300)
++    ggsave(cfa_plot_path, error_plot, width=8, height=6, dpi = 300)
++
++    message(error_message)
++    quit(save = "no", status = 0)
++}
++
+ if (length(annot_vars)<1){
+     annot_vars <- c(colnames(annot)[1], colnames(annot)[2])
+     sample_col <- "sample"
+ } else if (length(annot_vars)<2){
+     annot_vars <- c(annot_vars, colnames(annot)[1])
+-    sample_col <- annot_vars
++    sample_col <- annot_vars[1]
+ } else{
+     sample_col <- annot_vars[1]
+ }
+diff --git a/workflow/scripts/plot_heatmap.R b/workflow/scripts/plot_heatmap.R
+index bacb835..534119e 100644
+--- a/workflow/scripts/plot_heatmap.R
++++ b/workflow/scripts/plot_heatmap.R
+@@ -4,6 +4,7 @@ library("circlize")
+ library("RColorBrewer")
+ library("data.table")
+ library("fastcluster")
++library("ggplot2") # for error images
+ 
+ ### configurations
+ set.seed(42)
+@@ -25,6 +26,26 @@ label <- snakemake@wildcards[["label"]]
+ data <- data.frame(fread(file.path(data_path), header=TRUE), row.names=1)
+ metadata <- data.frame(fread(file.path(metadata_path), header=TRUE), row.names=1)
+ 
++# need to handle empty data, e.g. if no HVFs
++if (nrow(data) == 0) {
++    error_message <- paste("Input data is empty!",
++                           "Most likely you have no HVFs, check your config under 'hvf_parameters'.",
++                           sep = "\n")
++
++    # Create a ggplot object that displays the error message
++    error_plot <- ggplot() +
++      annotate("text", x = 0.5, y = 0.5, label = error_message, size = 5, color = "darkred", fontface="bold") +
++      theme_void() +
++      labs(title = "Data Processing Error") +
++      theme(plot.title = element_text(hjust = 0.5, size = 18, face = "bold"))
++
++    ggsave(hm_clustered_path, error_plot, width=8, height=12, dpi = 300)
++    ggsave(hm_sorted_path, error_plot, width=8, height=6, dpi = 300)
++
++    message(error_message)
++    quit(save = "no", status = 0)
++}
++
+ # raw counts have to be log-normalized
+ if (label=="counts" | label=="filtered"){
+     data <- log2(data + 1)
